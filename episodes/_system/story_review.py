@@ -417,33 +417,64 @@ def verify(ep: Path) -> list[str]:
     ):
         errors.remove("storyboard_sha256 mismatch")
     if (data.get("critic_provenance") or {}).get("direct_user_continuation_review") is True:
-        source_revision = data["critic_provenance"].get("review_scope") == "LOCKED_DOCUMENTARY_SOURCE_REVISION"
-        symbolic_remediation = data["critic_provenance"].get("review_scope") == "LOCKED_DOCUMENTARY_SYMBOLIC_REMEDIATION"
-        paired_caption = data["critic_provenance"].get("review_scope") == "LOCKED_PHOTO_TEXT_CAPTION_REVIEW"
-        evidence_path = Path(ep) / ("meta/runtime/story-review-paired-caption-a6.json" if paired_caption
-                                    else "meta/runtime/story-review-symbolic-remediation-a5.json" if symbolic_remediation
-                                    else "meta/runtime/story-review-source-revision-a4.json" if source_revision
-                                    else "meta/runtime/story-review-policy-continuation-a3.json")
-        try:
-            evidence = read_json(evidence_path)
-            provenance = data["critic_provenance"]
-            if (evidence.get("global_review_attempt") != provenance.get("attempt")
-                    or evidence.get("review_scope") != provenance.get("review_scope")
-                    or evidence.get("review_epoch") != provenance.get("review_epoch")
-                    or evidence.get("epoch_attempt") != provenance.get("epoch_attempt")
-                    or evidence.get("previous_review_sha256") != provenance.get("previous_review_sha256")
-                    or evidence.get("current_rubric_sha256") != provenance.get("current_rubric_sha256")
-                    or evidence.get("story_sha256") != sha256_file(story)
-                    or evidence.get("storyboard_sha256") != sha256_file(storyboard)
-                    or ((source_revision or symbolic_remediation) and evidence.get("previous_storyboard_sha256") != provenance.get("previous_storyboard_sha256"))
-                    or ((symbolic_remediation or paired_caption) and evidence.get("previous_rubric_sha256") != provenance.get("previous_rubric_sha256"))
-                    or (paired_caption and evidence.get("subtitle_source_sha256") != provenance.get("subtitle_source_sha256"))
-                    or (paired_caption and not (ep / "docs/subtitles.yaml").is_file())
-                    or (paired_caption and evidence.get("subtitle_source_sha256") != sha256_file(ep / "docs/subtitles.yaml"))
-                    or evidence.get("current_rubric_sha256") != _review_rubric_digest(Path(__file__).read_text(encoding="utf-8-sig"))):
-                errors.append("policy continuation authority or current rubric SHA mismatch")
-        except (OSError, ValueError, KeyError, RuntimeError):
-            errors.append("policy continuation manifest missing or invalid")
+        provenance = data["critic_provenance"]
+        scope = provenance.get("review_scope")
+        manifest_by_scope = {
+            "LOCKED_DOCUMENTARY_POLICY_REVISION":
+                "meta/runtime/story-review-policy-continuation-a3.json",
+            "LOCKED_DOCUMENTARY_SOURCE_REVISION":
+                "meta/runtime/story-review-source-revision-a4.json",
+            "LOCKED_DOCUMENTARY_SYMBOLIC_REMEDIATION":
+                "meta/runtime/story-review-symbolic-remediation-a5.json",
+            "LOCKED_PHOTO_TEXT_CAPTION_REVIEW":
+                "meta/runtime/story-review-paired-caption-a6.json",
+            "PHOTO_TEXT_SOURCE_REPAIR_AFTER_FAIL":
+                "meta/runtime/story-review-photo-text-source-repair-a7.json",
+            "CHARACTER_STORY_SOURCE_REPAIR_AFTER_FAIL":
+                "meta/runtime/story-review-character-source-repair-a8.json",
+        }
+        rel = manifest_by_scope.get(scope)
+        if rel is None:
+            errors.append("unsupported independent Story Review continuation scope")
+        else:
+            try:
+                evidence = read_json(Path(ep) / rel)
+                uses_old_board = scope in {
+                    "LOCKED_DOCUMENTARY_SOURCE_REVISION",
+                    "LOCKED_DOCUMENTARY_SYMBOLIC_REMEDIATION",
+                    "PHOTO_TEXT_SOURCE_REPAIR_AFTER_FAIL",
+                    "CHARACTER_STORY_SOURCE_REPAIR_AFTER_FAIL",
+                }
+                old_rubric = scope in {
+                    "LOCKED_DOCUMENTARY_SYMBOLIC_REMEDIATION",
+                    "LOCKED_PHOTO_TEXT_CAPTION_REVIEW",
+                }
+                subtitles = scope in {
+                    "LOCKED_PHOTO_TEXT_CAPTION_REVIEW",
+                    "PHOTO_TEXT_SOURCE_REPAIR_AFTER_FAIL",
+                    "CHARACTER_STORY_SOURCE_REPAIR_AFTER_FAIL",
+                }
+                story_revised = scope == "CHARACTER_STORY_SOURCE_REPAIR_AFTER_FAIL"
+                if (evidence.get("global_review_attempt") != provenance.get("attempt")
+                        or evidence.get("review_scope") != scope
+                        or evidence.get("review_epoch") != provenance.get("review_epoch")
+                        or evidence.get("epoch_attempt") != provenance.get("epoch_attempt")
+                        or evidence.get("previous_review_sha256") != provenance.get("previous_review_sha256")
+                        or evidence.get("current_rubric_sha256") != provenance.get("current_rubric_sha256")
+                        or evidence.get("story_sha256") != sha256_file(story)
+                        or evidence.get("storyboard_sha256") != sha256_file(storyboard)
+                        or (uses_old_board and evidence.get("previous_storyboard_sha256") != provenance.get("previous_storyboard_sha256"))
+                        or (old_rubric and evidence.get("previous_rubric_sha256") != provenance.get("previous_rubric_sha256"))
+                        or (subtitles and not (ep / "docs/subtitles.yaml").is_file())
+                        or (subtitles and evidence.get("subtitle_source_sha256") != provenance.get("subtitle_source_sha256"))
+                        or (subtitles and evidence.get("subtitle_source_sha256") != sha256_file(ep / "docs/subtitles.yaml"))
+                        or (story_revised and evidence.get("previous_story_sha256") != provenance.get("previous_story_sha256"))
+                        or (story_revised and evidence.get("new_character_authority_sha256") != provenance.get("new_character_authority_sha256"))
+                        or (story_revised and evidence.get("character_attestation_sha256") != provenance.get("character_attestation_sha256"))
+                        or evidence.get("current_rubric_sha256") != _review_rubric_digest(Path(__file__).read_text(encoding="utf-8-sig"))):
+                    errors.append("policy continuation authority or current rubric SHA mismatch")
+            except (OSError, ValueError, KeyError, RuntimeError):
+                errors.append("policy continuation manifest missing or invalid")
     if propagation_core_gate.required(ep):
         errors.extend(propagation_core_gate.verify(ep))
     return errors
