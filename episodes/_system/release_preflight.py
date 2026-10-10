@@ -49,6 +49,60 @@ from release_preflight_verify import *
 
 from release_preflight_review import _finalize_release_review
 
+def cmd_project_verified_recent5(args: argparse.Namespace) -> int:
+    """Project a genuinely verified Recent-5 PASS into Story Gate fields.
+
+    This is not a Story Critic PASS. Only novelty review and the mechanism veto
+    are projected; plot closure and four-lock differences still require their
+    own grounded Story Gate evidence.
+    """
+    ep = ep_path(args.episode_dir)
+    errors = verify_recent5_evidence(ep)
+    if errors:
+        raise ValueError("RECENT5_EVIDENCE_NOT_VERIFIED: " + "; ".join(errors[:5]))
+    review_path = ep / RECENT5_REL
+    review = read_json(review_path)
+    fingerprint_path = ep / "meta/episode-fingerprint.json"
+    fingerprint = read_json(fingerprint_path)
+    manifest = read_json(ep / "meta/release-manifest.json")
+    manifest_episode = (manifest.get("episode") or {}).get("id")
+    if (review.get("decision") != "pass"
+            or review.get("mechanism_veto") is not False
+            or int(review.get("comparison_count") or 0) < 1
+            or review.get("episode_id") != fingerprint.get("episode_id")
+            or manifest_episode != fingerprint.get("episode_id")
+            or review.get("candidate_fingerprint_sha256") != sha256_file(fingerprint_path)):
+        raise ValueError("RECENT5_PASS_SOURCE_BINDING_INVALID")
+    path = ep / "meta/story-gates.json"
+    gates = read_json(path)
+    story = gates.get("story")
+    if not isinstance(story, dict):
+        raise ValueError("STORY_GATE_STORY_SECTION_MISSING")
+    binding = {
+        "review_sha256": sha256_file(review_path),
+        "fingerprint_sha256": sha256_file(fingerprint_path),
+        "registry_sha256": review["registry_sha256"],
+        "semantic_review_sha256": review.get("semantic_review_sha256"),
+        "comparison_count": review["comparison_count"],
+        "decision": "pass",
+    }
+    bindings = gates.setdefault("release_evidence_bindings", {})
+    previous = bindings.get("recent5")
+    if story.get("recent5_checked") is True and previous != binding:
+        raise ValueError("EXISTING_RECENT5_STORY_GATE_BINDING_DRIFT")
+    if previous is not None and previous != binding:
+        raise ValueError("EXISTING_RECENT5_AUTHORITY_BINDING_DRIFT")
+    story["recent5_checked"] = True
+    story["mechanism_skin_swap_veto"] = review["mechanism_veto"]
+    bindings["recent5"] = binding
+    write_json(path, gates)
+    print(json.dumps({"status": "PROJECTED_VERIFIED_RECENT5",
+                      "story_review_unchanged": True,
+                      "four_locks_unchanged": True,
+                      "binding": binding}, ensure_ascii=False))
+    return 0
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     ep = ep_path(args.episode_dir)
     release_evidence = verify_release_evidence(ep)
@@ -164,6 +218,9 @@ def main() -> int:
     p.add_argument("episode_dir")
     p.add_argument("--reason", default="manual enable")
 
+    p = sub.add_parser("project-verified-recent5")
+    p.add_argument("episode_dir")
+
     p = sub.add_parser("build-recent5")
     p.add_argument("episode_dir")
     p.add_argument("--codex")
@@ -209,6 +266,12 @@ def main() -> int:
         return cmd_bootstrap_registry(args)
     if args.cmd == "enable":
         return cmd_enable(args)
+    if args.cmd == "project-verified-recent5":
+        try:
+            return cmd_project_verified_recent5(args)
+        except (OSError, ValueError, KeyError) as exc:
+            print("RECENT5 STORY GATE PROJECTION BLOCKED:", exc)
+            return 3
     if args.cmd == "build-recent5":
         return cmd_build_recent5(args)
     if args.cmd == "declare-series":
