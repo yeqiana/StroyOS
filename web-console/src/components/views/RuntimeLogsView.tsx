@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {Pagination} from 'antd';
 import {
   Terminal,
-  Trash2,
   Download,
   Check,
   RefreshCw,
@@ -325,21 +324,13 @@ export const RuntimeLogsView: React.FC = () => {
             type="button"
             onClick={handleCopyLogs}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-[4px] bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-xs font-mono transition-colors cursor-pointer"
-            title="复制当前筛选条件下的日志文本"
+            title="复制当前筛选条件下的日志文本到剪贴板"
           >
             {copiedAll ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Download className="w-3.5 h-3.5" />}
-            <span>{copiedAll ? '已导出' : '导出日志'}</span>
+            <span>{copiedAll ? '已复制' : '复制日志'}</span>
           </button>
 
-          {/* 清空日志 */}
-          <button
-            type="button"
-            onClick={() => setLogs([])}
-            className="p-1.5 rounded-[4px] bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:bg-red-500/15 text-[var(--text-tertiary)] hover:text-red-400 transition-colors cursor-pointer"
-            title="清空当前日志缓存"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
+
         </div>
       </div>
 
