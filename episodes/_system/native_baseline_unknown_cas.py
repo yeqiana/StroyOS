@@ -140,7 +140,9 @@ def verify_frame01_sources(ep: Path, *, allow_generated: bool = False) -> dict:
         _deny("NATIVE_RECONCILIATION_QUEUE_CONTRACT_DRIFT")
     if item.get("status") == "generated" and (item.get("generation_key") != evidence["generation_key"]
             or int(item.get("attempt_index") or 0) != 1
-            or item.get("output_path") != candidate.relative_to(ROOT.resolve()).as_posix()):
+            or item.get("output_path") != candidate.relative_to(ROOT.resolve()).as_posix()
+            or item.get("frame_contract_sha256") != evidence["frame_contract_sha256"]
+            or item.get("prompt_package_sha256") != evidence["prompt_package_sha256"]):
         _deny("NATIVE_RECONCILIATION_GENERATED_QUEUE_DRIFT")
     if any(by_frame[frame].get("status") != "queued"
            or list(by_frame[frame].get("depends_on") or []) != [1]
@@ -269,12 +271,12 @@ def reconcile_frame01_unknown(ep: Path, *, expected_fencing_token: int,
             updated = connection.execute(
                 "UPDATE TB_GENERATION_ATTEMPT SET STATUS='SUCCEEDED', "
                 "GENERATION_OBSERVED_AT=COALESCE(GENERATION_OBSERVED_AT,%s), "
-                "RESULT_REF=%s WHERE EPISODE_ID=%s AND LOGICAL_ASSET_KEY=%s "
+                "TERMINAL_AT=%s, RESULT_REF=%s WHERE EPISODE_ID=%s AND LOGICAL_ASSET_KEY=%s "
                 "AND ATTEMPT_INDEX=1 AND STATUS='OUTCOME_UNKNOWN' "
                 "AND GENERATION_KEY=%s AND FENCING_TOKEN=%s "
                 "AND FAILURE_CLASS=%s AND RESULT_REF IS NULL",
-                (authority._utcnow(), candidate_ref, episode_id, key,
-                 generation_key, expected_fencing_token, EXPECTED_REASON),
+                (authority._utcnow(), authority._utcnow(), candidate_ref,
+                 episode_id, key, generation_key, expected_fencing_token, EXPECTED_REASON),
             )
             if updated != 1:
                 _deny("NATIVE_RECONCILIATION_CAS_LOST")
@@ -322,6 +324,8 @@ def reconcile_frame01_and_queue(ep: Path, *, expected_fencing_token: int,
             if (item.get("output_path") != source["candidate_repo_rel"]
                     or item.get("generation_key") != source["generation_key"]
                     or int(item.get("attempt_index") or 0) != 1
+                    or item.get("frame_contract_sha256") != source["frame_contract_sha256"]
+                    or item.get("prompt_package_sha256") != source["prompt_package_sha256"]
                     or (item.get("unknown_reconciliation") or {}).get("evidence_sha256")
                     != source["evidence_sha256"]):
                 _deny("NATIVE_RECONCILIATION_QUEUE_IDEMPOTENCY_DRIFT")
@@ -333,6 +337,11 @@ def reconcile_frame01_and_queue(ep: Path, *, expected_fencing_token: int,
         item["output_path"] = source["candidate_repo_rel"]
         item["generation_key"] = source["generation_key"]
         item["attempt_index"] = 1
+        # Review Queue consumes these top-level fields, not the nested
+        # prompt_package.package_sha256. Bind the proven values explicitly;
+        # this only queues independent pixel review, never auto-PASS.
+        item["frame_contract_sha256"] = source["frame_contract_sha256"]
+        item["prompt_package_sha256"] = source["prompt_package_sha256"]
         item["completed_at"] = scheduler_core.now()
         item["unknown_reconciliation"] = {
             "kind": "NATIVE_RUNNER_THREAD_SCOPED_SHA",

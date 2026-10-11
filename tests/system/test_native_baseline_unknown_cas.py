@@ -64,13 +64,15 @@ class FakeMySql:
         assert "STATUS='SUCCEEDED'" in sql
         assert "AND STATUS='OUTCOME_UNKNOWN'" in sql
         assert "AND FENCING_TOKEN=%s" in sql
+        assert "TERMINAL_AT=%s" in sql
         assert "AND GENERATION_KEY=%s" in sql
         if self.force_cas_loss:
             return 0
         assert self.row["STATUS"] == "OUTCOME_UNKNOWN"
-        assert self.row["GENERATION_KEY"] == args[4]
+        assert self.row["GENERATION_KEY"] == args[5]
         self.row["STATUS"] = "SUCCEEDED"
-        self.row["RESULT_REF"] = args[1]
+        self.row["TERMINAL_AT"] = args[1]
+        self.row["RESULT_REF"] = args[2]
         self.mutations += 1
         return 1
 
@@ -203,6 +205,7 @@ def test_successful_cas_is_single_update_and_idempotent(example):
     assert db.mutations == 1 and db.state["ATTEMPTS_CONSUMED"] == 1
     assert db.state["ACTIVE_ATTEMPT_INDEX"] is None
     assert db.row["FAILURE_CLASS"] == reconcile.EXPECTED_REASON
+    assert db.row["TERMINAL_AT"] == datetime(2026, 10, 11, 12, 30)
     assert all(p.read_bytes() == value for p, value in before.items())
     assert queue["items"][0]["status"] == "external_blocked"
     repeated = commit(ep, evidence_path)
@@ -388,8 +391,24 @@ def test_queue_crash_after_mysql_commit_only_resumes_original_item(example, monk
     assert frame["status"] == "generated"
     assert frame["output_path"] == candidate.relative_to(reconcile.ROOT).as_posix()
     assert frame["generation_key"] == evidence["generation_key"]
+    assert frame["frame_contract_sha256"] == evidence["frame_contract_sha256"]
+    assert frame["prompt_package_sha256"] == evidence["prompt_package_sha256"]
     assert frame["attempt_index"] == 1
     assert frame["unknown_reconciliation"]["pixel_review_pass"] is False
+    import review_queue
+    review_result = review_queue.enqueue(
+        persisted["queue"], episode=ep, source_item=frame,
+        artifact_path=frame["output_path"],
+        artifact_sha256=evidence["normalized_png_sha256"],
+        policy={"role": "vision.fast", "model_policy_sha256": "d" * 64,
+                "model": "gpt-6-luna"},
+    )
+    assert review_result["status"] == "ENQUEUED"
+    assert review_result["item"]["frame_contract_sha256"] == evidence["frame_contract_sha256"]
+    assert review_result["item"]["prompt_package_sha256"] == evidence["prompt_package_sha256"]
+    assert review_result["item"]["status"] == "queued"
+    assert review_result["item"]["receipt"] is None
+    assert review_result["item"]["generation_key"] == evidence["generation_key"]
     assert frame["execution"]["transaction_id"] == "9" * 32
     assert frame["execution"]["phase"] == "COMMITTED"
     assert all(x["status"] == "queued" for x in persisted["queue"]["items"][1:])
