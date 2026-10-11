@@ -142,6 +142,61 @@ def corrected_ledger_document(document: dict, source: dict) -> dict:
     return out
 
 
+
+
+def _verify_typed_frame01(connection, storage_id: str, document: dict) -> None:
+    """Lock and validate both query projections against the Ledger BLOB.
+
+    A replay is not idempotent when the typed query tables have drifted.
+    This also makes a missing or stale projection fail *before* any write.
+    The lock order (Attempt, then Frame) matches _persist_projection.
+    """
+    import json
+
+    frame = (document.get("frames") or {}).get("01")
+    if not isinstance(frame, dict) or len(frame.get("attempts") or []) != 1:
+        _deny("NATIVE_RECONCILIATION_TYPED_PROJECTION_LEDGER_INVALID")
+    attempt = frame["attempts"][0]
+    row = connection.query_one(
+        "SELECT EPISODE_ID, FRAME_NO, ATTEMPT_NO, ATTEMPT_ID, ATTEMPT_KIND, "
+        "STATUS, PAYLOAD FROM TB_PRODUCTION_ATTEMPT "
+        "WHERE EPISODE_ID=%s AND FRAME_NO=1 AND ATTEMPT_NO=1 FOR UPDATE",
+        (storage_id,),
+    )
+    if not isinstance(row, dict):
+        _deny("NATIVE_RECONCILIATION_TYPED_ATTEMPT_MISSING")
+    raw = row.get("PAYLOAD")
+    if isinstance(raw, memoryview):
+        raw = raw.tobytes()
+    if isinstance(raw, (bytes, bytearray)):
+        raw = raw.decode("utf-8")
+    try:
+        payload = json.loads(raw) if isinstance(raw, str) else raw
+    except (TypeError, ValueError):
+        _deny("NATIVE_RECONCILIATION_TYPED_ATTEMPT_PAYLOAD_INVALID")
+    if (row.get("EPISODE_ID") != storage_id
+            or int(row.get("FRAME_NO") or 0) != 1
+            or int(row.get("ATTEMPT_NO") or 0) != 1
+            or row.get("ATTEMPT_ID") != attempt.get("attempt_id")
+            or row.get("ATTEMPT_KIND") != attempt.get("kind")
+            or row.get("STATUS") != attempt.get("result")
+            or payload != attempt):
+        _deny("NATIVE_RECONCILIATION_TYPED_ATTEMPT_DRIFT")
+    typed_frame = connection.query_one(
+        "SELECT EPISODE_ID, FRAME_NO, STATUS, CURRENT_ATTEMPT_ID, "
+        "CONTRACT_SHA256, APPROVED_ARTIFACT_ID FROM TB_PRODUCTION_FRAME "
+        "WHERE EPISODE_ID=%s AND FRAME_NO=1 FOR UPDATE",
+        (storage_id,),
+    )
+    if (not isinstance(typed_frame, dict)
+            or typed_frame.get("EPISODE_ID") != storage_id
+            or int(typed_frame.get("FRAME_NO") or 0) != 1
+            or typed_frame.get("STATUS") != frame.get("status")
+            or typed_frame.get("CURRENT_ATTEMPT_ID") != attempt.get("attempt_id")
+            or typed_frame.get("CONTRACT_SHA256") != ledger_store._contract_sha(frame)
+            or typed_frame.get("APPROVED_ARTIFACT_ID") is not None):
+        _deny("NATIVE_RECONCILIATION_TYPED_FRAME_DRIFT")
+
 def locked_ledger_update(connection, ep: Path, source: dict, *, already_succeeded: bool) -> bool:
     """Lock, cross-check, write BLOB and typed projections on the caller's TX."""
     if ledger_store.mode() != "mysql":
@@ -158,6 +213,7 @@ def locked_ledger_update(connection, ep: Path, source: dict, *, already_succeede
     if not existing or existing.get("sha256") != lock.get("SHA256"):
         _deny("NATIVE_RECONCILIATION_LEDGER_AUTHORITY_SHA_DRIFT")
     document = existing["document"]
+    _verify_typed_frame01(connection, storage_id, document)
     if already_succeeded:
         _check_existing(document, source, completed=True)
         return False
@@ -171,4 +227,5 @@ def locked_ledger_update(connection, ep: Path, source: dict, *, already_succeede
     )
     if counts != (1, 1):
         _deny("NATIVE_RECONCILIATION_LEDGER_PROJECTION_FAILED")
+    _verify_typed_frame01(connection, storage_id, updated)
     return True
