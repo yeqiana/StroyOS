@@ -257,6 +257,12 @@ def reconcile_frame01_unknown(ep: Path, *, expected_fencing_token: int,
                 if row.get("RESULT_REF") != candidate_ref:
                     _deny("NATIVE_RECONCILIATION_SUCCEEDED_RESULT_DRIFT")
                 atomic_ledger.locked_ledger_update(connection, ep, verified, already_succeeded=True)
+                # The already-SUCCEEDED path may run after a different worker
+                # committed SQL but crashed before Queue persistence. The
+                # same operation_scope might still carry the old TECH_FAILED
+                # Ledger cache. Invalidate before the caller reads the
+                # committed Ledger for its Queue handoff.
+                ledger_store.invalidate(ep)
                 return {**verified, "status": "SUCCEEDED", "idempotent": True,
                         "ledger_reconciled": True,
                         "attempt_index": 1, "fencing_token": expected_fencing_token}

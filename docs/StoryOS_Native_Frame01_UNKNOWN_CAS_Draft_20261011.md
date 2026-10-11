@@ -38,10 +38,12 @@
 
 - **真实 InnoDB 测试：`5 passed in 4.27s`**，执行命令为 `pytest -q tests/system/test_native_baseline_isolated_mysql_contract.py --storyos-isolated-mysql`，没有 5 个 SKIP。
 - **同库核心恢复安全回归：`181 passed in 7.30s`**，含实际 MySQL 的 5 项测试。
-- **完整 15 个关联文件回归：`259 passed in 18.38s`，`0 skipped`**，所有真实 MySQL 用例均运行；输出中不包括任何模型调用或正式 DB 写入。
+- **完整 15 个关联文件回归：首次 `259 passed in 18.38s`，修复 Queue 崩溃重入后的 Ledger 操作缓存失效后复验 `260 passed in 14.08s`，均 `0 skipped`**，所有真实 MySQL 用例均运行；输出中不包括任何模型调用或正式 DB 写入。
 - Docker admission 使用真实仓库常量 `STORYOS_TEST_MYSQL_APPROVAL=I_AUTHORIZE_ISOLATED_TEST_DB_WRITES`，且容器命名符合 `storyos-test-only-mysql-*`。此前文案中 `I_ACKNOWLEDGE_TEST_ONLY_MYSQL` 及 `storyos-mysql-testonly` 均**不符合**代码准入，应废弃。
 
 已完成的是真实测试库验收，不是正式生产授权。受控正式追认仍需独立 PR 代码审查、合并和生产 Owner/fencing 二次核验。后续像素审核严格走本机原生 Codex `REVIEW_ORDINARY_BASELINE`；本轮 WebCodex Runner 中 `codex login status` 为 `Not logged in`，此事实不等同于用户桌面独立会话的登录状态，不能据此声称模型 entitlement 已验证。
+
+**崩溃重入加固**：当 MySQL Attempt 已是 `SUCCEEDED` 时，同一 `operation_scope` 中的 Ledger 旧缓存可能仍为 `TECH_FAILED`，导致 Queue 异步恢复错误拒绝。已在幂等原路径核验 Ledger 后同步 `ledger_store.invalidate(ep)`，且通过新增 1 项负向/重入回归和全部 260 项真实 TEST_ONLY MySQL 关联验收；这不涉及任何新生图或生产 DB 写入。
 
 ## Queue 恢复幂等证明与 Review Backfill（新增）
 

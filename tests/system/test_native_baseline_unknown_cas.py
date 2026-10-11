@@ -213,6 +213,24 @@ def test_successful_cas_is_single_update_and_idempotent(example):
     assert db.mutations == 1 and db.closed
 
 
+def test_idempotent_mysql_recovery_invalidates_ledger_operation_cache(example, monkeypatch):
+    ep, _raw, _candidate, _log, evidence_path, _evidence, _queue, db = example
+    invalidated = []
+    monkeypatch.setattr(
+        reconcile.ledger_store, "invalidate",
+        lambda target: invalidated.append(Path(target).resolve()),
+    )
+    first = commit(ep, evidence_path)
+    assert first["idempotent"] is False
+    assert invalidated == [ep.resolve()]
+    # An already-SUCCEEDED DB row is not enough: the subsequent Queue
+    # restoration must not reuse an old cached TECH_FAILED Ledger BLOB.
+    second = commit(ep, evidence_path)
+    assert second["idempotent"] is True
+    assert invalidated == [ep.resolve(), ep.resolve()]
+    assert db.mutations == 1
+
+
 @pytest.mark.parametrize("mutation", [
     "raw_sha", "candidate_sha", "codex_log_sha", "runner_provenance",
     "source_id", "wrong_status", "wrong_evidence_kind", "missing_evidence",
