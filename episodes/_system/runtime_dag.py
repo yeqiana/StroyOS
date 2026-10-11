@@ -1086,6 +1086,11 @@ def _execute(ep,codex=None,timeout=None,run_id=None,trace_id=None,until=None,tel
                 def _worker(task):
                     step=preimage_task_contract.canonical_step(task["task_type"])
                     execution_capsule.compile_capsule(ep,step,write=True)
+                    # The scoped model log is append-only across attempts;
+                    # only bytes written by THIS execution may prove its
+                    # completed Codex turn when Host seals a Candidate.
+                    scoped_log=ep/"meta/scoped-workers"/f"{step.lower()}.jsonl"
+                    log_offset=scoped_log.stat().st_size if scoped_log.is_file() else 0
                     value, _log=scoped_codex_worker.run_step(
                         ep,step,codex_raw=codex,
                         timeout=preimage_worker_timeout(task,timeout))
@@ -1095,11 +1100,11 @@ def _execute(ep,codex=None,timeout=None,run_id=None,trace_id=None,until=None,tel
                         # only after a genuine completed native turn and full
                         # semantic verification. Preserve raw model bytes.
                         sealed=preimage_task_contract.seal_scoped_native_candidate(
-                            ep, task, _log)
+                            ep, task, _log, log_start_offset=log_offset)
                         if sealed.get("status") != "PASS":
-                            raise ValueError(
-                                "PREIMAGE native Host Candidate sealing refused: "
-                                + "; ".join(sealed.get("errors") or ["unknown"]))
+                            # A failed payload/semantic check remains FAILED.
+                            # Do not crash sibling tasks or fabricate progress.
+                            return 4
                     return value
                 outcome=preimage_protocol.execute_local(ep,_worker,max_workers=workers)
                 rc=0 if outcome.get("status")=="PASS" else 4
