@@ -34,6 +34,7 @@ import image_payload_transport
 import logical_asset_identity
 import canvas_normalize
 import global_image_capacity
+import production_native_baseline_proof
 
 MODE="python_warm_pool_codex_ephemeral"
 CODEX_SESSION_REUSE=False
@@ -224,12 +225,28 @@ def execute(ep,item,timeout,codex):
                 proof_transport_model=str(controller_policy.get("model") or ""),
                 proof_transport_effort=str(controller_policy.get("reasoning_effort") or ""),
             )
+        # Strict preflight stays the default. One narrowly scoped, one-time
+        # production baseline proof may use a second *non-generating* native
+        # visibility attestation before reserving the canonical MySQL Attempt.
+        # This is not Phase5A (which remains TEST_ONLY) and not a blanket PASS.
+        native_baseline_probe = None
+        if (phase5a_grant_evidence is None
+                and production_native_baseline_proof.eligible(
+                    ep, item, payload_policy, controller_policy)):
+            native_baseline_probe = production_native_baseline_proof.attest_secondary(
+                payload_preflight, payload_policy, controller_policy, codex)
+            if native_baseline_probe is not None:
+                payload_preflight = native_baseline_probe
         payload_preflight_status = str(payload_preflight.get("status") or "")
         payload_gate_pass = (
             payload_preflight_status == "PASS"
             or (payload_preflight_status == "READY_FOR_REAL_CAPABILITY_PROOF"
                 and payload_preflight.get("phase5a_dispatch_grant_consumed") is True
                 and phase5a_grant_evidence is not None
+                and payload_preflight.get("image_generation_called") is False
+                and payload_preflight.get("image_attempt_authority_called") is False)
+            or (native_baseline_probe is not None
+                and payload_preflight_status == "READY_FOR_REAL_CAPABILITY_PROOF"
                 and payload_preflight.get("image_generation_called") is False
                 and payload_preflight.get("image_attempt_authority_called") is False)
         )
@@ -263,6 +280,14 @@ def execute(ep,item,timeout,codex):
             "controller_output_sha256": canonical_request.get("controller_output_sha256"),
             "payload_request_fingerprint": canonical_request.get("request_fingerprint"),
         })
+        if native_baseline_probe is not None:
+            attempt_context.update({
+                "image_capability_proof_purpose": production_native_baseline_proof.REASON,
+                "native_visibility_evidence_sha256": production_native_baseline_proof.evidence_sha(
+                    native_baseline_probe),
+                "visual_lock_frame": 1,
+                "tool_capability_claim": "UNKNOWN_NOT_YET_PROVEN",
+            })
         budget_ok,budget_row=raw_candidate_budget.claim(ep,frame,budget_kind,reason=f"formal_generation_entrypoint scope={item.get('scope')} attempt={attempt}",token=budget_token,semantic_key=budget_semantic_key,
             generation_context=attempt_context)
         if not budget_ok:
@@ -270,6 +295,19 @@ def execute(ep,item,timeout,codex):
             production_recovery.write_lifecycle(ep, item, "FAILED", worker_pid=os.getpid(), error=result["stdout"], result=result)
             return result
         generation_lease = budget_row.get("lease") or {}
+        # MySQL serializes concurrent reserves; a late second process can
+        # never use Attempt #2 as another first-frame entitlement probe.
+        if (native_baseline_probe is not None
+                and not production_native_baseline_proof.first_attempt_only(generation_lease)):
+            raw_candidate_budget.release(ep, budget_token,
+                                         reason="native_baseline_proof_requires_first_attempt")
+            message = "NATIVE_VISUAL_BASELINE_PROOF_FIRST_ATTEMPT_ONLY"
+            result = {"returncode": 94, "stdout": message, "payload": None,
+                      "output": None, "log": log, "attempt": attempt,
+                      "image_generation_called": False}
+            production_recovery.write_lifecycle(
+                ep, item, "BLOCKED", worker_pid=os.getpid(), error=message, result=result)
+            return result
         item["generation_key"] = generation_lease.get("generation_key")
         item["attempt_index"] = generation_lease.get("attempt_index")
         production_recovery.write_lifecycle(
@@ -332,6 +370,29 @@ def execute(ep,item,timeout,codex):
             production_recovery.write_lifecycle(ep,item,"FAILED",worker_pid=os.getpid(),error=result["stdout"],result=result)
             return result
 
+        if native_baseline_probe is not None:
+            # Text-only tool visibility is never proof of a generated image.
+            # Require an actual provider image tool item, completed Codex turn,
+            # and PNG before any downstream review can see this first frame.
+            try:
+                production_native_baseline_proof.record_unreviewed_pixel(
+                    ep, item, generation_lease, log, out, runner_request_id)
+            except Exception as exc:
+                # The provider gateway has already consumed this real Attempt.
+                # Do not release the lease as though dispatch never occurred.
+                # Preserve its consumed budget and fail closed for read-only
+                # operator reconciliation of an unverifiable pixel.
+                raw_candidate_budget.commit(
+                    ep, budget_token, reason="native_baseline_proof_unverified_raw_consumed")
+                message = f"NATIVE_BASELINE_PIXEL_TOOL_PROOF_UNVERIFIED: {type(exc).__name__}"
+                result = {"returncode": 94, "stdout": message, "payload": payload,
+                          "output": out, "log": log, "attempt": attempt,
+                          "generation_key": generation_lease.get("generation_key"),
+                          "image_generation_called": "UNVERIFIED"}
+                production_recovery.write_lifecycle(
+                    ep, item, "BLOCKED", worker_pid=os.getpid(),
+                    error=message, result=result)
+                return result
         commit_ok,commit_row=raw_candidate_budget.commit(ep,budget_token,reason="normalized_candidate_exists")
         if not commit_ok:
             runtime_trace.end_span(ep,trace_span,name=f"image.generate.frame.{frame:02d}",category="image_generation",status="FAILED",started_monotonic=trace_started,trace_id=trace_id,run_id=trace_run_id,attrs={"frame":frame,"error":"candidate commit failed"})
