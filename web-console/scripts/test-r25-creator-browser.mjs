@@ -39,7 +39,10 @@ async function browserScenario(c){
       const set=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;
       set.call(search,c.realTitle);
       search.dispatchEvent(new Event('input',{bubbles:true}));
-      return await wait(()=>[...view.querySelectorAll('button[aria-label^="预览作品"]')].find(b=>b.getAttribute('aria-label')?.includes(c.realTitle)),'matching real media card');
+      // Approved-media catalog arrives asynchronously; a gallery card may be replaced
+      // when it changes from the unapproved list to the approved image gallery.
+      // Wait for the current DOM card WITH its real approved img, not a stale button.
+      return await wait(()=>[...view.querySelectorAll('button[aria-label^="预览作品"]')].find(b=>b.getAttribute('aria-label')?.includes(c.realTitle)&&b.querySelector('img[src^="/api/v1/local-media/images/"]')),'matching real media card with approved thumbnail');
     };
     if(c.name==='library-gallery'){
       const view=await wait(()=>document.querySelector('#series-library-view'),'library');
