@@ -317,15 +317,15 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
       {/* ========================================================================= */}
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
         {/* 左侧主要内容面板 */}
-        <div className="min-w-0 flex-1 space-y-4 overflow-y-auto p-4">
+        <div className="min-w-0 flex-1 space-y-4 overflow-y-auto p-3 lg:p-4">
           {/* ========================================================================= */}
           {/* Tab 1: 概览 (Overview) —— 简化后的紧凑生产矩阵 */}
           {/* ========================================================================= */}
           {activeTab === 'overview' && (
-            <div className="mx-auto max-w-[1360px] space-y-4">
+            <div className="w-full min-w-0 space-y-4">
               {/* 1.1 精简单行生产指标摘要栏 */}
-              <div className="h-[44px] px-4 rounded-[6px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] flex items-center justify-between gap-4 text-xs font-mono">
-                <div className="flex items-center gap-5 truncate">
+              <div className="min-h-[44px] flex flex-wrap items-center justify-between gap-x-5 gap-y-2 border-y border-[var(--border-subtle)] px-3 py-2.5 text-[12px]">
+                <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
                   <div className="flex items-center gap-2">
                     <span className="text-[var(--text-tertiary)]">通过帧率</span>
                     <span className="font-semibold text-[var(--text-primary)]">{run.totalFrames > 0 ? Math.round(run.frames.filter(f => f.status === 'PASSED').length / run.totalFrames * 100) : 0}%</span>
@@ -350,7 +350,7 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
                   </div>
                 </div>
 
-                <div className="text-[11px] text-[var(--text-tertiary)] shrink-0 truncate">
+                <div className="text-[11px] text-[var(--text-tertiary)] tabular-nums">
                   <span>创建时间: {run.createdAt}</span>
                 </div>
               </div>
@@ -368,7 +368,7 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
                 </div>
 
                 {/* 横向步骤条 */}
-                <div className="grid grid-cols-4 gap-1.5 md:grid-cols-8">
+                <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4 lg:grid-cols-8">
                   {run.pipelineStages.map((stage) => {
                     const isDone = stage.status === 'completed';
                     const isRunning = stage.status === 'running';
