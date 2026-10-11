@@ -116,6 +116,7 @@ def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
     driver: dict = {}
     stage: dict = {}
     creative_recovery: dict = {}
+    visual_lock_admission: dict = {"status": "NOT_APPLICABLE"}
     if episode is not None:
         rc, stage = _probe(env, "scripts/storyos_episode_stage_readonly.py",
                            ["--episode", episode.relative_to(ROOT).as_posix()])
@@ -136,6 +137,19 @@ def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
                             ["status", rel, "--json"])
         if rc != 0 or driver.get("driver_state") not in {"NEVER_STARTED", "EXITED"}:
             blockers.append("EPISODE_DRIVER_OWNER_NOT_IDLE_OR_UNVERIFIED")
+        if stage.get("stage") == "STORYBOARD_LOCKED":
+            # A DAG may be safe to start without being eligible to finish.
+            # This pure read-only advisory must NOT be promoted to image
+            # entitlement, nor bypass the real image pixel/generation gates.
+            visual_rc, visual_lock_admission = _probe(
+                env, "scripts/storyos_visual_lock_readonly.py", ["--episode", rel]
+            )
+            if visual_rc != 0 or not isinstance(visual_lock_admission, dict):
+                visual_lock_admission = {
+                    "status": "BLOCKED",
+                    "reason": "VISUAL_LOCK_READONLY_AUTHORITY_CHECK_FAILED",
+                    "read_only": True,
+                }
     return {
         "status": "READY_TO_START" if not blockers else "BLOCKED",
         "scope": "NATIVE_CODEX_FULL_AUTO",
@@ -160,6 +174,7 @@ def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
                     "outcome_unknown_assets": attempts.get("outcome_unknown_assets", []),
                     "active_attempt_assets": attempts.get("active_attempt_assets", [])},
         "driver_state": driver.get("driver_state") if episode else None,
+        "visual_lock_admission": visual_lock_admission,
         "creative_story_recovery": {
             "status": creative_recovery.get("status"),
             "contract_status": creative_recovery.get("contract_status"),
