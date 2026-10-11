@@ -226,7 +226,7 @@ DO NOT mark PUBLISHED or fabricate metrics.
 # PREIMAGE protocol split: each invocation is forbidden from writing authority.
 # The parent single-writer commit validates the returned candidate separately.
 STEP_DIRECTIVES.update({
-"PREIMAGE_CHARACTER_FINALIZE": """TARGET: produce only the CHARACTER_FINALIZE Candidate declared by the execution capsule/request. Read the locked Story and Character Seed Contract. Validate final identity, wardrobe baseline, POV and textual appearance anchor. Do not rewrite Story or create pixel masters. Write only the declared candidate JSON; never modify shared authority, episode-state or gates.""",
+"PREIMAGE_CHARACTER_FINALIZE": """TARGET: produce only the CHARACTER_FINALIZE Candidate declared by the execution capsule/request. HOST_FROZEN_CHARACTER is the authoritative, snapshot-bound cast/identity/appearance/POV obligation set. Write payload.character.finalize with exactly four non-empty objects: character, identity, pov, appearance. character.visible_cast must cover every obligations.cast_ids value; character.relationship and character.continuity_rule must be non-empty. identity and appearance must each have keys exactly equal to obligations.cast_ids. Each identity[Pxx] must include the exact frozen name, and each appearance[Pxx] must include the verbatim frozen appearance_anchors[Pxx] (never paraphrase an anchor). pov.character_id must equal obligations.pov_character_id, pov.person must equal obligations.pov_person when non-null, and pov.capture_rule must be non-empty. Do not transcribe or shorten 64-character source authority hashes: the Host binds source_authority_sha256 after a genuine completed turn. Preserve all frozen Character facts; do not rewrite Story, create pixel masters, modify shared authority, episode-state or gates. Write only the declared Candidate JSON.""",
 "PREIMAGE_ENVIRONMENT": """TARGET: produce only the ENVIRONMENT_PREPARE Candidate declared by the execution capsule/request. Cover physical environment, weather, impact and environment frame directives. The candidate must satisfy the Phase-3 Environment Contract before commit: whenever a segment condition implies a different daypart (morning/midday/afternoon/dusk/night), that segment must carry a matching time_of_day instead of inheriting an incompatible baseline. For EVERY frame, frame_mode=normal_record REQUIRES impact_level 0 or 1, never 2 or higher; frame 16 is the ordinary physical act of a camera strap snapping and a companion needing support, so normal_record impact_level must be at most 1. Use anomaly_reveal only for genuinely observable anomalies with matching evidence and impact 1..2. Provide directives for every frame and keep condition/time_of_day physically consistent. Do not change Character, Story, World or other visual authority. Write only the declared candidate JSON; never modify shared authority, episode-state or gates.""",
 "PREIMAGE_WORLD": """TARGET: produce only the WORLD_PREPARE Candidate declared by the execution capsule/request. Cover world identity/state, capture-event physical continuity, temporal continuity and wardrobe constraints. The complete canonical frozen World obligations embedded as HOST_FROZEN_WORLD must be copied into their matching Candidate payload scopes at identical nested paths and with no missing keys or altered values; derived notes may be added only without altering any frozen value. Do not rewrite Story or generate images. Write only the declared candidate JSON; never modify shared authority, episode-state or gates.""",
 "PREIMAGE_VISUAL_NARRATIVE": """TARGET: produce only the VISUAL_NARRATIVE_PREPARE Candidate declared by the execution capsule/request. Cover visual narrative core, shot progression, capture grammar and anomaly progression. Do not own environment physics or character identity. Write only the declared candidate JSON; never modify shared authority, episode-state or gates.""",
@@ -539,6 +539,22 @@ def prompt(ep,step):
     # writer the actual Host-frozen nested values, not a vague instruction to
     # reconstruct them by searching the repository; the independent semantic
     # comparator still verifies every frozen leaf.
+    frozen_character_block=""
+    if step=="PREIMAGE_CHARACTER_FINALIZE":
+        import preimage_authority_snapshot
+        import preimage_task_contract
+        import agent_shadow_compare
+        snapshot=preimage_authority_snapshot.build(ep,write=False)
+        task=preimage_task_contract.task_contract(ep,"CHARACTER_FINALIZE",snapshot,resume=True)
+        obligations=agent_shadow_compare.character_semantic_obligations(task)
+        if not obligations["cast_ids"] or not obligations["pov_character_id"]:
+            raise ValueError("PREIMAGE_CHARACTER_FROZEN_OBLIGATIONS_MISSING")
+        frozen_character_block=(
+            "<HOST_FROZEN_CHARACTER>\n"
+            + json.dumps({"snapshot_id":snapshot["snapshot_id"],"task_id":task["task_id"],
+                          "obligations":obligations},ensure_ascii=False,sort_keys=True)
+            + "\n</HOST_FROZEN_CHARACTER>"
+        )
     frozen_world_block=""
     if step=="PREIMAGE_WORLD":
         import preimage_authority_snapshot
@@ -568,6 +584,8 @@ Read the embedded FAST_RUNTIME_INDEX first. Do NOT recursively scan the reposito
 <EXECUTION_CAPSULE>
 {json.dumps(capsule,ensure_ascii=False,indent=2)}
 </EXECUTION_CAPSULE>
+
+{frozen_character_block}
 
 {frozen_world_block}
 

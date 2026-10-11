@@ -129,3 +129,56 @@ def test_scoped_environment_prompt_constrains_normal_records():
     assert "frame_mode=normal_record" in directive
     assert "impact_level 0 or 1" in directive
     assert "frame 16" in directive
+
+def test_scoped_character_prompt_embeds_frozen_semantic_obligations(monkeypatch):
+    import scoped_codex_worker
+    import preimage_authority_snapshot
+
+    task = {
+        "task_id": "preimage-character_finalize-test",
+        "input_contract": {"authority_inputs": {
+            "meta/character-contract.json": {
+                "cast": {"members": [
+                    {"id": "P01", "name": "李程"},
+                    {"id": "P02", "name": "周凯"},
+                ]},
+                "pov": {"character_id": "P01", "first_person": True},
+            },
+            "meta/character-visual-contract.json": {
+                "members": {
+                    "P01": {"story_identity_anchor": "2010年短发与深色T恤"},
+                    "P02": {"story_identity_anchor": "2010年自然短发与浅色衬衫"},
+                },
+            },
+        }},
+    }
+    monkeypatch.setattr(
+        scoped_codex_worker.execution_capsule, "compile_capsule",
+        lambda *_args, **_kwargs: {"capsule": "test"},
+    )
+    monkeypatch.setattr(scoped_codex_worker, "runtime_index_block", lambda *_: "test")
+    monkeypatch.setattr(scoped_codex_worker, "request_block", lambda *_: "test")
+    monkeypatch.setattr(
+        preimage_authority_snapshot, "build",
+        lambda *_args, **_kwargs: {"snapshot_id": "snapshot-test"},
+    )
+    monkeypatch.setattr(task_contract, "task_contract", lambda *_args, **_kwargs: task)
+
+    episode = scoped_codex_worker.ROOT / "episodes" / "unit-character"
+    prompt = scoped_codex_worker.prompt(episode, "PREIMAGE_CHARACTER_FINALIZE")
+    frozen = json.loads(
+        prompt.split("<HOST_FROZEN_CHARACTER>\n", 1)[1]
+              .split("\n</HOST_FROZEN_CHARACTER>", 1)[0]
+    )
+    assert frozen["snapshot_id"] == "snapshot-test"
+    assert frozen["task_id"] == task["task_id"]
+    assert frozen["obligations"]["cast_ids"] == ["P01", "P02"]
+    assert frozen["obligations"]["names"]["P01"] == "李程"
+    assert frozen["obligations"]["appearance_anchors"]["P02"] == "2010年自然短发与浅色衬衫"
+    assert frozen["obligations"]["pov_character_id"] == "P01"
+    assert frozen["obligations"]["pov_person"] == "first_person"
+    assert "identity and appearance must each have keys exactly equal" in prompt
+
+    task["input_contract"]["authority_inputs"]["meta/character-contract.json"]["cast"]["members"] = []
+    with pytest.raises(ValueError, match="PREIMAGE_CHARACTER_FROZEN_OBLIGATIONS_MISSING"):
+        scoped_codex_worker.prompt(episode, "PREIMAGE_CHARACTER_FINALIZE")
