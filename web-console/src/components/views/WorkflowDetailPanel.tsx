@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X } from 'lucide-react';
+import { Drawer } from 'antd';
 import { platformApi, RuntimeStatusDetail, RuntimeStatusSummary, stageLabel } from '../../api/platformApi';
 
 interface Props { selected: RuntimeStatusSummary; onClose: () => void; }
@@ -18,13 +18,12 @@ export const WorkflowDetailPanel: React.FC<Props> = ({selected, onClose}) => {
     return () => {active=false};
   },[episode]);
   const value = (data: string | number | boolean | null | undefined) => data == null || data === '' ? '未提供' : String(data);
-  return <section aria-label="工作流阶段详情" className="os-card space-y-4 p-5 md:p-6">
+  return <Drawer open title="工作流阶段详情" onClose={onClose} width={440} destroyOnClose className="storyos-workflow-inspector"><section aria-label="工作流阶段详情" className="space-y-4">
     <div className="flex gap-3 items-start justify-between">
-      <div className="min-w-0"><h3 className="os-section-heading truncate">{selected.title || episode}</h3><p className="text-[11px] text-[var(--text-tertiary)] mt-1">只读阶段详情（文件模式不能代表在线运行状态）</p></div>
-      <button type="button" onClick={onClose} aria-label="关闭工作流详情" className="p-1.5 rounded hover:bg-[var(--bg-hover)]"><X size={16}/></button>
+      <div className="min-w-0"><h3 className="os-section-heading break-words">{selected.title || episode}</h3><p className="text-[11px] text-[var(--text-tertiary)] mt-1">只读阶段详情 · 文件模式不代表在线运行状态</p></div>
     </div>
     {status === 'loading' ? <p role="status" className="text-[12px] text-[var(--text-secondary)]">正在获取阶段详情…</p> : status === 'failed' ? <p role="alert" className="text-[12px] text-[var(--warning)]">详情接口不可用；只保留摘要，不推测运行状态。</p> :
-      <dl className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <dl className="grid grid-cols-1 gap-0">
         {[
           ['正式阶段',stageLabel(detail?.production_stage || selected.production_stage || 'NO_STATE')],
           ['执行状态',value(detail?.execution_status)],
@@ -36,8 +35,8 @@ export const WorkflowDetailPanel: React.FC<Props> = ({selected, onClose}) => {
           ['心跳状态',value(detail?.heartbeat?.health)],
           ['通过帧',value(detail?.image_progress?.accepted_frames)],
           ['目标帧',value(detail?.image_progress?.expected_frames)]
-        ].map(([k,v]) => <div key={k} className="rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-app)] p-3"><dt className="text-[11px] text-[var(--text-tertiary)]">{k}</dt><dd className="mt-2 break-words text-[13px] font-medium text-[var(--text-primary)]">{v}</dd></div>)}
+        ].map(([k,v]) => <div key={k} className="grid grid-cols-[100px_minmax(0,1fr)] items-start gap-3 border-b border-[var(--border-subtle)] py-3"><dt className="text-[11px] text-[var(--text-tertiary)]">{k}</dt><dd className="break-words text-[13px] font-medium text-[var(--text-primary)]">{v}</dd></div>)}
       </dl>
     }
-  </section>;
+  </section></Drawer>;
 };

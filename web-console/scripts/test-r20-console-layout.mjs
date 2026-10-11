@@ -37,7 +37,7 @@ try {
       ' const logTab=[...document.querySelectorAll("main button")].find(b=>b.textContent?.trim()==="日志");if(!logTab)throw Error("run log tab");logTab.click();',
       ' await wait(()=>document.querySelector("main .os-console-filterbar .ant-select"),"run log filter");',
       ' const overview=[...document.querySelectorAll("main button")].find(b=>b.textContent?.trim()==="概览");if(!overview)throw Error("overview tab");overview.click();',
-      ' const grid=await wait(()=>[...document.querySelectorAll("main .grid")].find(e=>e.className.includes("grid-cols-2")&&e.querySelectorAll(":scope > button").length>=10),"frame grid");',
+      ' const grid=await wait(()=>[...document.querySelectorAll("main .grid")].find(e=>e.className.includes("grid-cols-")&&e.querySelectorAll(":scope > button").length>=10),"frame grid");',
       ' grid.querySelector("button").click();',
       ' const inspector=await wait(()=>document.querySelector(\'[role="dialog"][aria-label="分镜详情检视"]\'),"frame inspector");',
       ' if(inspector.getBoundingClientRect().width>innerWidth+1)throw Error("inspector overflows");',
