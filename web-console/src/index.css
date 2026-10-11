@@ -579,3 +579,7 @@ html,body {letter-spacing:0; font-size:13px;}
  .storyos-sidebar>div:last-of-type{padding:10px 4px}
  .storyos-sidebar>div:last-of-type>button{justify-content:center;padding:0}
 }
+
+/* R19: project access remains available when R18 icon rail replaces full sidebar. */
+.storyos-compact-project-trigger{display:none}
+@media(max-width:1120px){.storyos-compact-project-trigger{display:flex;align-items:center;justify-content:center;width:42px;height:42px;margin:8px auto 0;color:var(--text-secondary);border-radius:5px}.storyos-compact-project-trigger:hover,.storyos-compact-project-trigger:focus-visible{background:var(--bg-hover);color:var(--text-primary)}}

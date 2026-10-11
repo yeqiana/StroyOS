@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {Button,Pagination,Progress,Table} from 'antd';
+import {Button,Pagination,Progress,Table,Select} from 'antd';
 import {
   Play,
   Pause,
@@ -327,25 +327,16 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
 
         <div className="flex items-center gap-2 text-xs">
           {/* 自动刷新下拉切换 */}
-          <div className="flex items-center gap-1.5 h-[28px] px-2 rounded-[4px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-secondary)]">
+          <div className="flex items-center gap-1.5 h-9 px-2 rounded-[5px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-secondary)]">
             <span className={`w-1.5 h-1.5 rounded-full ${isRefreshing ? 'bg-[var(--success)] animate-ping' : 'bg-[var(--success)]'}`} />
             <span className="text-[var(--text-tertiary)]">刷新:</span>
-            <select
-              value={refreshInterval}
-              onChange={(e) => setRefreshInterval(Number(e.target.value))}
-              className="bg-transparent text-[var(--text-primary)] outline-hidden cursor-pointer text-xs"
-            >
-              <option value={5} className="bg-[var(--bg-elevated)]">5s</option>
-              <option value={10} className="bg-[var(--bg-elevated)]">10s</option>
-              <option value={30} className="bg-[var(--bg-elevated)]">30s</option>
-              <option value={0} className="bg-[var(--bg-elevated)]">关闭</option>
-            </select>
+            <Select aria-label="刷新间隔" size="small" variant="borderless" className="!min-w-[66px]" value={refreshInterval} onChange={setRefreshInterval} options={[{value:5,label:'5 秒'},{value:10,label:'10 秒'},{value:30,label:'30 秒'},{value:0,label:'关闭'}]} />
           </div>
 
           <button
             type="button"
             onClick={() => loadLatestStatuses(true)}
-            className="h-[28px] w-[28px] flex items-center justify-center rounded-[4px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer"
+            className="h-9 w-9 flex items-center justify-center rounded-[4px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer"
             title="手动刷新"
           >
             <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin text-[var(--text-primary)]' : ''}`} />
@@ -446,36 +437,12 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
 
           {/* 状态下拉筛选 */}
           <div className="flex items-center gap-1.5">
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="h-9 bg-[var(--bg-surface)] border border-[var(--border-normal)] text-[var(--text-primary)] rounded-[5px] px-3 text-[12px] outline-hidden cursor-pointer"
-            >
-              <option value="all">全部状态</option>
-              <option value="RUNNING">运行中</option>
-              <option value="WAITING">等待中</option>
-              <option value="RETRYING">重试中</option>
-              <option value="BLOCKED">已阻塞</option>
-              <option value="COMPLETED">已完成</option>
-            </select>
+            <Select aria-label="按状态筛选" value={statusFilter} onChange={setStatusFilter} className="w-[152px]" options={[{value:'all',label:'全部状态'},{value:'RUNNING',label:'运行中'},{value:'WAITING',label:'等待中'},{value:'RETRYING',label:'重试中'},{value:'BLOCKED',label:'已阻塞'},{value:'COMPLETED',label:'已完成'}]} />
           </div>
 
           {/* 阶段下拉筛选 */}
           <div className="flex items-center gap-1.5">
-            <select
-              value={stageFilter}
-              onChange={(e) => setStageFilter(e.target.value)}
-              className="h-[28px] bg-[var(--bg-workspace)] border border-[var(--border-subtle)] text-[var(--text-primary)] rounded-[4px] px-2 text-xs outline-hidden cursor-pointer"
-            >
-              <option value="all">全部阶段</option>
-              <option value="CREATE">创意</option>
-              <option value="STORYBOARD">分镜</option>
-              <option value="VISUAL_LOCK">视觉锁定</option>
-              <option value="PRODUCTION">生产</option>
-              <option value="PUBLISH">发布</option>
-              <option value="COMPLETED">已完成</option>
-
-            </select>
+            <Select aria-label="按阶段筛选" value={stageFilter} onChange={setStageFilter} className="w-[158px]" options={[{"value":"all","label":"全部阶段"},{"value":"CREATE","label":"创意"},{"value":"STORYBOARD","label":"分镜"},{"value":"VISUAL_LOCK","label":"视觉锁定"},{"value":"PRODUCTION","label":"生产"},{"value":"PUBLISH","label":"发布"},{"value":"COMPLETED","label":"已完成"}]} />
           </div>
 
           {/* 只看异常复选框 */}

@@ -31,6 +31,7 @@
     "test:paging": "node scripts/test-antd-pagination-r13-browser.mjs",
     "test:theme": "node scripts/test-antd-theme-r13-browser.mjs",
     "test:media": "node scripts/test-local-approved-media-r16.mjs",
+    "test:r19": "node scripts/test-r19-layout-interaction.mjs",
     "test:responsive": "node scripts/test-r17-responsive-browser.mjs"
   },
   "dependencies": {

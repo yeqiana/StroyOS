@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Activity, Bell, Bot, ChevronDown, ChevronRight, Clapperboard, FileClock, Folder, GitBranch, LayoutDashboard, Moon, Plus, Search, Settings, Sun, X, MoreHorizontal } from 'lucide-react';
 import { Episode, NavigationTab, ProjectItem } from '../types';
 import { StoryOSMark } from './StoryOSMark';
+const CompactProjectsDrawer = React.lazy(() => import('./CompactProjectsDrawer'));
 
 interface SidebarProps {
   currentTab: NavigationTab;
@@ -47,6 +48,7 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
   const [expandedProject, setExpandedProject] = useState<string | null>(null);
   const [projectsOpen, setProjectsOpen] = useState(true);
   const [recentOpen, setRecentOpen] = useState(false);
+  const [compactProjectsOpen,setCompactProjectsOpen]=useState(false);
   const [modal, setModal] = useState<'project' | 'story' | 'rename' | null>(null);
   const [projectForAction, setProjectForAction] = useState<ProjectItem | null>(null);
   const [draft, setDraft] = useState('');
@@ -106,6 +108,7 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
           <p className="storyos-sidebar-section-label px-3 pb-2 os-eyebrow">运行与管理</p>
           {nav.slice(3).map(item => {const Icon=item.icon;return <button key={item.id} type="button" onClick={()=>onSelectTab(item.id)} aria-label={item.label} title={item.label} aria-current={currentTab===item.id?'page':undefined} className={`relative flex h-9 w-full items-center gap-3 rounded-[6px] px-3 text-left transition-colors ${currentTab===item.id?'bg-[var(--bg-selected)] font-semibold text-[var(--text-primary)] shadow-[inset_2px_0_0_var(--info)]':'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}`}><Icon size={16} aria-hidden="true"/><span className="storyos-sidebar-nav-label">{item.label}</span></button>})}
         </nav>
+        <button type="button" className="storyos-compact-project-trigger" onClick={()=>setCompactProjectsOpen(true)} title="打开项目快捷面板" aria-label="打开项目快捷面板"><Folder size={19} aria-hidden="true"/></button>
         <section aria-label="项目列表" className="storyos-sidebar-projects pt-2 border-t border-[var(--border-subtle)]">
           <div className="flex items-center justify-between px-2 pb-2">
             <button type="button" onClick={() => setProjectsOpen(!projectsOpen)} className="flex items-center gap-1 text-[11px] font-semibold tracking-wide text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">
@@ -155,6 +158,7 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
         </div>
         <button type="button" onClick={() => onSelectTab('settings')} aria-label="系统设置" title="系统设置" className="h-8 w-full flex items-center gap-2 px-2 rounded-[5px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"><Settings size={15}/><span className="storyos-sidebar-settings-label">系统设置</span></button>
       </div>
+      <React.Suspense fallback={null}>{compactProjectsOpen&&<CompactProjectsDrawer projects={projects} episodes={allEpisodes} onClose={()=>setCompactProjectsOpen(false)} onOpenLibrary={()=>onSelectTab('episodes')} onSelectEpisode={pickStory}/>}</React.Suspense>
       {modal && <div role="dialog" aria-modal="true" aria-label={modal === 'project' ? '新建项目' : modal === 'rename' ? '重命名项目' : '新建故事'} className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
         <form onSubmit={submit} className="w-full max-w-sm border border-[var(--border-normal)] rounded-[8px] p-5 bg-[var(--bg-elevated)] shadow-xl space-y-4">
           <div className="flex items-center justify-between text-[var(--text-primary)] font-semibold">

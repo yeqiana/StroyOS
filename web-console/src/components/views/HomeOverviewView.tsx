@@ -115,7 +115,7 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
       </div>
       <section aria-label="平台生产阶段摘要" className="space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div><h2 className="os-section-heading">{runtimeIsLocalFile ? '生产阶段记录' : '平台生产阶段'}</h2><p className="mt-1 text-[12px] leading-5 text-[var(--text-secondary)]">已记录的作品生产阶段 · 不包含在线 Worker、队列或心跳。</p></div>
+          <div><h2 className="os-section-heading">{runtimeIsLocalFile ? '生产阶段记录' : '平台生产阶段'}</h2><p className="mt-1 text-[12px] leading-5 text-[var(--text-secondary)]">需要核对时展开完整明细 · 不包含在线 Worker、队列或心跳。</p></div>
           <button type="button" onClick={() => setRuntimeRefresh(v => v + 1)} disabled={runtimeStatus === 'loading'} className="os-action disabled:opacity-50"><RefreshCw size={14}/> 刷新</button>
         </div>
         {runtimeStatus === 'loading' ? <p role="status" className="text-[12px] text-[var(--text-secondary)]">正在读取权威阶段摘要…</p> : runtimeStatus === 'offline' ? <p role="alert" className="text-[12px] text-[var(--warning)]">Platform API 未连接。下方仅展示本地工作区快照。</p> : <>
@@ -123,9 +123,10 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
           {runtimeIsFixture && <p role="status" className="text-[12px] font-medium text-[var(--warning)]">当前来自隔离内存样例 API，仅用于本地联调，不是正式生产数据。</p>}
           {runtimeIsLocalFile && <p role="status" className="os-source-warning px-3 py-2 text-[12px] leading-5">来自本机 episodes 下真实的 episode-state.json；只读磁盘快照，不是在线 Runtime 或 MySQL 权威状态。</p>}
           <p className="text-[12px] text-[var(--text-secondary)]">已载入 {runtime.length}{runtimeTotal !== null ? ' / ' + runtimeTotal : ''} 条 · 读取时间 {fetchedAt || '未知'} · 不代表全部实时运行状态</p>
-          <div className="divide-y divide-[var(--border-subtle)] border-y border-[var(--border-subtle)]">{runtime.slice((runtimePage-1)*runtimePageSize,runtimePage*runtimePageSize).map((item, i) => <div key={item.episode_id + ':' + i} className="os-data-row flex min-h-[42px] items-center justify-between gap-4 px-4 py-2 text-[13px]"><span className="truncate" title={item.title || item.episode_ref || item.episode_id}>{item.title || item.episode_ref || item.episode_id || '未命名作品'}</span><span className="shrink-0 border-l border-[var(--border-normal)] pl-3 text-[12px] text-[var(--text-secondary)]">{stageLabel(item.production_stage || 'NO_STATE')}</span></div>)}</div>
+          <details className="group border-y border-[var(--border-subtle)]"><summary className="cursor-pointer py-3 text-[13px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]">展开完整阶段记录 <span className="ml-2 text-[12px] text-[var(--text-tertiary)]">已载入 {runtime.length} 条</span></summary><div className="divide-y divide-[var(--border-subtle)] border-t border-[var(--border-subtle)]">{runtime.slice((runtimePage-1)*runtimePageSize,runtimePage*runtimePageSize).map((item, i) => <div key={item.episode_id + ':' + i} className="os-data-row flex min-h-[42px] items-center justify-between gap-4 px-4 py-2 text-[13px]"><span className="truncate" title={item.title || item.episode_ref || item.episode_id}>{item.title || item.episode_ref || item.episode_id || '未命名作品'}</span><span className="shrink-0 border-l border-[var(--border-normal)] pl-3 text-[12px] text-[var(--text-secondary)]">{stageLabel(item.production_stage || 'NO_STATE')}</span></div>)}</div>
           {runtime.length>runtimePageSize && <Pagination size="small" current={runtimePage} pageSize={runtimePageSize} total={runtime.length} onChange={setRuntimePage} showTotal={total=>`当前已载入 ${total} 条`} />}
           {runtime.length === 0 && <p className="text-[12px] text-[var(--text-tertiary)]">接口已响应，但没有阶段记录。</p>}
+          </details>
           <button type="button" onClick={() => onNavigate('pipeline')} className="flex items-center gap-1 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]">查看完整工作流 <ArrowRight size={14}/></button>
         </>}
       </section>
