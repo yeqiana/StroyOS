@@ -38,6 +38,8 @@
 
 测试通过真正的 `review_queue.reconcile_generated` 对中断时漏入队的 generated 图片补挂 FAST_SCOUT：要求绑定同一 Generation Key、候选 SHA、双契约 SHA，Review 仍 queued 且 receipt=None；第二次重入不得重复入队。此测试只使用合成临时 PNG 和内存 Queue，不触发视觉模型，也不会将 baseline 变成已审核。
 
+**正式 Episode 已核实 `fast_frame_scout.required=false`：FAST_SCOUT 当前未启用，不应误认为通用 Review Queue 补挂等于本剧集 baseline 审核已派发。** 对这条剧集，正确路径是 `visual_lock_baseline_gate.awaiting_review` 在原生首帧恢复为 generated、独立 baseline 审核尚未 PASS、且三帧仍依赖 baseline 时返回 true；随后 `next_action` 选择 `REVIEW_ORDINARY_BASELINE`，由 `vision_review_executor` 经本机原生 Codex 执行（不得由 WebCodex 执行）。已新增只读/合成回归验证：即使 FAST_SCOUT 关闭仍欠 baseline 视觉审核；若已有 SHA-bound FAIL 或修复待生图则不能无界重复审核，若正式批准则无需再审。
+
 ## 验收范围
 
 Windows hermetic 回归含同事务回滚模拟、完整 Ledger 追认/投影模拟、SHA 与模型门禁、防止伪造成功与像素审核、未批准基线时三帧继续阻断、Queue 保存中断后幂等恢复，未触碰正式 Episode DB；此类测试不是实际生产通过证明。

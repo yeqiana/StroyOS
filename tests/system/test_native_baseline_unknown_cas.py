@@ -430,6 +430,51 @@ def test_generated_queue_replay_rejects_forged_receipt(example, drift):
 
 
 
+
+
+def test_visual_lock_ordinary_baseline_review_still_owed_without_fast_scout(
+        example, monkeypatch):
+    """This Episode's ordinary baseline review is independent of FAST_SCOUT.
+
+    The canonical next_action maps awaiting_review -> REVIEW_ORDINARY_BASELINE
+    and the native Codex Vision executor handles that action, not FAST_SCOUT.
+    This test never invokes a model or writes a review receipt.
+    """
+    import fast_frame_scout
+    import visual_lock_baseline_gate as baseline
+
+    ep, _raw, candidate, _log, _evidence_path, _evidence, queue, _db = example
+    virtual = copy.deepcopy(queue)
+    item = virtual["items"][0]
+    item["status"] = "generated"
+    item["output_path"] = str(candidate)
+    assert fast_frame_scout.required(ep) is False
+
+    monkeypatch.setattr(baseline, "baseline_frame", lambda _ep: 1)
+    monkeypatch.setattr(baseline, "generated_baseline",
+                        lambda _ep: {"asset_path": str(candidate),
+                                     "sha256": sha(CANDIDATE)})
+    monkeypatch.setattr(baseline, "approved", lambda _ep: False)
+    assert baseline.awaiting_review(ep, virtual) is True
+
+    # No false acceptance of a preexisting SHA-bound FAIL.
+    review_path = ep / baseline.REL
+    review_path.parent.mkdir(parents=True, exist_ok=True)
+    review_path.write_text(
+        json.dumps({"decision": "FAIL", "sha256": sha(CANDIDATE)}),
+        encoding="utf-8",
+    )
+    assert baseline.awaiting_review(ep, virtual) is False
+    review_path.unlink()
+    # Active bounded baseline repair must run before a new pixel review.
+    repair = {"frame": 1, "kind": "repair", "status": "queued"}
+    virtual["items"].append(repair)
+    assert baseline.awaiting_review(ep, virtual) is False
+    virtual["items"].remove(repair)
+
+    monkeypatch.setattr(baseline, "approved", lambda _ep: True)
+    assert baseline.awaiting_review(ep, virtual) is False
+
 def test_scheduler_reconciles_missed_review_enqueue_without_false_pass(example, monkeypatch):
     """Exercise the scheduler's actual review backfill path, not just enqueue()."""
     import review_queue
