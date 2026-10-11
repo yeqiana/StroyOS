@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {Select} from 'antd';
+import {Segmented,Select,Table} from 'antd';
 import {useLocalApprovedMedia} from '../../api/localApprovedMedia';
 import {
   ArrowLeft,
@@ -71,6 +71,7 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
 
   // 默认打开 Frame 09（方便展示异常排错诊断）或 Frame 08（展示 PASSED 态）
   const [selectedFrame, setSelectedFrame] = useState<FrameDetailItem | null>(null);
+  const [frameLayout,setFrameLayout] = useState<'GRID'|'LIST'>(() => run.frames.some(frame => hasVerifiedPreview(frame.thumbnail) || Boolean(approvedUrl(frame.frameNo))) ? 'GRID' : 'LIST');
 
   const [selectedStageKey, setSelectedStageKey] = useState<StoryRunStage>(run.currentStage);
   const [promptExpanded, setPromptExpanded] = useState(false);
@@ -440,8 +441,21 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
                   </div>
                 </div>
 
-                {/* 20 帧网格 (点击卡片在右侧直接展示 Frame Drawer) */}
-                <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-10 gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-[11px] text-[var(--text-tertiary)]">{run.frames.length} 帧历史快照 · 未验证的预览不展示图片</span><Segmented size="small" aria-label="分镜展示方式" value={frameLayout} onChange={value=>setFrameLayout(value as 'GRID'|'LIST')} options={[{label:'缩略矩阵',value:'GRID'},{label:'状态列表',value:'LIST'}]}/></div>
+                {frameLayout==='LIST' ? <Table<FrameDetailItem>
+                  aria-label="历史分镜状态列表"
+                  size="small" rowKey="frameNo" dataSource={run.frames} scroll={{x:680}}
+                  onRow={frame=>({onClick:()=>setSelectedFrame(frame),className:'cursor-pointer'})}
+                  columns={[
+                    {title:'帧',dataIndex:'frameNo',key:'frame',width:72,render:(v:number)=><span className="font-mono font-semibold tabular-nums">{String(v).padStart(2,'0')}</span>},
+                    {title:'分镜标识',dataIndex:'frameCode',key:'code',ellipsis:true,render:(v:string)=> <span title={v} className="text-[12px] text-[var(--text-secondary)]">{v||'未提供'}</span>},
+                    {title:'状态',dataIndex:'status',key:'status',width:140,render:(v:FrameStatus)=><span className="font-mono text-[12px] text-[var(--text-primary)]">{v}</span>},
+                    {title:'耗时',dataIndex:'duration',key:'duration',width:85,render:(v?:string)=><span className="tabular-nums text-[12px] text-[var(--text-secondary)]">{v||'未提供'}</span>},
+                    {title:'尝试',dataIndex:'attempt',key:'attempt',width:90,render:(v:string)=><span className="tabular-nums text-[12px] text-[var(--text-secondary)]">{v||'未提供'}</span>},
+                    {title:'原图',key:'preview',width:95,render:(_,frame)=> <span className="text-[12px] text-[var(--text-tertiary)]">{hasVerifiedPreview(frame.thumbnail)||Boolean(approvedUrl(frame.frameNo))?'已验证':'未提供'}</span>}
+                  ]}
+                  pagination={{defaultPageSize:10,pageSizeOptions:['10','20'],showSizeChanger:true,showTotal:count=>`已记录 ${count} 帧`}}
+                /> : <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-10 gap-2">
                   {run.frames.map((f) => {
                     const framePreview = hasVerifiedPreview(f.thumbnail) ? f.thumbnail : approvedUrl(f.frameNo);
                     const isPassed = f.status === 'PASSED';
@@ -498,7 +512,7 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
                       </button>
                     );
                   })}
-                </div>
+                </div>}
               </div>
             </div>
           )}
