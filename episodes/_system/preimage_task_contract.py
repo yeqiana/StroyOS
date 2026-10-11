@@ -449,7 +449,7 @@ def plan_tasks(ep: Path, snapshot: dict, *, resume: bool = False) -> list[dict]:
 
 
 
-def seal_scoped_native_candidate(ep: Path, task: dict, model_log: str | Path) -> dict:
+def seal_scoped_native_candidate(ep: Path, task: dict, model_log: str | Path, *, log_start_offset: int = 0) -> dict:
     """Bind the *Host's* source-authority digest to a completed native model payload.
 
     A scoped model is allowed to author only task-owned payload. It must not be
@@ -467,8 +467,16 @@ def seal_scoped_native_candidate(ep: Path, task: dict, model_log: str | Path) ->
     expected_log = (ep / "meta/scoped-workers").resolve()
     if not log.is_file() or not log.is_relative_to(expected_log):
         return {"status": "REFUSED", "errors": ["native model log outside declared scoped-worker evidence"]}
+    if type(log_start_offset) is not int or not 0 <= log_start_offset <= log.stat().st_size:
+        return {"status": "REFUSED", "errors": ["native model log offset is not within the file"]}
+    # The scoped worker uses append-only JSONL across retries. Only this
+    # dispatch's new bytes may prove its completion; old successful turns
+    # must never stand in for the latest invocation.
+    with log.open("rb") as reader:
+        reader.seek(log_start_offset)
+        current_log_bytes = reader.read()
     events = []
-    for line in log.read_text(encoding="utf-8", errors="replace").splitlines():
+    for line in current_log_bytes.decode("utf-8", "replace").splitlines():
         try:
             event = json.loads(line)
         except ValueError:
@@ -523,6 +531,8 @@ def seal_scoped_native_candidate(ep: Path, task: dict, model_log: str | Path) ->
         return {"status": "REFUSED", "errors": semantic.get("errors") or ["domain semantic contract failed"]}
     # Write a separate raw model artifact and proof BEFORE replacing any
     # Candidate. Old failed candidates are not touched by this path.
+    if not isinstance(sealed.get("evidence", []), list):
+        return {"status": "REFUSED", "errors": ["model Candidate evidence is not a list"]}
     recovery = ep / "meta/runtime/native-host-envelope-archive" / (
         str(task["task_id"]) + "-" + str(before) + ".json"
     )
@@ -533,7 +543,8 @@ def seal_scoped_native_candidate(ep: Path, task: dict, model_log: str | Path) ->
         "mode": "host_bound_scoped_native_candidate",
         "original_candidate_sha256": before,
         "original_candidate_path": recovery.relative_to(ep).as_posix(),
-        "native_model_log_sha256": hashlib.sha256(log.read_bytes()).hexdigest(),
+        "native_model_log_sha256": hashlib.sha256(current_log_bytes).hexdigest(),
+        "native_model_log_start_offset": log_start_offset,
         "source_authority_digest_origin": "trusted_preimage_input_snapshot",
         "model_turn_completed": True,
         "authoritative_payload_unchanged": sealed.get("payload") == model_candidate.get("payload"),
