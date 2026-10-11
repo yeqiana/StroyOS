@@ -156,6 +156,76 @@ def test_idempotent_correction_checks_proof_identity(sample):
             atomic._check_existing(fixed, changed, completed=True)
 
 
+
+
+@pytest.mark.parametrize("tamper", [
+    "frame_candidate_attempt_id", "frame_candidate_kind", "frame_candidate_width",
+    "frame_candidate_height", "attempt_candidate", "attempt_generation_key",
+    "attempt_generation_index", "attempt_error",
+    "correction_review_pass", "correction_model_attested", "correction_raw_sha",
+    "correction_candidate_sha", "correction_generation_key", "correction_generation_index",
+    "correction_previous_provider", "correction_previous_error",
+    "provider_status", "provider_proof_kind", "provider_runner_id",
+    "provider_payload_model_attested", "provider_jsonl_image_events",
+    "failure_recovered_at", "failure_runner_id",
+])
+def test_idempotent_replay_refuses_forged_provenance_or_review(sample, tamper):
+    source, original = sample
+    fixed = atomic.corrected_ledger_document(original, source)
+    frame = fixed["frames"]["01"]
+    attempt = frame["attempts"][0]
+    correction = attempt["recovery_correction"]
+    provider = attempt["provider_attempt"]
+    candidate = frame["current_candidate"]
+    if tamper == "frame_candidate_attempt_id":
+        candidate["attempt_id"] = "fabricated"
+    elif tamper == "frame_candidate_kind":
+        candidate["kind"] = "repair"
+    elif tamper == "frame_candidate_width":
+        candidate["width"] += 1
+    elif tamper == "frame_candidate_height":
+        candidate["height"] += 1
+    elif tamper == "attempt_candidate":
+        attempt["candidate"]["sha256"] = "0" * 64
+    elif tamper == "attempt_generation_key":
+        attempt["generation_key"] = "fabricated"
+    elif tamper == "attempt_generation_index":
+        attempt["generation_attempt_index"] = 2
+    elif tamper == "attempt_error":
+        attempt["error"] = {"code": "forged"}
+    elif tamper == "correction_review_pass":
+        correction["review_pass"] = True
+    elif tamper == "correction_model_attested":
+        correction["provider_model_attested"] = True
+    elif tamper == "correction_raw_sha":
+        correction["raw_png_sha256"] = "0" * 64
+    elif tamper == "correction_candidate_sha":
+        correction["normalized_png_sha256"] = "0" * 64
+    elif tamper == "correction_generation_key":
+        correction["generation_key"] = "fabricated"
+    elif tamper == "correction_generation_index":
+        correction["attempt_index"] = 2
+    elif tamper == "correction_previous_provider":
+        correction["previous_provider_attempt"]["status"] = "COMPLETED"
+    elif tamper == "correction_previous_error":
+        correction["previous_error"] = None
+    elif tamper == "provider_status":
+        provider["status"] = "NOT_INVOKED"
+    elif tamper == "provider_proof_kind":
+        provider["proof_kind"] = "FAKE_IMAGE_TOOL_EVENT"
+    elif tamper == "provider_runner_id":
+        provider["runner_request_id"] = "0" * 32
+    elif tamper == "provider_payload_model_attested":
+        provider["payload_model_attested"] = True
+    elif tamper == "provider_jsonl_image_events":
+        provider["native_image_generation_jsonl_events"] = 1
+    elif tamper == "failure_recovered_at":
+        frame["technical_failures"][-1]["recovered_at"] = "fabricated"
+    elif tamper == "failure_runner_id":
+        frame["technical_failures"][-1]["recovered_runner_request_id"] = "fabricated"
+    with pytest.raises(atomic.LedgerRecoveryDenied, match="IDEMPOTENCY_DRIFT"):
+        atomic._check_existing(fixed, source, completed=True)
+
 def test_typed_authority_and_projection_share_given_connection(sample, monkeypatch):
     source, document = sample
     class MemoryConn:

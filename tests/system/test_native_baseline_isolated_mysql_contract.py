@@ -237,6 +237,49 @@ def test_real_isolated_mysql_generation_attempt_and_ledger_one_transaction(admit
     assert again["idempotent"] is True
 
 
+
+
+
+def test_real_isolated_mysql_competing_attempt_cas_single_winner(admitted_db):
+    """Stress the InnoDB row lock and CAS without invoking a real Queue writer.
+
+    Both threads use synthetic proof data and indicate an already-owned Queue
+    lock ONLY in this isolated TEST_ONLY test; the ordinary production entry
+    point still requires its canonical OS queue writer lock.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    db, storage_id, ep, source = admitted_db
+    barrier = Barrier(2)
+
+    def contender():
+        reconciliation.scheduler_core._QUEUE_LOCK_LOCAL.depths = {
+            ep.as_posix(): 1,
+        }
+        barrier.wait(timeout=10)
+        return reconciliation.reconcile_frame01_unknown(
+            ep, expected_fencing_token=1,
+            expected_evidence_sha256=source["evidence_sha256"],
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        a = executor.submit(contender)
+        b = executor.submit(contender)
+        results = [a.result(timeout=45), b.result(timeout=45)]
+    assert [row["idempotent"] for row in results].count(False) == 1
+    assert [row["idempotent"] for row in results].count(True) == 1
+    assert all(row["ledger_reconciled"] for row in results)
+    assert MySqlProductionAttemptRepository(db).list_frame(storage_id, 1)[0]["status"] == "success"
+    asset_state = db.query_one(
+        "SELECT ATTEMPTS_CONSUMED,ACTIVE_ATTEMPT_INDEX,FENCING_COUNTER "
+        "FROM TB_GENERATION_ASSET_STATE WHERE EPISODE_ID=%s AND LOGICAL_ASSET_KEY=%s",
+        (storage_id, "synthetic-frame-01"),
+    )
+    assert asset_state["ATTEMPTS_CONSUMED"] == 1
+    assert asset_state["ACTIVE_ATTEMPT_INDEX"] is None
+    assert asset_state["FENCING_COUNTER"] == 1
+
 def test_real_isolated_mysql_final_cas_conflict_rolls_back_ledger(admitted_db, monkeypatch):
     db, storage_id, ep, source = admitted_db
     from _isolated_mysql_authority import connection_factory

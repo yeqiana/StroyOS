@@ -52,16 +52,43 @@ def _check_existing(document: dict, source: dict, *, completed: bool) -> dict:
     if completed:
         info = (frame.get("current_candidate") or {})
         correction = attempt.get("recovery_correction") or {}
+        provider_attempt = attempt.get("provider_attempt") or {}
+        failures = frame.get("technical_failures") or []
         if (frame.get("status") != "ORIGINAL_READY"
                 or attempt.get("result") != "success"
+                or attempt.get("generation_key") != source["generation_key"]
+                or attempt.get("generation_attempt_index") != 1
+                or attempt.get("candidate") != info
+                or attempt.get("error") is not None
+                or info.get("attempt_id") != attempt["attempt_id"]
+                or info.get("kind") != "original"
+                or info.get("width") != source["canvas_width"]
+                or info.get("height") != source["canvas_height"]
                 or info.get("sha256") != source["candidate_sha256"]
                 or info.get("path") != source["candidate_repo_rel"]
                 or info.get("generation_key") != source["generation_key"]
                 or info.get("generation_attempt_index") != 1
                 or correction.get("proof_evidence_sha256") != source["evidence_sha256"]
+                or correction.get("raw_png_sha256") != source["raw_sha256"]
+                or correction.get("normalized_png_sha256") != source["candidate_sha256"]
+                or correction.get("generation_key") != source["generation_key"]
+                or correction.get("attempt_index") != 1
                 or correction.get("runtime_transaction_id") != tx
                 or correction.get("runner_request_id") != source["runner_request_id"]
-                or correction.get("previous_result") != "technical_failure"):
+                or correction.get("previous_result") != "technical_failure"
+                or correction.get("review_pass") is not False
+                or correction.get("provider_model_attested") is not False
+                or (correction.get("previous_provider_attempt") or {}).get("status") != "NOT_INVOKED"
+                or not isinstance(correction.get("previous_error"), dict)
+                or provider_attempt.get("status") != "COMPLETED"
+                or provider_attempt.get("proof_kind") != "TRUSTED_NATIVE_RUNNER_THREAD_SCOPED_IMAGE_SHA"
+                or provider_attempt.get("runner_request_id") != source["runner_request_id"]
+                or provider_attempt.get("payload_model_attested") is not False
+                or provider_attempt.get("native_image_generation_jsonl_events") != 0
+                or not failures
+                or failures[-1].get("attempt_id") != attempt["attempt_id"]
+                or failures[-1].get("recovered_runner_request_id") != source["runner_request_id"]
+                or failures[-1].get("recovered_at") != correction.get("at")):
             _deny("NATIVE_RECONCILIATION_LEDGER_IDEMPOTENCY_DRIFT")
     else:
         error = attempt.get("error") or {}

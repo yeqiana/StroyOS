@@ -21,9 +21,10 @@
 - 原 Ledger Authority + Typed Frame / Typed Attempt 的真实 InnoDB 同事务写入与重入检查；
 - Typed 投影 SQL 故障注入和跨三表事务回滚；
 - Generation Attempt 原 OUTCOME_UNKNOWN → SUCCEEDED 与 Ledger/Typed 同事务提交；
-- 最末 Generation Attempt CAS 失败时，Ledger 与 Typed 投影全部回滚。
+- 最末 Generation Attempt CAS 失败时，Ledger 与 Typed 投影全部回滚；
+- 两个并发 MySQL 追认者争夺同一原 Attempt：仅一方首次提交，另一方幂等读取，Attempt 消耗次数与 fencing 不变（仅限 TEST_ONLY 环境）。
 
-**默认 pytest 运行得到 4 skipped，不是 4 passed。** 只有项目 tests/system/_isolated_mysql_authority.py 明确准入的用户授权环境才可以执行：
+**默认 pytest 运行得到 5 skipped，不是 5 passed。** 只有项目 tests/system/_isolated_mysql_authority.py 明确准入的用户授权环境才可以执行：
 
 `python -m pytest -q tests/system/test_native_baseline_isolated_mysql_contract.py --storyos-isolated-mysql`
 
@@ -31,6 +32,6 @@
 
 ## 验收范围
 
-Windows hermetic 回归含同事务回滚模拟、完整 Ledger 追认/投影模拟、SHA 与模型门禁、Queue 保存中断后幂等恢复，未触碰正式 Episode DB；此类测试不是实际生产通过证明。
+Windows hermetic 回归含同事务回滚模拟、完整 Ledger 追认/投影模拟、SHA 与模型门禁、防止伪造成功与像素审核、Queue 保存中断后幂等恢复，未触碰正式 Episode DB；此类测试不是实际生产通过证明。
 
 严禁通过旧 complete_external_generation 对 UNKNOWN 偷渡成功，严禁手动改 MySQL、忽略 Runner provenance、绕过视觉门禁。
