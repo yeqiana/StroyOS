@@ -45,7 +45,13 @@ export function useLocalApprovedMedia() {
   const findEpisode=useCallback((title:string,code?:string)=>{
     if(!LOCAL_MODE)return undefined;
     const matches=items.filter(ep=>ep.title===title&&(!code||ep.business_episode_id===code));
-    return matches.length===1?matches[0]:undefined;
+    if(matches.length===1)return matches[0];
+    // Some legacy index rows use the full Chinese title as their code, not a business ID.
+    // In that one case allow an exact-title alias only if the local approved catalog has
+    // exactly one owner; never fall back when a real business ID mismatches or is ambiguous.
+    if(matches.length || !code || code!==title)return undefined;
+    const uniqueOwner=items.filter(ep=>ep.title===title);
+    return uniqueOwner.length===1?uniqueOwner[0]:undefined;
   },[items]);
   return {findEpisode, localMode:LOCAL_MODE};
 }

@@ -4,7 +4,7 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 
 const chrome=process.env.CHROME_PATH||'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-const base=new URL(process.env.STORYOS_LOCAL_CONSOLE_URL||'http://127.0.0.1:3109/');
+const base=new URL(process.env.STORYOS_LOCAL_CONSOLE_URL||'http://127.0.0.1:3100/');
 assert.equal(base.hostname,'127.0.0.1');
 const catalogResponse=await fetch(new URL('/api/v1/local-media/catalog',base));
 assert.equal(catalogResponse.status,200);
@@ -30,6 +30,7 @@ try {
    'if(c.kind==="library"||c.kind==="negative"||c.kind==="workbench"){',
    'await clickMenu("作品与项目");',
    'const main=await wait(()=>document.querySelector("#series-library-view"),"library");',
+   'const list=await wait(()=>[...main.querySelectorAll(".ant-segmented-item-label")].find(el=>el.textContent?.trim()==="列表"),"list view");list.click();',
    'const row=await wait(()=>[...main.querySelectorAll("table tbody tr")].find(tr=>tr.textContent?.includes(c.kind==="negative"?"瓶中世界":"婚礼前夜")),"matching table row");',
    'if(c.kind==="negative"){',
    ' if(row.querySelector(\'img[src*="/api/v1/local-media/images/"]\'))throw Error("unapproved cover leaked");',
@@ -38,9 +39,10 @@ try {
    ' if(document.querySelector(\'main img[src*="/api/v1/local-media/images/"]\'))throw Error("unapproved story image leaked");',
    '}else if(c.kind==="workbench"){',
    ' const b=[...row.querySelectorAll("button")].find(x=>x.getAttribute("aria-label")?.startsWith("打开故事 ")||x.textContent?.includes("查看"));if(!b)throw Error("no story open");b.click();',
-   ' await wait(()=>document.querySelector(\'[aria-label="已批准作品素材"]\'),"approved story gallery");',
+   ' await wait(()=>document.querySelector(\'[aria-label="分镜与素材创作画布"] button[aria-label^="检视已批准 Frame"]\'),"approved story canvas");',
    '}',
    '}else{await clickMenu("生产监控");',
+   ' const history=await wait(()=>[...document.querySelectorAll(\'#storyos-production-monitor-view .ant-segmented-item-label\')].find(x=>x.textContent?.includes("历史 Run")),"history view");history.click();',
    ' const row=await wait(()=>[...document.querySelectorAll(".storyos-monitor-grid table tbody tr")].find(x=>x.textContent?.includes("婚礼前夜")),"historic run row");row.click();',
    ' await wait(()=>document.querySelector("main")?.textContent?.includes("历史工作区 Run 快照"),"run detail");',
    '}',
