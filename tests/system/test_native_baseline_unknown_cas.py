@@ -129,6 +129,8 @@ def example(tmp_path, monkeypatch):
           for frame in (16, 8, 17)),
     ]}
     monkeypatch.setattr(reconcile.scheduler_core, "load_queue", lambda _: queue)
+    monkeypatch.setattr(reconcile.scheduler_core._QUEUE_LOCK_LOCAL, "depths",
+                        {ep.resolve().as_posix(): 1}, raising=False)
     monkeypatch.setattr(reconcile.canvas_normalize, "read_canvas",
                         lambda _: (1, 1, "1:1"))
     monkeypatch.setattr(reconcile.episode_state_persistence, "load", lambda _: {"current_state": "STORYBOARD_LOCKED"})
@@ -293,6 +295,15 @@ def test_out_of_scope_episode_rejected_before_runner_or_database(example, tmp_pa
     other.mkdir(parents=True)
     with pytest.raises(reconcile.NativeReconciliationDenied, match="EPISODE_SCOPE"):
         reconcile.verify_frame01_sources(other)
+
+
+def test_direct_cas_requires_canonical_queue_writer_lock(example, monkeypatch):
+    ep, _raw, _candidate, _log, evidence_path, _evidence, _queue, db = example
+    monkeypatch.setattr(reconcile.scheduler_core._QUEUE_LOCK_LOCAL, "depths", {})
+    with pytest.raises(reconcile.NativeReconciliationDenied, match="QUEUE_OWNER_LOCK_REQUIRED"):
+        commit(ep, evidence_path)
+    assert db.mutations == 0
+    assert db.row["STATUS"] == "OUTCOME_UNKNOWN"
 
 
 def test_mysql_atomic_rollback_if_late_cas_fails(example, monkeypatch):

@@ -202,6 +202,10 @@ def reconcile_frame01_unknown(ep: Path, *, expected_fencing_token: int,
     Caller must use the canonical queue owner lock to protect the handoff.
     No image model call, new Attempt, image review or Episode stage mutation.
     """
+    ep = Path(ep).resolve()
+    held = getattr(scheduler_core._QUEUE_LOCK_LOCAL, "depths", {})
+    if int(held.get(ep.as_posix()) or 0) < 1:
+        _deny("NATIVE_RECONCILIATION_QUEUE_OWNER_LOCK_REQUIRED")
     verified = verify_frame01_sources(ep, allow_generated=True)
     if (not SHA64.fullmatch(str(expected_evidence_sha256 or ""))
             or verified["evidence_sha256"] != expected_evidence_sha256
