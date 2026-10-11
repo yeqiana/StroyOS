@@ -46,7 +46,7 @@
 
 在代码完成安全合并后，可由本机 Python 运行：
 
-`python episodes/_system/native_baseline_readonly_preflight.py episodes/00_独立篇/06_五十亩山地之后_全新重制`
+`python scripts/storyos_native_frame01_preflight.py episodes/00_独立篇/06_五十亩山地之后_全新重制`（包装入口强制读取 canonical ignored runtime.env，避免使用终端残留 DB 配置）
 
 若完全匹配，输出 `READ_ONLY_EVIDENCE_READY_TEST_DB_STILL_REQUIRED`、`authorized_to_mutate_production=false`、`real_mysql_integration_tests_passed=false`、`pixel_review_pass=false`。**这个状态绝不是正式追认授权**。经本轮运行时动态加载此隔离分支的新模块对真实 canonical Episode 的只读预演已通过，未写任何正式 SQL。负向测试覆盖 fencing/Context/model 与 typed 投影漂移。
 

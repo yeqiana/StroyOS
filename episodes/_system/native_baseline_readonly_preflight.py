@@ -146,9 +146,16 @@ def main(argv: list[str] | None = None) -> int:
     try:
         result = inspect(Path(args.episode_dir))
     except Exception as exc:
+        # Do not render connection errors / DSNs or Python tracebacks to an
+        # operator-facing command; known typed denials contain safe codes.
+        known = (NativeFrame01PreflightDenied,
+                 cas.NativeReconciliationDenied,
+                 ledger_correction.LedgerRecoveryDenied)
+        reason = (str(exc) if isinstance(exc, known)
+                  else "NATIVE_PREFLIGHT_READ_ONLY_EVIDENCE_UNAVAILABLE")
         print(json.dumps({
             "status": "BLOCKED",
-            "reason": str(exc),
+            "reason": reason,
             "authorized_to_mutate_production": False,
             "sql_writes": 0,
             "model_calls": 0,
