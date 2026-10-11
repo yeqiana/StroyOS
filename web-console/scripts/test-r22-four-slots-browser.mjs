@@ -44,7 +44,7 @@ const code=(c)=>[
   ' const wrapper=drawer.closest(".ant-drawer-content-wrapper");if(wrapper&&wrapper.getBoundingClientRect().width>Math.min(440,innerWidth)+3)throw Error("workflow drawer too wide");',
   '}else if(c.name==="monitor-filters"){',
   ' const monitor=await wait(()=>document.querySelector("#storyos-production-monitor-view"),"monitor");',
-  ' const toolbar=await wait(()=>monitor.querySelector(".os-console-filterbar"),"monitor toolbar");',
+  ' const toolbar=await wait(()=>monitor.querySelector(".os-console-filterbar .ant-checkbox-wrapper")?.closest(".os-console-filterbar"),"monitor history toolbar");',
   ' if(!toolbar.querySelector(".ant-input-affix-wrapper")||!toolbar.querySelector(".ant-checkbox-wrapper"))throw Error("native filters missing");',
   ' const input=toolbar.querySelector(\'input[aria-label="搜索剧集或任务 ID"]\');if(!input)throw Error("native search missing");',
   ' if(!toolbar.querySelector(".ant-btn"))throw Error("native reset missing");',
