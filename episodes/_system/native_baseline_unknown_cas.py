@@ -20,6 +20,8 @@ import generation_attempt_authority as authority
 import logical_asset_identity
 import production_native_baseline_proof
 import scheduler_core
+import native_baseline_atomic_ledger as atomic_ledger
+import production_ledger_persistence as ledger_store
 
 ROOT = Path(__file__).resolve().parents[2]
 EVIDENCE_REL = Path("meta/runtime/native-baseline-frame01-runner-artifact-reconciliation-evidence.json")
@@ -55,7 +57,7 @@ def _episode_file(ep: Path, relative: str, expected_parent: str) -> Path:
     return path
 
 
-def verify_frame01_sources(ep: Path) -> dict:
+def verify_frame01_sources(ep: Path, *, allow_generated: bool = False) -> dict:
     """Independent read-only check; no DB transaction, provider call or write."""
     ep = Path(ep).resolve()
     # Scope is intentionally one existing official production Episode.
@@ -130,12 +132,16 @@ def verify_frame01_sources(ep: Path) -> dict:
             or not raw.name.startswith("01-")):
         _deny("NATIVE_RECONCILIATION_CANDIDATE_IDENTITY_INVALID")
     if (item.get("id") != evidence.get("queue_item_id")
-            or item.get("status") != "external_blocked"
+            or item.get("status") not in ({"external_blocked", "generated"} if allow_generated else {"external_blocked"})
             or item.get("scope") != "visual_lock"
             or item.get("kind") != "original"
             or package.get("frame_contract_sha256") != evidence["frame_contract_sha256"]
             or package.get("package_sha256") != evidence["prompt_package_sha256"]):
         _deny("NATIVE_RECONCILIATION_QUEUE_CONTRACT_DRIFT")
+    if item.get("status") == "generated" and (item.get("generation_key") != evidence["generation_key"]
+            or int(item.get("attempt_index") or 0) != 1
+            or item.get("output_path") != candidate.relative_to(ROOT.resolve()).as_posix()):
+        _deny("NATIVE_RECONCILIATION_GENERATED_QUEUE_DRIFT")
     if any(by_frame[frame].get("status") != "queued"
            or list(by_frame[frame].get("depends_on") or []) != [1]
            for frame in (8, 16, 17)):
@@ -166,11 +172,21 @@ def verify_frame01_sources(ep: Path) -> dict:
             or proof.get("provider_model_attested") is not False
             or proof.get("review_pass") is not False):
         _deny("NATIVE_RECONCILIATION_RUNNER_PROVENANCE_INVALID")
+    transaction_id = str((item.get("execution") or {}).get("transaction_id") or "")
+    if not re.fullmatch(r"[0-9a-f]{32}", transaction_id):
+        _deny("NATIVE_RECONCILIATION_RUNTIME_TRANSACTION_MISSING")
+    scene_sha = package.get("scene_prompt_sha256")
+    if not SHA64.fullmatch(str(scene_sha or "")):
+        _deny("NATIVE_RECONCILIATION_SCENE_PROMPT_SHA_MISSING")
     return {
         "episode": ep, "evidence_sha256": _sha(evidence_path),
         "generation_key": evidence["generation_key"],
         "queue_item_id": item["id"], "raw_sha256": evidence["episode_raw_png_sha256"],
         "candidate": candidate, "candidate_sha256": evidence["normalized_png_sha256"],
+        "candidate_repo_rel": candidate.relative_to(ROOT.resolve()).as_posix(),
+        "runtime_transaction_id": transaction_id,
+        "scene_prompt_sha256": scene_sha,
+        "canvas_width": width, "canvas_height": height,
         "frame_contract_sha256": evidence["frame_contract_sha256"],
         "prompt_package_sha256": evidence["prompt_package_sha256"],
         "runner_request_id": request_id, "native_codex_thread_id": evidence["thread_id"],
@@ -180,13 +196,13 @@ def verify_frame01_sources(ep: Path) -> dict:
 
 def reconcile_frame01_unknown(ep: Path, *, expected_fencing_token: int,
                               expected_evidence_sha256: str) -> dict:
-    """Single-purpose MySQL CAS; original Attempt #1 remains consumed.
+    """Attempt and full Ledger/typed projection CAS on one MySQL transaction.
 
-    Caller must separately invoke the validated Ledger/queue recovery path.
-    Retried calls are idempotent only if the exact verified result still matches.
-    No review status, episode stage, image budget or queue state is modified.
+    Queue completion is deliberately separate and can be resumed idempotently.
+    Caller must use the canonical queue owner lock to protect the handoff.
+    No image model call, new Attempt, image review or Episode stage mutation.
     """
-    verified = verify_frame01_sources(ep)
+    verified = verify_frame01_sources(ep, allow_generated=True)
     if (not SHA64.fullmatch(str(expected_evidence_sha256 or ""))
             or verified["evidence_sha256"] != expected_evidence_sha256
             or int(expected_fencing_token) < 1):
@@ -234,14 +250,18 @@ def reconcile_frame01_unknown(ep: Path, *, expected_fencing_token: int,
             if row.get("STATUS") == "SUCCEEDED":
                 if row.get("RESULT_REF") != candidate_ref:
                     _deny("NATIVE_RECONCILIATION_SUCCEEDED_RESULT_DRIFT")
+                atomic_ledger.locked_ledger_update(connection, ep, verified, already_succeeded=True)
                 return {**verified, "status": "SUCCEEDED", "idempotent": True,
+                        "ledger_reconciled": True,
                         "attempt_index": 1, "fencing_token": expected_fencing_token}
             if (row.get("STATUS") != "OUTCOME_UNKNOWN"
                     or row.get("FAILURE_CLASS") != EXPECTED_REASON
                     or row.get("RESULT_REF") not in (None, "")):
                 _deny("NATIVE_RECONCILIATION_ATTEMPT_NOT_ELIGIBLE")
-            # SQL CAS is the only mutation. Preserve the old failure class
-            # for audit; provenance lives in the frozen Episode evidence.
+            # The Ledger BLOB, typed projections and this Attempt CAS must
+            # share this exact connection + transaction; any failure rolls
+            # them all back, never exposing an orphan SUCCEEDED Attempt.
+            atomic_ledger.locked_ledger_update(connection, ep, verified, already_succeeded=False)
             updated = connection.execute(
                 "UPDATE TB_GENERATION_ATTEMPT SET STATUS='SUCCEEDED', "
                 "GENERATION_OBSERVED_AT=COALESCE(GENERATION_OBSERVED_AT,%s), "
@@ -254,8 +274,86 @@ def reconcile_frame01_unknown(ep: Path, *, expected_fencing_token: int,
             )
             if updated != 1:
                 _deny("NATIVE_RECONCILIATION_CAS_LOST")
+        ledger_store.invalidate(ep)
         return {**verified, "status": "SUCCEEDED", "idempotent": False,
                 "attempt_index": 1, "fencing_token": expected_fencing_token,
-                "ledger_reconciled": False, "visual_review_pass": False}
+                "ledger_reconciled": True, "visual_review_pass": False}
     finally:
         connection.close()
+
+
+def reconcile_frame01_and_queue(ep: Path, *, expected_fencing_token: int,
+                                 expected_evidence_sha256: str) -> dict:
+    """Serial, crash-resumable handoff; never starts an image or visual review.
+
+    The Attempt + full Ledger + typed projections commit on one SQL
+    transaction. The queue is a separate authority (Redis/file) and is
+    synchronized afterward under the existing image Scheduler owner lock.
+    If the process crashes between those commits, a subsequent identical
+    call verifies the committed Ledger and completes only the queue.
+    """
+    ep = Path(ep).resolve()
+    with scheduler_core.queue_transaction(ep):
+        confirmed = reconcile_frame01_unknown(
+            ep, expected_fencing_token=expected_fencing_token,
+            expected_evidence_sha256=expected_evidence_sha256,
+        )
+        # Revalidate all frozen inputs after the MySQL transition as well.
+        source = verify_frame01_sources(ep, allow_generated=True)
+        row = authority.load_attempt(ep, authority.frame_key(ep, 1), 1)
+        if (not row or row.get("status") != "SUCCEEDED"
+                or row.get("generation_key") != source["generation_key"]
+                or row.get("result_ref") != str(source["candidate"])):
+            _deny("NATIVE_RECONCILIATION_COMMITTED_ATTEMPT_MISSING")
+        ledger = ledger_store.load_authority(ep)
+        if not isinstance(ledger, dict):
+            _deny("NATIVE_RECONCILIATION_COMMITTED_LEDGER_MISSING")
+        atomic_ledger._check_existing(ledger, source, completed=True)
+        queue = scheduler_core.load_queue(ep)
+        rows = [r for r in (queue.get("items") or []) if r.get("frame") == 1]
+        if len(rows) != 1 or rows[0].get("id") != source["queue_item_id"]:
+            _deny("NATIVE_RECONCILIATION_QUEUE_IDENTITY_DRIFT")
+        item = rows[0]
+        if item.get("status") == "generated":
+            if (item.get("output_path") != source["candidate_repo_rel"]
+                    or item.get("generation_key") != source["generation_key"]
+                    or int(item.get("attempt_index") or 0) != 1
+                    or (item.get("unknown_reconciliation") or {}).get("evidence_sha256")
+                    != source["evidence_sha256"]):
+                _deny("NATIVE_RECONCILIATION_QUEUE_IDEMPOTENCY_DRIFT")
+            return {**confirmed, "queue_reconciled": True, "queue_idempotent": True,
+                    "visual_review_pass": False}
+        if item.get("status") != "external_blocked":
+            _deny("NATIVE_RECONCILIATION_QUEUE_STATE_CHANGED")
+        item["status"] = "generated"
+        item["output_path"] = source["candidate_repo_rel"]
+        item["generation_key"] = source["generation_key"]
+        item["attempt_index"] = 1
+        item["completed_at"] = scheduler_core.now()
+        item["unknown_reconciliation"] = {
+            "kind": "NATIVE_RUNNER_THREAD_SCOPED_SHA",
+            "evidence_sha256": source["evidence_sha256"],
+            "runner_request_id": source["runner_request_id"],
+            "generation_key": source["generation_key"],
+            "attempt_index": 1,
+            "frame_contract_sha256": source["frame_contract_sha256"],
+            "prompt_package_sha256": source["prompt_package_sha256"],
+            "pixel_review_pass": False,
+        }
+        item["last_error"] = None
+        item.pop("external_block", None)
+        item.pop("technical_failure_code", None)
+        item.pop("retry_exhausted", None)
+        # Preserve the queue's technical_failures history and original
+        # transaction_id; do not reset repair counts or any image budget.
+        # Import only after the image/ledger modules have fully initialized;
+        # eager import here creates the production_ledger bootstrap cycle.
+        import production_recovery
+        production_recovery.mark_terminal(
+            ep, item, "COMMITTED",
+            recovery="verified_native_frame01_original_attempt",
+            proof_evidence_sha256=source["evidence_sha256"],
+        )
+        scheduler_core.save_queue(ep, queue)
+        return {**confirmed, "queue_reconciled": True,
+                "queue_idempotent": False, "visual_review_pass": False}

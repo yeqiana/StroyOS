@@ -42,16 +42,17 @@ class FakeMySql:
         self.state = state
         self.row = row
         self.mutations = 0
+        self.ledger_status = "TECH_FAILED"
         self.closed = False
         self.force_cas_loss = False
 
     @contextmanager
     def transaction(self):
-        before = copy.deepcopy((self.state, self.row, self.mutations))
+        before = copy.deepcopy((self.state, self.row, self.mutations, self.ledger_status))
         try:
             yield
         except BaseException:
-            self.state, self.row, self.mutations = before
+            self.state, self.row, self.mutations, self.ledger_status = before
             raise
 
     def query_one(self, sql, args):
@@ -121,7 +122,9 @@ def example(tmp_path, monkeypatch):
     queue = {"items": [
         {"frame": 1, "id": QUEUE_ID, "status": "external_blocked",
          "scope": "visual_lock", "kind": "original",
-         "prompt_package": {"frame_contract_sha256": "a" * 64, "package_sha256": "b" * 64}},
+         "execution": {"transaction_id": "9" * 32},
+         "prompt_package": {"frame_contract_sha256": "a" * 64, "package_sha256": "b" * 64,
+                            "scene_prompt_sha256": "c" * 64}},
         *({"frame": frame, "status": "queued", "depends_on": [1]}
           for frame in (16, 8, 17)),
     ]}
@@ -174,6 +177,8 @@ def example(tmp_path, monkeypatch):
                         lambda _, eid, asset: copy.deepcopy(db.state))
     monkeypatch.setattr(reconcile.authority, "_utcnow",
                         lambda: datetime(2026, 10, 11, 12, 30))
+    monkeypatch.setattr(reconcile.atomic_ledger, "locked_ledger_update",
+                        lambda conn, episode, source, already_succeeded=False: not already_succeeded)
     return ep, raw, candidate, log, evidence_path, evidence, queue, db
 
 
@@ -191,7 +196,7 @@ def test_successful_cas_is_single_update_and_idempotent(example):
     before = {p: p.read_bytes() for p in (raw, candidate, log, evidence_path)}
     result = commit(ep, evidence_path)
     assert result["status"] == "SUCCEEDED"
-    assert result["attempt_index"] == 1 and result["ledger_reconciled"] is False
+    assert result["attempt_index"] == 1 and result["ledger_reconciled"] is True
     assert result["visual_review_pass"] is False and result["review_pass"] is False
     assert db.mutations == 1 and db.state["ATTEMPTS_CONSUMED"] == 1
     assert db.state["ACTIVE_ATTEMPT_INDEX"] is None
@@ -288,3 +293,98 @@ def test_out_of_scope_episode_rejected_before_runner_or_database(example, tmp_pa
     other.mkdir(parents=True)
     with pytest.raises(reconcile.NativeReconciliationDenied, match="EPISODE_SCOPE"):
         reconcile.verify_frame01_sources(other)
+
+
+def test_mysql_atomic_rollback_if_late_cas_fails(example, monkeypatch):
+    ep, _raw, _candidate, _log, evidence_path, _evidence, _queue, db = example
+    def update_ledger(connection, episode, source, *, already_succeeded):
+        assert connection is db
+        assert not already_succeeded
+        connection.ledger_status = "ORIGINAL_READY"
+        return True
+    monkeypatch.setattr(reconcile.atomic_ledger, "locked_ledger_update", update_ledger)
+    db.force_cas_loss = True
+    with pytest.raises(reconcile.NativeReconciliationDenied, match="CAS_LOST"):
+        commit(ep, evidence_path)
+    assert db.row["STATUS"] == "OUTCOME_UNKNOWN"
+    assert db.ledger_status == "TECH_FAILED"
+    assert db.mutations == 0
+
+
+def test_mysql_atomic_rollback_if_ledger_write_raises(example, monkeypatch):
+    ep, _raw, _candidate, _log, evidence_path, _evidence, _queue, db = example
+    def update_ledger(connection, episode, source, *, already_succeeded):
+        connection.ledger_status = "ORIGINAL_READY"
+        raise RuntimeError("injected typed projection failure")
+    monkeypatch.setattr(reconcile.atomic_ledger, "locked_ledger_update", update_ledger)
+    with pytest.raises(RuntimeError, match="typed projection failure"):
+        commit(ep, evidence_path)
+    assert db.row["STATUS"] == "OUTCOME_UNKNOWN"
+    assert db.ledger_status == "TECH_FAILED"
+    assert db.mutations == 0
+
+
+def test_queue_crash_after_mysql_commit_only_resumes_original_item(example, monkeypatch):
+    from contextlib import contextmanager
+    ep, raw, candidate, log, evidence_path, evidence, original_queue, db = example
+    persisted = {"queue": copy.deepcopy(original_queue), "saved": 0, "journal": 0}
+    @contextmanager
+    def locked(_ep):
+        yield
+    def read_queue(_ep):
+        return copy.deepcopy(persisted["queue"])
+    def save_queue(_ep, value):
+        persisted["saved"] += 1
+        if persisted["saved"] == 1:
+            raise OSError("simulated interruption after SQL commit")
+        persisted["queue"] = copy.deepcopy(value)
+    monkeypatch.setattr(reconcile.scheduler_core, "queue_transaction", locked)
+    monkeypatch.setattr(reconcile.scheduler_core, "load_queue", read_queue)
+    monkeypatch.setattr(reconcile.scheduler_core, "save_queue", save_queue)
+    monkeypatch.setattr(reconcile.ledger_store, "load_authority",
+                        lambda _ep: {"frames": {"01": {"status": "ORIGINAL_READY"}}})
+    monkeypatch.setattr(reconcile.atomic_ledger, "_check_existing",
+                        lambda doc, source, completed: {})
+    monkeypatch.setattr(reconcile.authority, "load_attempt",
+                        lambda *_: {"status": db.row["STATUS"],
+                                    "generation_key": db.row["GENERATION_KEY"],
+                                    "result_ref": db.row["RESULT_REF"]})
+    import production_recovery
+    def fake_mark_terminal(_ep, item, phase, **kwargs):
+        assert phase == "COMMITTED"
+        persisted["journal"] += 1
+        item["execution"]["phase"] = phase
+    monkeypatch.setattr(production_recovery, "mark_terminal", fake_mark_terminal)
+    with pytest.raises(OSError, match="interruption"):
+        reconcile.reconcile_frame01_and_queue(
+            ep, expected_fencing_token=5,
+            expected_evidence_sha256=sha(evidence_path.read_bytes()),
+        )
+    # At least once: the entire MySQL TX committed, but external Queue did not.
+    assert db.mutations == 1
+    assert db.row["STATUS"] == "SUCCEEDED"
+    assert persisted["queue"]["items"][0]["status"] == "external_blocked"
+    result = reconcile.reconcile_frame01_and_queue(
+        ep, expected_fencing_token=5,
+        expected_evidence_sha256=sha(evidence_path.read_bytes()),
+    )
+    assert result["idempotent"] is True
+    assert result["queue_reconciled"] is True
+    assert result["queue_idempotent"] is False
+    assert result["visual_review_pass"] is False
+    assert db.mutations == 1
+    frame = persisted["queue"]["items"][0]
+    assert frame["status"] == "generated"
+    assert frame["output_path"] == candidate.relative_to(reconcile.ROOT).as_posix()
+    assert frame["generation_key"] == evidence["generation_key"]
+    assert frame["attempt_index"] == 1
+    assert frame["unknown_reconciliation"]["pixel_review_pass"] is False
+    assert frame["execution"]["transaction_id"] == "9" * 32
+    assert frame["execution"]["phase"] == "COMMITTED"
+    assert all(x["status"] == "queued" for x in persisted["queue"]["items"][1:])
+    final = reconcile.reconcile_frame01_and_queue(
+        ep, expected_fencing_token=5,
+        expected_evidence_sha256=sha(evidence_path.read_bytes()),
+    )
+    assert final["queue_idempotent"] is True
+    assert db.mutations == 1

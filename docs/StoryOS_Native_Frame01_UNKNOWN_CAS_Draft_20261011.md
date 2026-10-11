@@ -1,21 +1,21 @@
-# 原生首帧 UNKNOWN 专用 CAS：隔离实现与生产禁令（2026-10-11）
+# 原生首帧 UNKNOWN 同事务对账 · Draft
 
-## 状态：未取得正式执行授权（DRAFT / NOT PRODUCTION READY）
+## 本轮隔离实现
 
-本分支新增 `native_baseline_unknown_cas.py` 的**严格只读来源证明**和**原子更新 Generation Attempt 单行的低层 CAS 函数**，并非可直接执行的端到端生产恢复程序。它不含命令行入口、不会自动被 Image Scheduler/DAG 引入，也不调用生图、模型审核或重新分配图片 Attempt。
+已有严格 Runner/线程 PNG 原图证明、Frame Contract 与 Prompt SHA 绑定、PNG 解码与画布校验。新增在同一个 MySQL transaction 中对 TB_GENERATION_ATTEMPT、TB_PRODUCTION_LEDGER_AUTHORITY、TB_PRODUCTION_FRAME 与 TB_PRODUCTION_ATTEMPT 做条件性追认。旧 Ledger 失败、旧 NOT_INVOKED 回执、旧异常与 Attempt 消耗次数保留在审计历史中。模型身份不作虚假认证，真实图像工具日志仍记录零事件，视觉审核仍 pending。
 
-它只能在验证如下事实后完成已有 Attempt#1 的条件更新：Runner 原生请求与线程归属、原始生成文件和 Episode RAW 一致、PNG 可解码、NP01 规范化画布与 SHA、排队四帧依赖、当前 Stage、绑定 Frame Contract/Prompt Package、Generation Key/Fencing、MySQL 原状态仍为指定的 `OUTCOME_UNKNOWN` 及不可更改的失败类型。重复调用只有完全相同资产和已成功结果才可幂等返回。
+原有 Frame01 的 Generation Key、fencing、queue_item、runtime_transaction_id、Raw 与规范化像素 SHA 必须全部一致，否则 fail closed。更新顺序为 MySQL 原子 Ledger/Attempt → canonical Queue Owner 锁下更新原 Frame01；Queue 属外部文件或 Redis，因此不能假称跨库原子性，必须用幂等重入弥补 MySQL 已提交但 Queue 尚未保存的崩溃窗口。原 Frame16/08/17 继续 queued。
 
-### 尚未实现、因此**禁止在真实 MySQL3307 调用 reconcile_frame01_unknown**
+## 尚不可在正式 MySQL 3307 执行
 
-1. **生产 Ledger 原子化**：`TB_PRODUCTION_LEDGER_AUTHORITY` 的完整权威及 `TB_PRODUCTION_FRAME` / `TB_PRODUCTION_ATTEMPT` 投影已经在 MySQL，仍需在**同一 MySQL 事务**内将原技术失败凭同一 Runtime Transaction / Provider Receipt 追认为已生成候选，不能让 Generation Attempt 标成 `SUCCEEDED` 而 Ledger 保持 `TECH_FAILED`。
-2. **Queue 幂等补偿**：必须在 canonical Queue Writer/Owner 锁保护下更新原 `external_blocked` 队列项，保留 Generation Attempt 计数与原始异常历史；跨事务中断后须可安全 resume 和查重。禁止将全体帧重排或追加 Attempt#2。
-3. **真实只读预检**：在原机 canonical Episode（不是隔离 Worktree 拷贝）读取 MySQL、Queue、Ledger、Runner 持久回执并校验实际 fencing token、保存的原图及 Prompt/Frame/SHA，没有漂移才可考虑正式事务。
-4. **独立真实像素审核**：来源与 Ledger 修复仅代表候选出现，绝不代表 `VISUAL_CALIBRATED`、`authenticity`、`continuity` 等通过；必须由正式本机原生 Codex 视觉审核流程绑定像素及当次 Revision，先 Frame01 baseline PASS，再放行 16/08/17。
-5. **完整验收**：补充事务回滚、崩溃恢复、旧分支并发、真实隔离 MySQL 并发测试，之后通过 Ubuntu/Windows Story Gates、Qodana、审核 PR，方可合并并选择启动。
+本分支仍为草稿；不自动导入正式 DAG，不生图，不执行独立像素审核，不重试图片，不重置 Attempt，也不把现有图片直接标为 PASS。正式启用前必须完成：
+1. canonical 主工作树真实只读 preflight，对 Ledger、Queue、Model/Prompt、Runner、原始 PNG 与 MySQL fencing 重新验 SHA；
+2. TEST_ONLY MySQL 的事务/回滚/竞争联调。必须严格遵守 tests/system/_isolated_mysql_authority.py 的独立端口、带标签容器、非 root 专用账号及显式授权，绝不拿 MySQL3307 代替测试；
+3. 增补真实 MySQL 与队列中断恢复的系统验收、PR 新提交 Windows/Ubuntu Story Gates、Qodana，并完成代码审查和安全合并；
+4. 完成真实 Attempt#1 对账后，独立由本机原生 Codex 审核 Frame01 像素。只有 baseline 审核正式 PASS 后，才能按既定依赖解锁其他 Visual Lock 帧。全篇仍为图文系统，没有图片转视频环节。
 
-### 回归与范围
+## 验收范围
 
-独立 Windows 工作树只用纯 hermetic Mock MySQL 和合成 PNG 做测试，不调用真实数据库或原生图片工具。回归覆盖成功 CAS、幂等、错误状态、已消费 Attempt 数不变、SHA/画布/命名/队列/Stage/模型策略/Runner/fencing 漂移、CAS 竞争失败等。实际正式生产仍保持 `STORYBOARD_LOCKED`、Frame01 `OUTCOME_UNKNOWN_BLOCKED`、0/20 已正式采用图片，除非后续 MySQL 权威报告有明确变化。
+Windows hermetic 回归含同事务回滚模拟、完整 Ledger 追认/投影模拟、SHA 与模型门禁、Queue 保存中断后幂等恢复，未触碰正式 Episode DB；此类测试不是实际生产通过证明。
 
-**不得手工更新 `TB_GENERATION_ATTEMPT`、调用 `complete_external_generation` 偷渡 UNKNOWN、重置预算、将图片文件直接标记为 PASS、使用 OpenCodex/API/模拟图片或视频路径。**
+严禁通过旧 complete_external_generation 对 UNKNOWN 偷渡成功，严禁手动改 MySQL、忽略 Runner provenance、绕过视觉门禁。
