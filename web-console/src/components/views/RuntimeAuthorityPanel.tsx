@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import {Button,Drawer,Table} from 'antd';
+import {Button,Drawer,Select,Table} from 'antd';
 import { platformApi, RuntimeStatusDetail, RuntimeStatusSummary, stageLabel } from '../../api/platformApi';
 import type { RuntimeCoverage } from '../../api/runtimeCoverage';
 
@@ -7,8 +7,11 @@ interface Props { items: RuntimeStatusSummary[]; coverage: RuntimeCoverage; hasM
 export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMore, loadingMore, onLoadMore, dataState, lastSync }) => {
   const [selected, setSelected] = useState<RuntimeStatusSummary | null>(null);
   const [page,setPage]=useState(1);
+  const [stageFilter,setStageFilter]=useState('ALL');
   const [pageSize,setPageSize]=useState(6);
-  const safePage=Math.min(page,Math.max(1,Math.ceil(items.length/pageSize)));
+  const stageChoices=Array.from(new Set(items.map(item=>item.production_stage).filter((stage):stage is string=>Boolean(stage))));
+  const filtered=stageFilter==='ALL'?items:items.filter(item=>item.production_stage===stageFilter);
+  const safePage=Math.min(page,Math.max(1,Math.ceil(filtered.length/pageSize)));
   const [detail, setDetail] = useState<RuntimeStatusDetail | null>(null);
   const [detailState, setDetailState] = useState<'loading' | 'available' | 'unavailable'>('loading');
   const ref = selected?.episode_ref || selected?.episode || selected?.business_episode_id || selected?.episode_id;
@@ -36,12 +39,12 @@ export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMor
     : dataState === 'offline' ? <p role="alert" className="px-4 py-5 text-[var(--warning)]">无法连接 Platform API；本区不展示历史数据冒充在线状态。</p>
     : <>
       {dataState === 'partial' && <p role="alert" className="px-4 pt-3 text-[var(--warning)]">接口报告部分失败，阶段列表可能不完整。</p>}
-      <p className="px-4 py-2 text-[12px] text-[var(--text-secondary)]">已读取 {coverage.loaded}{coverage.total !== null ? ' / ' + coverage.total : ''} 条只读阶段记录{coverage.incomplete ? '（尚未加载全部）' : ''}{items.length > 100 ? ' · 多页浏览时暂停自动刷新，手动刷新可重新同步' : ''}</p>
+      <div className="os-console-filterbar flex flex-wrap items-center justify-between gap-2 px-4 py-2"><p className="text-[12px] text-[var(--text-secondary)]">已读取 {coverage.loaded}{coverage.total !== null ? ' / ' + coverage.total : ''} 条只读阶段记录 · 匹配 {filtered.length} 条{coverage.incomplete ? '（筛选仅针对已加载数据）' : ''}{items.length > 100 ? ' · 多页浏览时暂停自动刷新' : ''}</p><Select aria-label="筛选权威阶段" size="small" className="!w-[170px]" value={stageFilter} onChange={value=>{setStageFilter(value);setPage(1);}} options={[{value:'ALL',label:'全部阶段'},...stageChoices.map(value=>({value,label:stageLabel(value)}))]}/></div>
       {coverage.warning && <p role="status" className="px-4 pb-3 text-[11px] text-[var(--warning)]">{coverage.warning}</p>}
       <Table<RuntimeStatusSummary>
         size="small"
         rowKey={item=>item.episode_id||item.episode_ref||item.title||'unknown'}
-        dataSource={items}
+        dataSource={filtered}
         className="storyos-authority-grid"
         scroll={{x:680}}
         onRow={item=>({onClick:()=>setSelected(item),className:'cursor-pointer'})}
@@ -52,7 +55,7 @@ export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMor
           {title:'数据来源',dataIndex:'state_source',key:'source',width:190,render:(value:string)=><span title={value||'未提供'} className="text-[12px] text-[var(--text-tertiary)]">{value==='local_workspace_episode_state_file'?'本机文件 · 只读':value==='isolated-test'?'隔离测试':value||'未提供'}</span>},
           {title:'',key:'action',width:90,align:'right',render:(_,item)=><Button type="link" aria-label={'查看权威阶段：'+(item.title||item.episode_ref||item.episode_id)} size="small" onClick={event=>{event.stopPropagation();setSelected(item);}}>详情</Button>}
         ]}
-        pagination={{current:safePage,pageSize,total:items.length,showSizeChanger:true,pageSizeOptions:['6','10','20','50'],showTotal:n=>`已读取 ${n} 条`,onChange:(next,size)=>{setPage(next);setPageSize(size);}}}
+        pagination={{current:safePage,pageSize,total:filtered.length,showSizeChanger:true,pageSizeOptions:['6','10','20','50'],showTotal:n=>`本次匹配 ${n} 条`,onChange:(next,size)=>{setPage(next);setPageSize(size);}}}
       />
       {hasMore&&<div className="flex items-center justify-between border-t border-[var(--border-subtle)] px-4 py-3"><span className="text-[12px] text-[var(--text-tertiary)]">仍有服务端记录未加载</span><Button loading={loadingMore} onClick={onLoadMore}>从 Platform API 加载下一页</Button></div>}
     </>}
