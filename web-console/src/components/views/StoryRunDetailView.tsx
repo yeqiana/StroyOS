@@ -441,7 +441,7 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
                 </div>
 
                 {/* 20 帧网格 (点击卡片在右侧直接展示 Frame Drawer) */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-10 gap-2">
+                <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-10 gap-2">
                   {run.frames.map((f) => {
                     const framePreview = hasVerifiedPreview(f.thumbnail) ? f.thumbnail : approvedUrl(f.frameNo);
                     const isPassed = f.status === 'PASSED';
@@ -456,7 +456,7 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
                         key={f.frameNo}
                         type="button"
                         onClick={() => setSelectedFrame(f)}
-                        className={`p-1.5 rounded-[4px] border text-left flex flex-col justify-between ${framePreview?'aspect-[4/5]':'min-h-[96px]'} transition-colors cursor-pointer relative overflow-hidden group ${
+                        className={`p-1.5 rounded-[4px] border text-left flex flex-col justify-between ${framePreview?'aspect-[4/5]':'min-h-[72px]'} transition-colors cursor-pointer relative overflow-hidden group ${
                           isSelected ? 'ring-1 ring-[#4C8DFF] border-[#4C8DFF]' : ''
                         } ${
                           isPassed
@@ -489,7 +489,7 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
                             alt={hasVerifiedPreview(f.thumbnail)?f.frameCode:'本地已批准 Frame '+f.frameNo}
                             className="absolute inset-0 w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity"
                           />
-                        ) : <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-[var(--text-tertiary)]"><ImageOff size={18}/><span className="text-[11px]">无原图</span></div>}
+                        ) : <div className="absolute inset-0 flex items-center justify-center gap-1.5 text-[var(--text-tertiary)]"><ImageOff size={14}/><span className="text-[11px]">无原图</span></div>}
 
                         {/* 底部业务状态文本 (绝不靠颜色猜) */}
                         <div className="mt-auto z-10 bg-[#0B0D10]/90 px-1 py-0.5 rounded-[2px] text-[10px] font-mono truncate text-center font-medium">

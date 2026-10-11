@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {Button,Pagination,Progress,Table,Select} from 'antd';
+import {Button,Checkbox,Input,Pagination,Progress,Table,Select} from 'antd';
 import {
   Play,
   Pause,
@@ -421,19 +421,18 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
       </div>
 
       {/* ======================= 2. Toolbar ======================= */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-2 py-3 text-xs">
+      <div className="os-console-filterbar flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-2 py-2 text-xs">
         <div className="flex flex-1 flex-wrap items-center gap-2 min-w-[260px]">
           {/* 搜索输入框 */}
-          <div className="relative flex-1 min-w-[160px] max-w-xs">
-            <Search className="w-3.5 h-3.5 text-[var(--text-tertiary)] absolute left-2.5 top-2 pointer-events-none" />
-            <input
-              type="text"
-              value={searchKeyword}
-              onChange={(e) => setSearchKeyword(e.target.value)}
-              placeholder="搜索剧集 / 任务 ID..."
-              className="h-9 w-full rounded-[5px] border border-[var(--border-normal)] bg-[var(--bg-app)] pl-8 pr-3 text-[12px] text-[var(--text-primary)] outline-none focus:border-[var(--focus)] placeholder:text-[var(--text-tertiary)]"
-            />
-          </div>
+          <Input
+            aria-label="搜索剧集或任务 ID"
+            value={searchKeyword}
+            onChange={(e) => setSearchKeyword(e.target.value)}
+            placeholder="搜索剧集 / 任务 ID..."
+            prefix={<Search size={14} />}
+            className="!w-[260px] max-w-full"
+            allowClear
+          />
 
           {/* 状态下拉筛选 */}
           <div className="flex items-center gap-1.5">
@@ -446,29 +445,12 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
           </div>
 
           {/* 只看异常复选框 */}
-          <label className="flex items-center gap-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer select-none ml-1">
-            <input
-              type="checkbox"
-              checked={onlyException}
-              onChange={(e) => setOnlyException(e.target.checked)}
-              className="w-3.5 h-3.5 rounded-[3px] border-[#2D333D] bg-[var(--bg-workspace)] text-[var(--danger)] focus:ring-0 cursor-pointer accent-[var(--danger)]"
-            />
-            <span className="text-xs flex items-center gap-1">
-              <ShieldAlert className="w-3.5 h-3.5 text-[var(--warning)]" />
-              <span>只看异常</span>
-            </span>
-          </label>
+          <Checkbox checked={onlyException} onChange={e => setOnlyException(e.target.checked)}><span className="inline-flex items-center gap-1 text-xs text-[var(--text-secondary)]"><ShieldAlert size={14} className="text-[var(--warning)]" />只看异常</span></Checkbox>
         </div>
 
         {/* 查询与重置按钮 */}
         <div className="flex items-center gap-2 font-mono">
-          <button
-            type="button"
-            onClick={handleResetFilter}
-            className="h-[28px] px-2.5 rounded-[4px] bg-[var(--bg-workspace)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer text-xs"
-          >
-            重置
-          </button>
+          <Button size="small" onClick={handleResetFilter}>重置</Button>
         </div>
       </div>
 
