@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import {Pagination} from 'antd';
+import {Drawer, Pagination, Select} from 'antd';
 import {
   Terminal,
   Download,
@@ -172,7 +172,7 @@ export const RuntimeLogsView: React.FC = () => {
       .catch((err) => {
         console.warn('Load logs err', err);
         setLogs([]);
-        setLoadError('拉取运行事件失败：请确认 Platform API (127.0.0.1:8080) 已启动');
+        setLoadError('无法读取审计事件：当前 API 未开放事件列表或连接失败。不会使用示例日志替代真实记录。');
       })
       .finally(() => {
         setIsRefreshing(false);
@@ -269,7 +269,7 @@ export const RuntimeLogsView: React.FC = () => {
   return (
     <div id="runtime-logs-view" className="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--bg-app)] font-sans text-[var(--text-primary)]">
       {/* 1. 顶部全局工具栏与状态统计 (占满宽度) */}
-      <div className="flex shrink-0 flex-col justify-between gap-3 border-b border-[var(--border-subtle)] bg-[var(--bg-app)] px-4 py-3 lg:flex-row lg:items-center">
+      <div className="os-console-toolbar flex shrink-0 flex-col justify-between gap-3 border-b border-[var(--border-subtle)] bg-[var(--bg-app)] px-4 py-3 lg:flex-row lg:items-center">
         <div className="flex items-center gap-3">
           <div className="text-[var(--text-tertiary)]">
             <Terminal className="w-4 h-4" />
@@ -285,7 +285,7 @@ export const RuntimeLogsView: React.FC = () => {
               </span>
             </div>
             <p className="mt-1 text-[12px] text-[var(--text-secondary)]">
-              审计事件 · 当前已加载 {logs.length} 条 · 支持筛选、追踪和详情查看
+              审计事件 · 本次最多读取 100 条 · 已加载 {logs.length} 条（仅对已加载记录筛选与分页）
             </p>
           </div>
         </div>
@@ -334,8 +334,10 @@ export const RuntimeLogsView: React.FC = () => {
         </div>
       </div>
 
+      {loadError && <p role="alert" className="shrink-0 border-b border-[var(--border-subtle)] px-4 py-2 text-[12px] text-[var(--warning)]">{loadError}</p>}
+
       {/* 2. 多维组合筛选条 (Filter Bar) */}
-      <div className="shrink-0 p-3 lg:px-5 border-b border-[var(--border-subtle)] bg-[var(--bg-workspace)] flex flex-wrap items-center justify-between gap-2.5 text-xs">
+      <div className="os-console-filterbar shrink-0 p-3 lg:px-5 border-b border-[var(--border-subtle)] bg-[var(--bg-workspace)] flex flex-wrap items-center justify-between gap-2.5 text-xs">
         {/* 左侧：搜索框与筛选器 */}
         <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
           {/* 全文关键字搜索 */}
@@ -365,19 +367,19 @@ export const RuntimeLogsView: React.FC = () => {
           {/* 模块选择下拉 */}
           <div className="flex items-center gap-1.5">
             <span className="text-[12px] text-[var(--text-tertiary)] hidden sm:inline">模块:</span>
-            <select
+            <Select
+              aria-label="筛选日志模块"
               value={filterModule}
-              onChange={(e) => {
-                setFilterModule(e.target.value);
+              onChange={(value) => {
+                setFilterModule(value);
                 setCurrentPage(1);
               }}
-              className="h-9 px-3 rounded-[6px] bg-[var(--bg-surface)] border border-[var(--border-normal)] text-[var(--text-primary)] text-xs font-mono focus:outline-hidden focus:border-[#58A6FF]"
-            >
-              <option value="ALL">全部微服务 / 模块</option>
-              {availableModules.filter(m => m !== 'ALL').map(mod => (
-                <option key={mod} value={mod}>{mod}</option>
-              ))}
-            </select>
+              className="min-w-[168px] max-w-[260px]"
+              style={{width:220}}
+              options={[{value:'ALL',label:'全部微服务 / 模块'},...availableModules.filter(m => m !== 'ALL').map(mod=>({value:mod,label:mod}))]}
+              showSearch
+              optionFilterProp="label"
+            />
           </div>
 
           {/* 级别标签切换组 */}
@@ -431,7 +433,7 @@ export const RuntimeLogsView: React.FC = () => {
 
         {/* 右侧：统计概况 */}
         <div className="text-[11px] font-mono text-[var(--text-tertiary)]">
-          共找到 <span className="text-[var(--text-primary)] font-bold">{filteredLogs.length}</span> 条日志
+          已加载范围内匹配 <span className="text-[var(--text-primary)] font-bold">{filteredLogs.length}</span> 条
         </div>
       </div>
 
@@ -540,7 +542,8 @@ export const RuntimeLogsView: React.FC = () => {
 
         {/* 4. 日志详情抽屉 (Detail Drawer，右侧滑出并格式化展示 JSON) */}
         {selectedLog && (
-          <div className="w-full sm:w-[500px] lg:w-[560px] h-full border-l border-[var(--border-normal)] bg-[var(--bg-elevated)] flex flex-col z-20 shadow-2xl animate-in slide-in-from-right-4 duration-150 shrink-0">
+          <Drawer placement="right" width={560} open onClose={() => setSelectedLog(null)} title={null} closable={false} styles={{body:{padding:0,overflow:'hidden',display:'flex',flexDirection:'column'}}}>
+          <div className="flex h-full min-h-0 flex-col bg-[var(--bg-elevated)]">
             {/* 抽屉头部 */}
             <div className="p-3.5 border-b border-[var(--border-subtle)] flex items-center justify-between bg-[var(--bg-surface)]">
               <div className="flex items-center gap-2">
@@ -644,6 +647,7 @@ export const RuntimeLogsView: React.FC = () => {
               )}
             </div>
           </div>
+          </Drawer>
         )}
       </div>
 

@@ -583,3 +583,11 @@ html,body {letter-spacing:0; font-size:13px;}
 /* R19: project access remains available when R18 icon rail replaces full sidebar. */
 .storyos-compact-project-trigger{display:none}
 @media(max-width:1120px){.storyos-compact-project-trigger{display:flex;align-items:center;justify-content:center;width:42px;height:42px;margin:8px auto 0;color:var(--text-secondary);border-radius:5px}.storyos-compact-project-trigger:hover,.storyos-compact-project-trigger:focus-visible{background:var(--bg-hover);color:var(--text-primary)}}
+
+/* R20: consistent toolbar, filter and inspector placement across workbench/Run/logs. */
+.os-console-toolbar{min-width:0;}
+.os-console-filterbar{min-width:0;}
+.os-console-filterbar .ant-select-single{min-height:36px;}
+.os-console-filterbar .ant-select-single .ant-select-selector{min-height:36px!important;display:flex;align-items:center;}
+.os-console-filterbar input:focus-visible{outline:2px solid var(--focus);outline-offset:1px;}
+@media(max-width:760px){.os-console-filterbar{gap:8px;}.os-console-filterbar .ant-select{max-width:100%;}}
