@@ -43,6 +43,7 @@
     "capture:r27": "node scripts/capture-r26-compare-cdp.mjs --r27",
     "test:r28": "node scripts/test-r28-all-menu-browser.mjs",
     "test:r29": "node scripts/test-r29-home-browser.mjs",
+    "test:r30": "node scripts/test-r30-home-browser.mjs",
     "test:responsive": "node scripts/test-r17-responsive-browser.mjs"
   },
   "dependencies": {
