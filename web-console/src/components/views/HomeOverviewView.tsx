@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Input, Pagination, Segmented, Table } from 'antd';
+import CSSMotion from '@rc-component/motion';
 import { ArrowRight, CheckCircle2, ChevronRight, CircleAlert, Clapperboard, Clock3, Image as ImageIcon, Plus, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import type { Episode, NavigationTab, ProjectItem } from '../../types';
 import { platformApi, type RuntimeStatusSummary, stageLabel } from '../../api/platformApi';
@@ -40,6 +41,7 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
   const [scope, setScope] = useState<'all' | 'unfinished' | 'approved'>('all');
   const [storyPage, setStoryPage] = useState(1);
   const [viewMode, setViewMode] = useState<'list'|'gallery'>('list');
+  const [hasChangedViewMode, setHasChangedViewMode] = useState(false);
   const [runtimePage, setRuntimePage] = useState(1);
   const storyPageSize = 10;
   const runtimePageSize = 10;
@@ -98,18 +100,18 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
     <section aria-label="创作快捷入口" className="space-y-3">
       <div><h2 className="text-[22px] font-semibold leading-8 tracking-tight">今天想创作什么？</h2><p className="mt-1 text-[12px] text-[var(--text-secondary)]">从已有作品接着做，或去素材库查看批准图片；正式生图仍使用受控流程。</p></div>
       <div className="grid min-w-0 gap-px border-y border-[var(--border-subtle)] bg-[var(--border-subtle)] md:grid-cols-3" role="group" aria-label="三项核心创作操作">
-        <div className="flex min-w-0 items-center gap-3 bg-[var(--bg-surface)] px-3 py-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[4px] bg-[var(--bg-elevated)] text-[var(--info)]"><Plus size={18}/></span>
+        <div className="os-home-entry flex min-w-0 items-center gap-3 bg-[var(--bg-surface)] px-3 py-3">
+          <span className="os-home-entry-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-[4px] bg-[var(--bg-elevated)] text-[var(--info)]"><Plus size={18}/></span>
           <div className="min-w-0 flex-1"><p className="truncate text-[12px] font-medium">从新的故事开始</p><p className="mt-1 truncate text-[11px] text-[var(--text-tertiary)]">创建故事与制作计划</p></div>
           <Button type="primary" size="small" onClick={onNewStory}>新建故事</Button>
         </div>
-        <div className="flex min-w-0 items-center gap-3 bg-[var(--bg-surface)] px-3 py-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[4px] bg-[var(--bg-elevated)] text-[var(--text-secondary)]"><Clapperboard size={18}/></span>
+        <div className="os-home-entry flex min-w-0 items-center gap-3 bg-[var(--bg-surface)] px-3 py-3">
+          <span className="os-home-entry-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-[4px] bg-[var(--bg-elevated)] text-[var(--text-secondary)]"><Clapperboard size={18}/></span>
           <div className="min-w-0 flex-1"><p className="truncate text-[12px] font-medium">接着制作</p><p className="mt-1 truncate text-[11px] text-[var(--text-tertiary)]">{featured?.title||'暂无作品'}</p></div>
           <Button size="small" disabled={!featured} onClick={()=>featured&&onSelectEpisode(featured)}>继续制作</Button>
         </div>
-        <div className="flex min-w-0 items-center gap-3 bg-[var(--bg-surface)] px-3 py-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[4px] bg-[var(--bg-elevated)] text-[var(--text-secondary)]"><ImageIcon size={18}/></span>
+        <div className="os-home-entry flex min-w-0 items-center gap-3 bg-[var(--bg-surface)] px-3 py-3">
+          <span className="os-home-entry-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-[4px] bg-[var(--bg-elevated)] text-[var(--text-secondary)]"><ImageIcon size={18}/></span>
           <div className="min-w-0 flex-1"><p className="truncate text-[12px] font-medium">作品素材库</p><p className="mt-1 truncate text-[11px] text-[var(--text-tertiary)]">{approved.length} 部有已批准图片</p></div>
           <Button size="small" onClick={()=>onNavigate('episodes')}>查看素材 <ArrowRight size={13}/></Button>
         </div>
@@ -120,9 +122,9 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
       <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="os-section-heading">最近创作</h2><p className="mt-1 text-[11px] text-[var(--text-tertiary)]">展示已有批准图片的作品 · 不模拟生成结果</p></div><button type="button" onClick={()=>onNavigate('episodes')} className="inline-flex items-center gap-1 text-[12px] text-[var(--info)]">查看全部作品 <ArrowRight size={14}/></button></div>
       {recentApproved.length>0?<div className={'grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3'+(recentApproved.length>=4?' xl:grid-cols-4':'')}>
         {recentApproved.map((episode,index)=><button type="button" key={episode.id} onClick={()=>onSelectEpisode(episode)} aria-label={'打开最近创作 '+episode.title}
-          className="group min-w-0 overflow-hidden rounded-[5px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-left hover:border-[var(--info)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--info)]">
+          className="os-home-cover-card group min-w-0 overflow-hidden rounded-[5px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-left hover:border-[var(--info)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--info)]">
           <div className="relative h-[186px] overflow-hidden bg-[var(--bg-elevated)] sm:h-[224px]">
-            <img src={approvedCover(episode)} loading={index===0?'eager':'lazy'} alt={episode.title+'的已批准真实图片'} className="h-full w-full object-cover object-top transition-transform duration-150 group-hover:scale-[1.02]"/>
+            <img src={approvedCover(episode)} loading={index===0?'eager':'lazy'} alt={episode.title+'的已批准真实图片'} className="os-home-cover-image h-full w-full object-cover object-top"/>
             <span className="absolute right-2 top-2 border border-[var(--border-normal)] bg-[var(--bg-workspace)] px-2 py-1 text-[11px] tabular-nums text-[var(--text-primary)]">{approvedFrames(episode).length} 张已批准</span>
           </div>
           <div className="space-y-2 px-3 py-2.5">
@@ -152,10 +154,10 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
       <div className="os-console-filterbar flex min-w-0 flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] pb-2">
         <Segmented aria-label="首页作品范围" size="small" value={scope} onChange={value=>{setScope(value as typeof scope);setStoryPage(1);}} options={[{label:'全部',value:'all'},{label:'未发布',value:'unfinished'},{label:'有批准图片',value:'approved'}]}/>
         <Input.Search aria-label="搜索作品" value={query} onChange={event=>{setQuery(event.target.value);setStoryPage(1);}} placeholder="搜索名称 / 编号 / 类型" allowClear className="!w-[260px] max-w-full"/>
-        <Segmented aria-label="作品管理显示方式" size="small" className="ml-auto" value={viewMode} onChange={value=>{setViewMode(value as 'list'|'gallery');setStoryPage(1);}} options={[{label:'列表',value:'list'},{label:'画廊',value:'gallery'}]}/>
+        <Segmented aria-label="作品管理显示方式" size="small" className="ml-auto" value={viewMode} onChange={value=>{setHasChangedViewMode(true);setViewMode(value as 'list'|'gallery');setStoryPage(1);}} options={[{label:'列表',value:'list'},{label:'画廊',value:'gallery'}]}/>
       </div>
-      {viewMode==='list'?<Table<Episode> rowKey="id" size="small" className="storyos-home-episode-grid" dataSource={filtered} scroll={{x:800}}
-        onRow={episode=>({onClick:()=>onSelectEpisode(episode),className:'cursor-pointer'})}
+      {viewMode==='list'?<CSSMotion key="list" visible motionAppear={hasChangedViewMode} motionName="os-home-view" motionDeadline={220}>{({className,style},ref)=><div ref={ref} className={`os-home-mode-content ${className||''}`} style={style}><Table<Episode> rowKey="id" size="small" className="storyos-home-episode-grid" dataSource={filtered} scroll={{x:800}}
+        onRow={episode=>({onClick:()=>onSelectEpisode(episode),className:'os-home-list-row cursor-pointer'})}
         locale={{emptyText:'没有符合条件的作品，可清除搜索后继续查看。'}}
         columns={[
           {title:'作品',key:'title',render:(_,episode)=><div className="flex min-w-0 items-center gap-3"><span className="flex h-10 w-9 shrink-0 items-center justify-center overflow-hidden rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)]">{approvedCover(episode)?<img loading="lazy" src={approvedCover(episode)} alt="" className="h-full w-full object-cover object-top"/>:<Clapperboard size={16} className="text-[var(--text-tertiary)]"/>}</span><div className="min-w-0"><button type="button" aria-label={'打开故事 '+episode.title} onClick={event=>{event.stopPropagation();onSelectEpisode(episode);}} className="block max-w-[36vw] truncate text-left text-[13px] font-semibold hover:text-[var(--info)]">{episode.title}</button><span className="block max-w-[36vw] truncate text-[11px] text-[var(--text-tertiary)]">{episode.code} · {episode.genre||'未分类'}</span></div></div>},
@@ -166,11 +168,11 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
           {title:'',key:'action',width:75,align:'right',render:(_,episode)=><button type="button" onClick={event=>{event.stopPropagation();onSelectEpisode(episode);}} className="inline-flex items-center gap-1 text-[12px] text-[var(--info)]">进入 <ArrowRight size={13}/></button>}
         ]}
         pagination={{current:safeStoryPage,pageSize:storyPageSize,total:filtered.length,showTotal:(count,range)=>range[0]+'–'+range[1]+' / '+count+' 部',onChange:setStoryPage}}
-      />:<div aria-label="工作台作品管理画廊" className="min-w-0 space-y-4">
+      /></div>}</CSSMotion>:<CSSMotion key="gallery" visible motionAppear={hasChangedViewMode} motionName="os-home-view" motionDeadline={220}>{({className,style},ref)=><div ref={ref} className={`os-home-mode-content ${className||''}`} style={style}><div aria-label="工作台作品管理画廊" className="min-w-0 space-y-4">
         {galleryPageItems.some(ep=>Boolean(approvedCover(ep)))&&<section aria-label="作品管理有图画廊" className="space-y-2">
           <div className="flex items-center justify-between gap-2"><h3 className="os-section-heading">有批准图片的作品</h3><span className="text-[11px] text-[var(--text-tertiary)]">仅展示已验证素材</span></div>
           <div className={'grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 '+(galleryPageItems.filter(ep=>Boolean(approvedCover(ep))).length>=4?'lg:grid-cols-3 xl:grid-cols-4':'md:grid-cols-3')}>
-            {galleryPageItems.filter(ep=>Boolean(approvedCover(ep))).map(ep=><button key={ep.id} type="button" onClick={()=>onSelectEpisode(ep)} aria-label={'管理作品 '+ep.title} className="group min-w-0 overflow-hidden rounded-[5px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-left hover:border-[var(--info)]">
+            {galleryPageItems.filter(ep=>Boolean(approvedCover(ep))).map(ep=><button key={ep.id} type="button" onClick={()=>onSelectEpisode(ep)} aria-label={'管理作品 '+ep.title} className="os-home-cover-card group min-w-0 overflow-hidden rounded-[5px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-left hover:border-[var(--info)]">
               <div className="h-[180px] overflow-hidden bg-[var(--bg-elevated)]"><img src={approvedCover(ep)} loading="lazy" alt={ep.title+'的真实批准图片'} className="h-full w-full object-cover object-top"/></div>
               <div className="space-y-1.5 px-3 py-2"><strong className="block truncate text-[13px] font-semibold">{ep.title}</strong><div className="flex items-center justify-between gap-2 text-[11px] text-[var(--text-secondary)]"><span className="truncate">{STAGES[ep.currentStage]??ep.currentStage}</span><span className="shrink-0 tabular-nums">{approvedFrames(ep).length} 张已批准</span></div><p className="text-[11px] tabular-nums text-[var(--text-tertiary)]">工作区 {ep.completedFrames}/{ep.totalFrames} 帧</p></div>
             </button>)}
@@ -179,14 +181,14 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
         {galleryPageItems.some(ep=>!approvedCover(ep))&&<section aria-label="作品管理无图紧凑列表" className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="os-section-heading">其他作品</h3><span className="text-[11px] text-[var(--text-tertiary)]">尚无可验证的批准图片 · 仍可进入故事制作</span></div>
           <div className="divide-y divide-[var(--border-subtle)] border-y border-[var(--border-subtle)]">
-            {galleryPageItems.filter(ep=>!approvedCover(ep)).map(ep=><button key={ep.id} type="button" onClick={()=>onSelectEpisode(ep)} aria-label={'管理作品 '+ep.title} className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_110px_85px] items-center gap-3 px-3 py-2 text-left text-[12px] hover:bg-[var(--bg-hover)] sm:grid-cols-[minmax(0,1fr)_165px_110px]">
+            {galleryPageItems.filter(ep=>!approvedCover(ep)).map(ep=><button key={ep.id} type="button" onClick={()=>onSelectEpisode(ep)} aria-label={'管理作品 '+ep.title} className="os-home-compact-row grid w-full min-w-0 grid-cols-[minmax(0,1fr)_110px_85px] items-center gap-3 px-3 py-2 text-left text-[12px] hover:bg-[var(--bg-hover)] sm:grid-cols-[minmax(0,1fr)_165px_110px]">
               <span className="min-w-0"><strong className="block truncate text-[13px] font-semibold">{ep.title}</strong><span className="block truncate text-[11px] text-[var(--text-tertiary)]">{ep.code} · {ep.genre||'未分类'}</span></span><span className="truncate text-[var(--text-secondary)]">{STAGES[ep.currentStage]??ep.currentStage}</span><span className="text-right tabular-nums text-[var(--text-secondary)]">{ep.completedFrames}/{ep.totalFrames} 帧</span>
             </button>)}
           </div>
         </section>}
         {galleryPageItems.length===0&&<p className="border-y border-[var(--border-subtle)] py-7 text-center text-[12px] text-[var(--text-tertiary)]">当前筛选条件下没有匹配作品</p>}
         {filtered.length>storyPageSize&&<Pagination size="small" current={safeStoryPage} pageSize={storyPageSize} total={filtered.length} showTotal={(count,range)=>range[0]+'–'+range[1]+' / '+count+' 部'} onChange={setStoryPage}/>}
-      </div>}
+      </div></div>}</CSSMotion>}
     </section>
 
     <section aria-label="平台生产阶段摘要" className="min-w-0 border-t border-[var(--border-subtle)] pt-3">
