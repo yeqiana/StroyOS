@@ -5,24 +5,25 @@ import {spawn} from 'node:child_process';
 
 /** Capture the SAME verified Chrome tab rather than starting a second premature screenshot run. */
 const base='http://127.0.0.1:3100/';
-const dir=path.resolve('../.storyos-tmp/ui-qa/r26');
+const generation=process.argv.includes('--r27')?'r27':'r26';
+const dir=path.resolve('../.storyos-tmp/ui-qa/'+generation);
 fs.mkdirSync(dir,{recursive:true});
 const chrome=process.env.CHROME_PATH||'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const catalog=await fetch(base+'api/v1/local-media/catalog').then(response=>response.json());
 assert.equal(catalog.data?.source,'local_workspace_approved_only');
-const media=catalog.data.items.find(item=>item.frames?.length>=10);
+const media=catalog.data.items.find(item=>item.frames?.length>=(generation==='r27'?20:10));
 assert.ok(media?.title,'capture requires an episode with real approved frames');
-const source=fs.readFileSync('scripts/test-r26-creator-browser.mjs','utf8');
+const source=fs.readFileSync(generation==='r27'?'scripts/test-r27-filmstrip-browser.mjs':'scripts/test-r26-creator-browser.mjs','utf8');
 const fragment=source.split('async function scenario(c){')[1]?.split('\n}\n\ntry{')[0];
-assert.ok(fragment,'R26 browser scenario not found');
+assert.ok(fragment,'Browser scenario not found: '+generation);
 const fn='async function scenario(c){'+fragment+'\n}';
 const index=fs.readFileSync('index.html','utf8');
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 
 for(const width of [1440,1024]){
-  const temporaryPage='qa-r26-cdp-'+width+'.html';
+  const temporaryPage='qa-'+generation+'-cdp-'+width+'.html';
   const url=base+temporaryPage;
-  const scenario={name:'creator-dual-compare-'+width,width,kind:'compare',title:media.title};
+  const scenario=generation==='r27'?{name:'compare-fast-jump-'+width,width,kind:'compare',realTitle:media.title}:{name:'creator-dual-compare-'+width,width,kind:'compare',title:media.title};
   fs.writeFileSync(temporaryPage,index.replace('</body>','<script>('+fn+')('+JSON.stringify(scenario)+');</script></body>'));
   // A unique temporary profile avoids stale DevToolsActivePort from prior screenshot runs.
   const profile=path.join(dir,'cdp-verified-'+width+'-'+process.pid);
@@ -62,7 +63,7 @@ for(const width of [1440,1024]){
     let status='';
     for(let i=0;i<350;i++){
       const response=await send('Runtime.evaluate',{
-        expression:'document.body?.dataset?.r26Result || ""',returnByValue:true
+        expression:'document.body?.dataset?.'+generation+'Result || ""',returnByValue:true
       });
       status=response.result?.value||'';
       if(status==='pass'||status.startsWith('fail:'))break;
@@ -75,7 +76,7 @@ for(const width of [1440,1024]){
     });
     assert.equal(checked.result?.value,true,'both real images must be visible and decoded');
     const screenshot=await send('Page.captureScreenshot',{format:'png',fromSurface:true,captureBeyondViewport:false});
-    const targetFile=path.join(dir,'storyos-r26-cdp-compare-'+width+'.png');
+    const targetFile=path.join(dir,'storyos-'+generation+'-cdp-compare-'+width+'.png');
     fs.writeFileSync(targetFile,Buffer.from(screenshot.data,'base64'));
     assert.ok(fs.statSync(targetFile).size>10000);
     console.log('PASS verified comparison screenshot '+width+'px · '+fs.statSync(targetFile).size+' bytes');
@@ -85,4 +86,4 @@ for(const width of [1440,1024]){
     try{fs.unlinkSync(temporaryPage);}catch{}
   }
 }
-console.log('R26_CDP_SAME_VERIFIED_BROWSER_SCREENSHOTS_2_OF_2_PASS');
+console.log(generation.toUpperCase()+'_CDP_SAME_VERIFIED_BROWSER_SCREENSHOTS_2_OF_2_PASS');

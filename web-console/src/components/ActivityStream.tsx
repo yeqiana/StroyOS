@@ -22,6 +22,7 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode })
   const [canvasMode,setCanvasMode]=useState<'approved'|'batch'>('approved');
   const [selectedFrame,setSelectedFrame]=useState<FrameSelection|null>(null);
   const [pinnedFrame,setPinnedFrame]=useState<FrameSelection|null>(null);
+  const quickNavRef=React.useRef<HTMLDivElement|null>(null);
   const {findEpisode}=useLocalApprovedMedia();
   const approved=findEpisode(activeEpisode.title,activeEpisode.code);
   const reviews = activeEpisode.frameReviews ?? [];
@@ -39,9 +40,27 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode })
   const framePosition=selectedFrame?orderedFrames.indexOf(selectedFrame.frame):-1;
   const previousFrame=framePosition>0?orderedFrames[framePosition-1]:null;
   const nextFrame=framePosition>=0&&framePosition<orderedFrames.length-1?orderedFrames[framePosition+1]:null;
+  const attentionFrames=[...new Set(warnings.map(review=>review.frameIndex))].sort((a,b)=>a-b);
+  const nextAttention=selectedFrame&&attentionFrames.length?(attentionFrames.find(frame=>frame>selectedFrame.frame)||attentionFrames[0]):null;
   const pinnedImageUrl=pinnedFrame?.kind==='approved'?approved?.frames.find(item=>item.frame===pinnedFrame.frame)?.url:(pinnedFrame?.kind==='batch'?batch?.items.find(item=>item.frameIndex===pinnedFrame.frame)?.imageUrl:undefined);
   const validPinnedImageUrl=hasVerifiedPreview(pinnedImageUrl)?pinnedImageUrl:undefined;
   const comparing=Boolean(selectedFrame&&pinnedFrame&&validPinnedImageUrl&&selectedImageUrl&&selectedFrame.frame!==pinnedFrame.frame);
+  React.useEffect(()=>{
+    const strip=quickNavRef.current;
+    if(!selectedFrame||!strip)return;
+    const align=()=>{
+      const current=strip.querySelector<HTMLElement>('[aria-current="true"]');
+      if(!current||!strip.clientWidth)return;
+      const a=strip.getBoundingClientRect(),b=current.getBoundingClientRect();
+      strip.scrollTo({left:strip.scrollLeft+(b.left-a.left)-(strip.clientWidth-b.width)/2,behavior:'auto'});
+    };
+    align();
+    const raf=requestAnimationFrame(align);
+    // Inspector widens when compare mode is pinned; measure again during that layout change.
+    const observer=new ResizeObserver(align);
+    observer.observe(strip);
+    return()=>{cancelAnimationFrame(raf);observer.disconnect();};
+  },[selectedFrame?.frame,selectedFrame?.kind,pinnedFrame?.frame]);
   React.useEffect(()=>{
     if(!selectedFrame)return;
     const keyHandler=(event:KeyboardEvent)=>{
@@ -136,6 +155,15 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode })
           </div>
           {pinnedFrame?<Button size="small" aria-label="取消固定对照帧" icon={<PinOff size={14}/>} onClick={()=>setPinnedFrame(null)}>结束对照</Button>:<Button size="small" aria-label="固定当前帧以对照" icon={<Pin size={14}/>} disabled={!selectedImageUrl} onClick={()=>setPinnedFrame(selectedFrame)}>固定对照</Button>}
         </div>
+        <nav aria-label="分镜快速定位" className="min-w-0 space-y-2 border-b border-[var(--border-subtle)] pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]"><span className="text-[var(--text-tertiary)]">快速定位 · {orderedFrames.length} 帧已载入</span>{nextAttention!==null&&<Button size="small" aria-label="跳转下一待查帧" onClick={()=>{const kind=approved?.frames.some(frame=>frame.frame===nextAttention)?'approved':'batch';setCanvasMode(kind);setSelectedFrame({frame:nextAttention,kind});}}>下一待查 ({attentionFrames.length})</Button>}</div>
+          <div ref={quickNavRef} className="flex min-w-0 gap-1.5 overflow-x-auto pb-1" role="group" aria-label="分镜序列缩略导航">
+            {orderedFrames.map(frame=>{const url=selectedFrame.kind==='approved'?approved?.frames.find(item=>item.frame===frame)?.url:batch?.items.find(item=>item.frameIndex===frame)?.imageUrl;const actualUrl=hasVerifiedPreview(url)?url:undefined;const verdict=reviews.find(item=>item.frameIndex===frame)?.verdict;return <button key={frame} type="button" aria-label={'快速定位 Frame '+frame} aria-current={selectedFrame.frame===frame?'true':undefined} onClick={()=>setSelectedFrame({frame,kind:selectedFrame.kind})} className={`flex w-12 shrink-0 flex-col items-center gap-1 overflow-hidden border p-1 text-[11px] tabular-nums hover:border-[var(--info)] ${selectedFrame.frame===frame?'border-[var(--info)] bg-[var(--bg-selected)]':'border-[var(--border-subtle)] bg-[var(--bg-surface)]'}`} title={`Frame ${frame}${verdict?' · '+verdict:''}`}>
+              {actualUrl?<span className="relative flex h-12 w-10 items-center justify-center bg-[var(--bg-workspace)] text-[var(--text-tertiary)]"><span aria-hidden="true">{String(frame).padStart(2,'0')}</span><img loading="lazy" src={actualUrl} alt="" onError={event=>{event.currentTarget.style.display='none';}} className="absolute inset-0 h-full w-full object-cover"/></span>:<span className="flex h-12 w-10 items-center justify-center bg-[var(--bg-workspace)] text-[var(--text-tertiary)]">{String(frame).padStart(2,'0')}</span>}
+              <span className={verdict==='FAIL'?'text-[var(--danger)]':verdict==='WARN'?'text-[var(--warning)]':'text-[var(--text-secondary)]'}>{String(frame).padStart(2,'0')}</span>
+            </button>;})}
+          </div>
+        </nav>
         <p className="text-[12px] text-[var(--text-secondary)]">{selectedFrame.kind==='approved'?'已批准素材 · 本机只读':'当前批次 · 工作区状态快照'} · 可使用左右方向键切换分镜</p>
         {comparing?<div className="grid grid-cols-2 gap-3" aria-label="双帧素材对照">
           <figure className="min-w-0"><figcaption className="mb-2 truncate text-[12px] font-medium">固定 Frame {String(pinnedFrame?.frame).padStart(2,'0')}</figcaption><img src={validPinnedImageUrl} alt={`用于对照的 Frame ${pinnedFrame?.frame} 已验证图片`} className="h-[280px] w-full bg-[var(--bg-workspace)] object-contain"/></figure>

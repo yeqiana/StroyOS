@@ -86,7 +86,7 @@ async function scenario(c){
         close?.click();
         await wait(()=>!document.querySelector('[aria-label="双帧素材对照"]'),'comparison dismissed');
         if(document.querySelector('[aria-label="分镜对照工具栏"]'))throw Error('persistent pin not cleared');
-        if(drawer.querySelectorAll('img[src^="/api/v1/local-media/images/"]').length!==1)throw Error('single source image not restored');
+        if(drawer.querySelectorAll('img[alt^="Frame "][src^="/api/v1/local-media/images/"]').length!==1)throw Error('single inspected source image not restored');
       }
     }
   }else{

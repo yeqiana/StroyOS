@@ -39,6 +39,8 @@
     "test:r25": "node scripts/test-r25-creator-browser.mjs",
     "test:r26": "node scripts/test-r26-creator-browser.mjs",
     "capture:r26": "node scripts/capture-r26-compare-cdp.mjs",
+    "test:r27": "node scripts/test-r27-filmstrip-browser.mjs",
+    "capture:r27": "node scripts/capture-r26-compare-cdp.mjs --r27",
     "test:responsive": "node scripts/test-r17-responsive-browser.mjs"
   },
   "dependencies": {
