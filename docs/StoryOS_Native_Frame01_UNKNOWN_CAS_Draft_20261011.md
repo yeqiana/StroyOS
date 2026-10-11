@@ -63,8 +63,22 @@
 
 若完全匹配，输出 `READ_ONLY_EVIDENCE_READY_TEST_DB_STILL_REQUIRED`、`authorized_to_mutate_production=false`、`real_mysql_integration_tests_passed=false`、`pixel_review_pass=false`。**这个状态绝不是正式追认授权**。经本轮运行时动态加载此隔离分支的新模块对真实 canonical Episode 的只读预演已通过，未写任何正式 SQL。负向测试覆盖 fencing/Context/model 与 typed 投影漂移。
 
+## 2026-10-12 提交前来源复验（局部加固，仍禁止正式 CAS）
+
+在原子 Ledger/Attempt 事务内、最终 COMMIT 前再次运行完整 Runner 线程来源、原始/规范化 PNG、证据 SHA、Queue/Prompt 绑定校验，并与首次验证的关键身份字段比较。新增“Ledger 更新后替换原图”和“Attempt CAS 后、COMMIT 前替换候选图”两项回滚注入测试，必须保证 Attempt 仍为 OUTCOME_UNKNOWN、Ledger 恢复原状态。关联 5 个 hermetic 测试文件本地回归 198 passed。
+
+**此修复只缩短 TOCTOU 时间窗口，不提供跨进程源文件冻结。** 二次校验与数据库实际 COMMIT 之间仍可能存在外部文件替换；Windows 生产环境需要先实现并独立验证覆盖证据 JSON、Runner 原图、候选图、Codex JSONL 和持久回执的写入排斥/只读快照机制，且锁定须持续到事务 COMMIT 完成。未完成前不授权正式生产对账、不清除 UNKNOWN、不重派图片、不签发像素审核 PASS。
+
 ## 验收范围
 
 Windows hermetic 回归含同事务回滚模拟、完整 Ledger 追认/投影模拟、SHA 与模型门禁、防止伪造成功与像素审核、未批准基线时三帧继续阻断、Queue 保存中断后幂等恢复，未触碰正式 Episode DB；此类测试不是实际生产通过证明。
 
 严禁通过旧 complete_external_generation 对 UNKNOWN 偷渡成功，严禁手动改 MySQL、忽略 Runner provenance、绕过视觉门禁。
+
+## 2026-10-12 Windows 文件来源冻结（隔离工作树新增，未授权正式追认）
+
+在现有提交前二次来源复验基础上，增加 `native_baseline_source_freeze.py`：对已核验的六类独立源文件（证据 JSON、Episode Raw PNG、规范化候选 PNG、Codex JSONL、持久 Runner 回执、用户原生生成线程 PNG）使用 Windows `CreateFileW` 打开只读句柄，并仅允许 `FILE_SHARE_READ`。任何一个句柄获取失败立即拒绝，已取得的句柄在退出时释放；非 Windows 生产调用 fail closed。成功取得全部句柄后，在同一冻结范围内再次核对 Runner 证据，再执行原有 MySQL 同事务 Ledger/Attempt CAS；冻结句柄一直保留到事务 `COMMIT/ROLLBACK` 返回之后。
+
+新增真实 Windows 跨进程测试：独立 Python 子进程在冻结期间尝试覆盖和原子替换合成源文件均失败，退出冻结后覆盖恢复正常；另验证第三个句柄获取失败时前两个句柄均释放。SQL hermetic 测试额外覆盖“锁持有直至事务退出”“冻结不可用时零 CAS”“持久回执缺失时拒绝”“冻结入口期间证据变化拒绝”。本轮 Windows 本地相关 6 文件回归 **205 passed、1 skipped**（唯一跳过的是专门针对非 Windows 的拒绝测试）；PR #71 原 2 文件回归 **52 passed**。这些结果不包含真实生产 MySQL 写入、正式像素审核或图片生成。
+
+**未解除生产门禁**：本次仍属于隔离实现；Windows 文件句柄测试不能替代真实 Episode 六源路径/身份、重解析点、目录置换、崩溃/COMMIT 不确定性、正式 Queue Writer 锁、MySQL TEST_ONLY 端到端联调和独立代码审查。原生 Codex 登录成功且只读设计建议返回，但本次原生 Codex 的仓库文件读取被环境策略拦截，**没有代码级独立审核 PASS**。PR #72 的远端 CI 仍属于旧 head `2321139e`，不得把旧 CI 绿灯冒充本地新增代码的 CI 结果。正式 Attempt#1 保持 `OUTCOME_UNKNOWN`，不得清除、重派或以来源 SHA 冒充视觉审核 PASS。

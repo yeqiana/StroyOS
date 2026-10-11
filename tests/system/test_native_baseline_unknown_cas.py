@@ -89,6 +89,12 @@ def example(tmp_path, monkeypatch):
     ep = tmp_path / "episodes" / "00_独立篇" / "06_五十亩山地之后_全新重制"
     ep.mkdir(parents=True)
     monkeypatch.setattr(reconcile, "ROOT", tmp_path)
+    # Hermetic SQL state-machine tests run on Linux CI too. Exercise the
+    # real Windows source-freeze guard in dedicated Windows-only tests.
+    @contextmanager
+    def synthetic_source_freeze(_verified):
+        yield
+    monkeypatch.setattr(reconcile.source_freeze, "freeze_sources", synthetic_source_freeze)
     raw = ep / "media/raw/01-1791720392.png"
     candidate = ep / f"media/candidates/scheduled/01-{QUEUE_ID}-a1.png"
     log = ep / f"meta/image-workers/01-{QUEUE_ID}-a1.jsonl"
@@ -140,6 +146,16 @@ def example(tmp_path, monkeypatch):
                         lambda _: {"request_id": REQUEST})
     monkeypatch.setattr(reconcile.codex_user_runner, "codex_home",
                         lambda: (tmp_path / ".codex", {}))
+    # The durable Runner receipt and original generated file are separate
+    # authorities; they must exist before the CAS source freeze is admitted.
+    receipt = tmp_path / "runner-task-result.json"
+    receipt.write_text(json.dumps({"request_id": REQUEST}), encoding="utf-8")
+    native_source = tmp_path / ".codex/generated_images" / THREAD / FILE
+    native_source.parent.mkdir(parents=True, exist_ok=True)
+    native_source.write_bytes(RAW)
+    monkeypatch.setattr(reconcile.codex_user_runner, "bridge_required", lambda: False)
+    monkeypatch.setattr(reconcile.codex_user_runner, "task_result_path",
+                        lambda _: receipt)
     def fake_proof(**kwargs):
         return {
             "proof_kind": "TRUSTED_NATIVE_RUNNER_THREAD_SCOPED_IMAGE_SHA",
@@ -326,6 +342,107 @@ def test_direct_cas_requires_canonical_queue_writer_lock(example, monkeypatch):
     assert db.mutations == 0
     assert db.row["STATUS"] == "OUTCOME_UNKNOWN"
 
+
+def test_source_changed_after_ledger_update_rolls_back_sql(example, monkeypatch):
+    ep, raw, _candidate, _log, evidence_path, _evidence, _queue, db = example
+
+    def mutate_after_ledger(connection, episode, source, *, already_succeeded):
+        assert not already_succeeded
+        connection.ledger_status = "ORIGINAL_READY"
+        raw.write_bytes(tiny_png((90, 80, 70)))
+        return True
+
+    monkeypatch.setattr(reconcile.atomic_ledger, "locked_ledger_update",
+                        mutate_after_ledger)
+    with pytest.raises(reconcile.NativeReconciliationDenied, match="RAW_SHA_DRIFT"):
+        commit(ep, evidence_path)
+    assert db.row["STATUS"] == "OUTCOME_UNKNOWN"
+    assert db.ledger_status == "TECH_FAILED"
+    assert db.mutations == 0
+
+
+def test_source_changed_after_cas_before_commit_rolls_back_sql(example, monkeypatch):
+    ep, _raw, candidate, _log, evidence_path, _evidence, _queue, db = example
+    original_execute = db.execute
+
+    def mutate_after_cas(sql, args):
+        result = original_execute(sql, args)
+        candidate.write_bytes(tiny_png((90, 80, 70)))
+        return result
+
+    monkeypatch.setattr(db, "execute", mutate_after_cas)
+    with pytest.raises(reconcile.NativeReconciliationDenied, match="CANDIDATE_SHA_DRIFT"):
+        commit(ep, evidence_path)
+    assert db.row["STATUS"] == "OUTCOME_UNKNOWN"
+    assert db.ledger_status == "TECH_FAILED"
+    assert db.mutations == 0
+
+
+
+
+def test_source_freeze_remains_held_until_mysql_transaction_exits(example, monkeypatch):
+    ep, _raw, _candidate, _log, evidence_path, _evidence, _queue, db = example
+    events = []
+    original_tx = db.transaction
+
+    @contextmanager
+    def held(_verified):
+        events.append("freeze_enter")
+        try:
+            yield
+        finally:
+            events.append("freeze_exit")
+
+    @contextmanager
+    def observed_transaction():
+        assert events == ["freeze_enter"]
+        with original_tx():
+            yield
+        assert events == ["freeze_enter"]
+        events.append("mysql_commit")
+
+    monkeypatch.setattr(reconcile.source_freeze, "freeze_sources", held)
+    monkeypatch.setattr(db, "transaction", observed_transaction)
+    assert commit(ep, evidence_path)["status"] == "SUCCEEDED"
+    assert events == ["freeze_enter", "mysql_commit", "freeze_exit"]
+
+
+def test_unavailable_source_freeze_denies_before_mysql_mutation(example, monkeypatch):
+    ep, _raw, _candidate, _log, evidence_path, _evidence, _queue, db = example
+
+    @contextmanager
+    def unavailable(_verified):
+        raise reconcile.source_freeze.NativeSourceFreezeDenied(
+            "NATIVE_RECONCILIATION_SOURCE_FREEZE_OPEN_FAILED")
+        yield
+
+    monkeypatch.setattr(reconcile.source_freeze, "freeze_sources", unavailable)
+    with pytest.raises(reconcile.source_freeze.NativeSourceFreezeDenied, match="OPEN_FAILED"):
+        commit(ep, evidence_path)
+    assert db.row["STATUS"] == "OUTCOME_UNKNOWN" and db.mutations == 0
+
+
+def test_missing_durable_runner_receipt_denies_before_mysql(example, monkeypatch, tmp_path):
+    ep, _raw, _candidate, _log, evidence_path, _evidence, _queue, db = example
+    monkeypatch.setattr(reconcile.codex_user_runner, "task_result_path",
+                        lambda _: tmp_path / "missing-runner-result.json")
+    with pytest.raises(reconcile.NativeReconciliationDenied, match="DURABLE_SOURCE_MISSING"):
+        commit(ep, evidence_path)
+    assert db.row["STATUS"] == "OUTCOME_UNKNOWN" and db.mutations == 0
+
+
+def test_source_change_during_freeze_admission_denies_before_sql(example, monkeypatch):
+    ep, raw, _candidate, _log, evidence_path, _evidence, _queue, db = example
+
+    @contextmanager
+    def changed_before_lock(_verified):
+        raw.write_bytes(tiny_png((200, 150, 100)))
+        yield
+
+    monkeypatch.setattr(reconcile.source_freeze, "freeze_sources", changed_before_lock)
+    with pytest.raises(reconcile.NativeReconciliationDenied, match="RAW_SHA_DRIFT"):
+        commit(ep, evidence_path)
+    assert db.row["STATUS"] == "OUTCOME_UNKNOWN" and db.mutations == 0
 
 def test_mysql_atomic_rollback_if_late_cas_fails(example, monkeypatch):
     ep, _raw, _candidate, _log, evidence_path, _evidence, _queue, db = example

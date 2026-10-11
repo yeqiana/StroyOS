@@ -22,6 +22,7 @@ import production_native_baseline_proof
 import scheduler_core
 import native_baseline_atomic_ledger as atomic_ledger
 import production_ledger_persistence as ledger_store
+import native_baseline_source_freeze as source_freeze
 
 ROOT = Path(__file__).resolve().parents[2]
 EVIDENCE_REL = Path("meta/runtime/native-baseline-frame01-runner-artifact-reconciliation-evidence.json")
@@ -180,8 +181,23 @@ def verify_frame01_sources(ep: Path, *, allow_generated: bool = False) -> dict:
     scene_sha = package.get("scene_prompt_sha256")
     if not SHA64.fullmatch(str(scene_sha or "")):
         _deny("NATIVE_RECONCILIATION_SCENE_PROMPT_SHA_MISSING")
+    # Preserve the exact durable Runner receipt and native source paths so
+    # the Windows CAS freeze covers more than the copied Episode PNG.
+    receipt = codex_user_runner.task_result_path(request_id)
+    if codex_user_runner.bridge_required():
+        receipt = (codex_user_runner.endpoint_path().parent
+                   / codex_user_runner.RESULT_DIR_NAME / receipt.name)
+    receipt = receipt.resolve()
+    native_root = (Path(codex_home).resolve() / "generated_images").resolve()
+    native_source = (native_root / proof["exported_artifact_relative_path"]).resolve()
+    if (not receipt.is_file() or not native_source.is_relative_to(native_root)
+            or not native_source.is_file()):
+        _deny("NATIVE_RECONCILIATION_DURABLE_SOURCE_MISSING")
     return {
         "episode": ep, "evidence_sha256": _sha(evidence_path),
+        "evidence_path": evidence_path.resolve(), "raw": raw,
+        "codex_log": log.resolve(), "runner_receipt": receipt,
+        "source_generated_path": native_source,
         "generation_key": evidence["generation_key"],
         "queue_item_id": item["id"], "raw_sha256": evidence["episode_raw_png_sha256"],
         "candidate": candidate, "candidate_sha256": evidence["normalized_png_sha256"],
@@ -194,6 +210,26 @@ def verify_frame01_sources(ep: Path, *, allow_generated: bool = False) -> dict:
         "runner_request_id": request_id, "native_codex_thread_id": evidence["thread_id"],
         "review_pass": False, "ledger_reconciled": False,
     }
+
+
+def _assert_sources_still_match(ep: Path, expected: dict) -> None:
+    """Revalidate source provenance inside SQL transaction before COMMIT.
+
+    This closes the existing multi-step verification gap, but is not an
+    interprocess source freeze. Production remains blocked until a separate
+    filesystem concurrency guard is independently validated.
+    """
+    current = verify_frame01_sources(ep, allow_generated=True)
+    for key in (
+        "evidence_sha256", "generation_key", "queue_item_id", "raw_sha256",
+        "candidate", "candidate_sha256", "candidate_repo_rel",
+        "runtime_transaction_id", "scene_prompt_sha256", "canvas_width",
+        "canvas_height", "frame_contract_sha256", "prompt_package_sha256",
+        "runner_request_id", "native_codex_thread_id", "evidence_path",
+        "raw", "codex_log", "runner_receipt", "source_generated_path",
+    ):
+        if current.get(key) != expected.get(key):
+            _deny("NATIVE_RECONCILIATION_SOURCE_CHANGED_BEFORE_COMMIT")
 
 
 def reconcile_frame01_unknown(ep: Path, *, expected_fencing_token: int,
@@ -222,7 +258,10 @@ def reconcile_frame01_unknown(ep: Path, *, expected_fencing_token: int,
     candidate_ref = str(verified["candidate"])
     connection = authority._connect()
     try:
-        with connection.transaction():
+        # FILE_SHARE_READ-only handles deny external writes/renames until the
+        # MySQL transaction __exit__ has completed COMMIT or ROLLBACK.
+        with source_freeze.freeze_sources(verified), connection.transaction():
+            _assert_sources_still_match(ep, verified)
             state = authority._row(connection, episode_id, key)
             row = connection.query_one(
                 "SELECT * FROM TB_GENERATION_ATTEMPT WHERE EPISODE_ID=%s "
@@ -262,6 +301,7 @@ def reconcile_frame01_unknown(ep: Path, *, expected_fencing_token: int,
                 # same operation_scope might still carry the old TECH_FAILED
                 # Ledger cache. Invalidate before the caller reads the
                 # committed Ledger for its Queue handoff.
+                _assert_sources_still_match(ep, verified)
                 ledger_store.invalidate(ep)
                 return {**verified, "status": "SUCCEEDED", "idempotent": True,
                         "ledger_reconciled": True,
@@ -286,6 +326,7 @@ def reconcile_frame01_unknown(ep: Path, *, expected_fencing_token: int,
             )
             if updated != 1:
                 _deny("NATIVE_RECONCILIATION_CAS_LOST")
+            _assert_sources_still_match(ep, verified)
         ledger_store.invalidate(ep)
         return {**verified, "status": "SUCCEEDED", "idempotent": False,
                 "attempt_index": 1, "fencing_token": expected_fencing_token,
