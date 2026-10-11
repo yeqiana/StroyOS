@@ -30,7 +30,7 @@ const js=[
   'const wait=ms=>new Promise(r=>setTimeout(r,ms));',
   'let banner;',
   'for(let i=0;i<150&&!banner;i++){banner=document.querySelector(\'[data-testid="local-real-evidence-banner"]\');if(!banner)await wait(100);}',
-  'if(!banner||!banner.textContent.includes("真实作品状态文件"))throw Error("source banner");',
+  'if(!banner||!banner.textContent.includes("本机文件")||!banner.title.includes("真实作品状态文件"))throw Error("source banner");',
   'let first=false;',
   'for(let i=0;i<200&&!first;i++){first=(document.querySelector("main")?.textContent||"").includes('+JSON.stringify(title)+');if(!first)await wait(100);}',
   'if(!first)throw Error("actual local title not rendered");',
@@ -38,7 +38,7 @@ const js=[
   'for(let i=0;i<100&&!button;i++){button=[...document.querySelectorAll(\'nav[aria-label="主要页面"] button\')].find(b=>b.textContent.trim()==="生产监控");if(!button)await wait(100);}',
   'if(!button)throw Error("monitor navigation");button.click();',
   'let label=false;',
-  'for(let i=0;i<200&&!label;i++){label=(document.querySelector("main")?.textContent||"").includes("生产阶段记录文件");if(!label)await wait(100);}',
+  'for(let i=0;i<200&&!label;i++){label=(document.querySelector("main")?.textContent||"").includes("本机真实作品状态文件");if(!label)await wait(100);}',
   'if(!label)throw Error("monitor source not labeled");',
   'document.body.dataset.realE2e="pass";',
   '}catch(e){document.body.dataset.realE2e="fail:"+e.message}})();'

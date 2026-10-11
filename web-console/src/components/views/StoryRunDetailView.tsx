@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import {Select} from 'antd';
 import {useLocalApprovedMedia} from '../../api/localApprovedMedia';
 import {
   ArrowLeft,
@@ -217,7 +218,7 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
       {/* ========================================================================= */}
       {/* 1. 顶部 Header 强化与精简化 (极简两行紧凑布局) */}
       {/* ========================================================================= */}
-      <div className="bg-[var(--bg-surface)] border-b border-[var(--border-subtle)] px-5 py-2.5 shrink-0 flex flex-col gap-2">
+      <div className="os-console-toolbar bg-[var(--bg-surface)] border-b border-[var(--border-subtle)] px-4 py-2.5 shrink-0 flex flex-col gap-2">
         {/* 第一行：导航返回、剧目名称、状态与操作按钮 */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-wrap items-center gap-2.5">
@@ -676,41 +677,17 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
           {/* ========================================================================= */}
           {activeTab === 'logs' && (
             <div className="space-y-3 max-w-5xl">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-xs font-bold text-[#F1F3F5] uppercase tracking-wider font-mono flex items-center gap-2">
-                    <Terminal className="w-3.5 h-3.5 text-[#F1F3F5]" />
-                    <span>执行终端日志 (Console Logs)</span>
-                  </h2>
-                </div>
-
-                {/* 过滤条 */}
-                <div className="flex items-center gap-2">
-                  <div className="relative">
-                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[#505864]" />
-                    <input
-                      type="text"
-                      value={logSearch}
-                      onChange={(e) => setLogSearch(e.target.value)}
-                      placeholder="搜索日志..."
-                      className="h-[28px] bg-[#0F1115] border border-[#232830] rounded-[4px] pl-8 pr-2.5 text-xs text-[#F1F3F5] placeholder-[#505864] focus:outline-none focus:border-[#4C8DFF] font-mono"
-                    />
-                  </div>
-
-                  <div className="flex items-center gap-0.5 bg-[#0F1115] p-0.5 rounded-[4px] border border-[#232830] text-xs font-mono h-[28px]">
-                    {(['ALL', 'INFO', 'WARN', 'ERROR'] as const).map(lvl => (
-                      <button
-                        key={lvl}
-                        type="button"
-                        onClick={() => setLogFilter(lvl)}
-                        className={`px-2 py-0.5 rounded-[3px] cursor-pointer text-xs ${
-                          logFilter === lvl ? 'bg-[#1C2128] text-[#F1F3F5] font-semibold' : 'text-[#737D8A] hover:text-[#F1F3F5]'
-                        }`}
-                      >
-                        {lvl}
-                      </button>
-                    ))}
-                  </div>
+              <div className="os-console-filterbar flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] bg-[var(--bg-workspace)] px-3 py-3">
+                <h2 className="os-section-heading flex items-center gap-2"><Terminal className="h-4 w-4" />执行终端日志</h2>
+                <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+                  <label className="relative min-w-[170px] flex-1 sm:max-w-[300px]">
+                    <Search aria-hidden="true" className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--text-tertiary)]" />
+                    <input aria-label="搜索 Run 日志" type="search" value={logSearch} onChange={e=>setLogSearch(e.target.value)}
+                      placeholder="搜索日志内容或组件" className="h-9 w-full rounded-[5px] border border-[var(--border-normal)] bg-[var(--bg-surface)] pl-9 pr-3 text-[12px] text-[var(--text-primary)]" />
+                  </label>
+                  <Select aria-label="筛选 Run 日志级别" value={logFilter} onChange={setLogFilter} style={{width:140}}
+                    options={(['ALL','INFO','WARN','ERROR','DEBUG'] as const).map(v=>({value:v,label:v==='ALL'?'全部级别':v}))} />
+                  <span className="text-[11px] tabular-nums text-[var(--text-tertiary)]">已匹配 {filteredLogs.length} 条</span>
                 </div>
               </div>
 
@@ -808,7 +785,7 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
         {/* 3. 右侧 Frame 详情抽屉 (Right Drawer) —— UI Baseline v1: 宽度 440px/480px, bg #13161B */}
         {/* ========================================================================= */}
         {selectedFrame && (
-          <div className="w-[440px] xl:w-[480px] shrink-0 border-l border-[#232830] bg-[#13161B] flex flex-col h-full overflow-y-auto animate-in slide-in-from-right duration-200">
+          <div role="dialog" aria-label="分镜详情检视" className="absolute inset-y-0 right-0 z-20 flex h-full w-full max-w-[440px] flex-col overflow-y-auto border-l border-[var(--border-normal)] bg-[var(--bg-elevated)] shadow-lg xl:max-w-[480px]">
             {/* 抽屉头部 */}
             <div className="h-[48px] px-4 border-b border-[#232830] flex items-center justify-between bg-[#0F1115] shrink-0">
               <div className="flex items-center gap-2">
