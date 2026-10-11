@@ -74,10 +74,8 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
           { label: '项目', value: projects.length, note: '当前工作区' },
           { label: '故事', value: episodes.length, note: '已收录' },
           { label: '待继续', value: pending, note: '尚未发布' }
-        ].map((m, i) => <div key={m.label} className="min-w-0 bg-[var(--bg-app)] px-5 py-3.5">
-          <div className="os-stat-label">{m.label}</div>
-          <div className={`os-stat-number ${m.label === '需关注' && typeof m.value === 'number' && m.value > 0 ? 'text-[var(--danger)]' : ''}`}>{m.value}</div>
-          <div className="mt-1.5 text-[12px] leading-4 text-[var(--text-tertiary)]">{m.note}</div>
+        ].map((m) => <div key={m.label} className="flex min-w-0 items-center gap-3 bg-[var(--bg-app)] px-4 py-2.5 sm:gap-4">
+          <div className="text-[23px] font-semibold leading-none tabular-nums text-[var(--text-primary)]">{m.value}</div><div className="min-w-0"><div className="os-stat-label">{m.label}</div><div className="hidden truncate text-[11px] text-[var(--text-tertiary)] sm:block">{m.note}</div></div>
         </div>)}
       </section>
       <div className="grid min-w-0 grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_300px] 2xl:grid-cols-[minmax(0,1fr)_340px]">

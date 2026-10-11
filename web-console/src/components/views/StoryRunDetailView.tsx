@@ -1297,10 +1297,10 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
       {/* ========================================================================= */}
       {imageModalUrl && (
         <div
-          className="fixed inset-0 z-80 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-80 bg-black/90 flex items-center justify-center p-2 sm:p-4 backdrop-blur-sm"
           onClick={() => setImageModalUrl(null)}
         >
-          <div className="relative max-w-4xl w-full max-h-[90vh] flex flex-col items-center">
+          <div className="relative max-w-[min(1024px,96vw)] w-full max-h-[94dvh] min-w-0 flex flex-col items-center">
             <button
               type="button"
               onClick={() => setImageModalUrl(null)}

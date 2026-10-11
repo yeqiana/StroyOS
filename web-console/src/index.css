@@ -566,3 +566,16 @@ html,body {letter-spacing:0; font-size:13px;}
 #storyos-workspace-root button:focus-visible,#storyos-workspace-root a:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 @media(max-width:1280px){#storyos-workspace-root main{padding-inline:16px}#storyos-workspace-root .os-page-heading{font-size:20px}}
 @media(max-width:900px){#storyos-workspace-root main{padding-inline:12px}#storyos-workspace-root .ant-table{font-size:12px}}
+
+/* R18: compact navigation at 1120px, preserve keyboard and named buttons. */
+@media(max-width:1120px){
+ .storyos-sidebar{width:64px!important;}
+ .storyos-sidebar>div:first-child{justify-content:center;padding-inline:0}
+ .storyos-sidebar-brand,.storyos-sidebar-header-actions,.storyos-sidebar-create,.storyos-sidebar-section-label,.storyos-sidebar-nav-label,.storyos-sidebar-projects,.storyos-sidebar-recent,.storyos-sidebar-theme,.storyos-sidebar-settings-label{display:none!important}
+ .storyos-sidebar nav{display:flex;flex-direction:column;gap:5px;align-items:center}
+ .storyos-sidebar nav>div{width:34px;margin:8px 0!important}
+ .storyos-sidebar nav>button{width:42px!important;height:42px!important;justify-content:center;padding:0!important}
+ .storyos-sidebar nav>button svg{height:19px;width:19px}
+ .storyos-sidebar>div:last-of-type{padding:10px 4px}
+ .storyos-sidebar>div:last-of-type>button{justify-content:center;padding:0}
+}

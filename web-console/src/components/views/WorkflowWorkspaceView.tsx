@@ -100,7 +100,7 @@ export const WorkflowWorkspaceView: React.FC = () => {
         loading={loading} dataSource={filtered} scroll={{x:780}}
         locale={{emptyText:'暂无可展示的阶段记录'}}
         columns={[
-          {title:'作品',key:'title',render:(_,x)=><div className="min-w-0"><div className="truncate text-[14px] font-semibold text-[var(--text-primary)]">{x.title||x.episode_ref||x.episode_id||'未命名作品'}</div><div title={x.episode_ref||x.episode_id} className="mt-1 max-w-[340px] truncate font-mono text-[11px] text-[var(--text-tertiary)]">{x.episode_ref||x.episode_id}</div></div>},
+          {title:'作品',key:'title',render:(_,x)=><div className="min-w-0"><div title={x.episode_ref||x.episode_id} className="truncate text-[14px] font-semibold text-[var(--text-primary)]">{x.title||x.episode_ref||x.episode_id||'未命名作品'}</div><span className="sr-only">作品标识 {x.episode_ref||x.episode_id}</span></div>},
           {title:'生产阶段',dataIndex:'production_stage',key:'stage',width:150,render:(v:string)=><span className="inline-flex items-center gap-2 text-[13px] text-[var(--text-secondary)]"><span className="h-1.5 w-1.5 rounded-full bg-[var(--text-tertiary)]"/>{stageLabel(v||'NO_STATE')}</span>},
           {title:'数据来源',dataIndex:'state_source',key:'source',width:215,ellipsis:true,render:(v:string)=><span title={v||'未提供'} className="text-[12px] text-[var(--text-secondary)]">{v==='local_workspace_episode_state_file'?'本机状态文件 · 只读':v||'未提供'}</span>},
           {title:'更新时间',key:'updated',width:170,render:(_,x)=><span title={x.updated_at||x.observed_at||''} className="text-[12px] tabular-nums text-[var(--text-secondary)]">{readableDate(x.updated_at||x.observed_at)}</span>},
