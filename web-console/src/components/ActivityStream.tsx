@@ -48,7 +48,8 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode })
         </a>)}
       </div>
     </section> : null}
-    <div className="border border-[var(--border-subtle)] rounded-[6px] bg-[var(--bg-surface)]">
+    <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(330px,1fr)]" aria-label="当前批次与审核双栏工作区">
+    <section className="min-w-0 border border-[var(--border-subtle)] rounded-[6px] bg-[var(--bg-surface)]">
       <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-subtle)]">
         <div><p className="text-[13px] font-medium">当前批次</p><p className="mt-1 text-[12px] text-[var(--text-tertiary)]">{batch?.batchName || '暂无批次证据'}</p></div>
         <span className="text-[12px] text-[var(--text-secondary)]">{batch ? `${batch.items.length} 帧 · ${batch.status}` : '尚无数据'}</span>
@@ -67,7 +68,7 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode })
                   <div className="mt-2 flex items-center justify-between gap-1 text-[12px]"><span className="font-medium">Frame {frame.frameIndex}</span><span className="truncate text-[var(--text-secondary)]">{frame.status}</span></div>
                 </div>)}
               </div> :
-              <div className="grid grid-cols-2 gap-px overflow-hidden rounded-[6px] border border-[var(--border-subtle)] bg-[var(--border-subtle)] sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-10">
+              <div className="grid grid-cols-2 gap-px overflow-hidden rounded-[6px] border border-[var(--border-subtle)] bg-[var(--border-subtle)] sm:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-8">
                 {batch.items.map(frame=><div key={frame.id} className="flex min-h-16 flex-col justify-between gap-1 bg-[var(--bg-surface)] px-3 py-2.5">
                   <span className="text-[12px] font-semibold tabular-nums text-[var(--text-primary)]">{String(frame.frameIndex).padStart(2,'0')}</span>
                   <span title={frame.status} className="truncate text-[11px] text-[var(--text-secondary)]">{frame.status}</span>
@@ -75,8 +76,8 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode })
               </div>}
           </>}
       </div>
-    </div>
-    <div className="border-t border-[var(--border-subtle)] pt-4">
+    </section>
+    <section className="min-w-0 border-t border-[var(--border-subtle)] pt-3 xl:border-t-0 xl:border-l xl:pl-4 xl:pt-0" aria-label="逐帧审核检视区">
       <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-[14px] font-semibold">逐帧审核</h3><p className="mt-1 text-[12px] text-[var(--text-tertiary)]">已记录 {reviews.length} 项 · 需检查 {warnings.length} 项</p></div>
         <div className="flex items-center gap-2">{warnings.length ? <Button size="small" onClick={()=>{setExpanded(true);setReviewVerdict('NEEDS_ATTENTION');setReviewPage(1);}}>只看待查 ({warnings.length})</Button> : <span className="text-[11px] text-[var(--text-tertiary)]">暂无待查记录</span>}<button type="button" onClick={() => {setExpanded(!expanded);setReviewPage(1);setReviewVerdict('ALL');}} aria-expanded={expanded} className="flex items-center gap-1 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]">{expanded ? <ChevronDown size={15}/> : <ChevronRight size={15}/>} {expanded ? '收起' : '查看全部'}</button></div></div>
       {expanded && <div className="os-console-filterbar mt-3 flex flex-wrap items-center justify-between gap-2 border-y border-[var(--border-subtle)] py-2"><Select aria-label="筛选审核结论" value={reviewVerdict} onChange={value=>{setReviewVerdict(value);setReviewPage(1);}} style={{width:150}} options={[{value:"ALL",label:"全部审核结论"},{value:"NEEDS_ATTENTION",label:"待检查（WARN/FAIL）"},{value:"PASS",label:"通过 PASS"},{value:"WARN",label:"待查 WARN"},{value:"FAIL",label:"失败 FAIL"}]}/><span className="text-[12px] tabular-nums text-[var(--text-tertiary)]">已匹配 {filteredReviews.length} / {reviews.length} 项 · 已加载记录</span></div>}
@@ -86,7 +87,8 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode })
           <div className="flex-1 min-w-0"><div className="flex items-center gap-2 text-[13px]"><span className="font-medium">Frame {review.frameIndex}</span><span className={`text-[11px] font-mono ${verdictColor[review.verdict]}`}>{review.verdict}</span></div><p className="mt-1 text-[12px] text-[var(--text-secondary)] break-words">{review.comment || review.issueTags?.join('、') || '暂无审核备注'}</p></div>
           <span className="text-[11px] text-[var(--text-tertiary)] flex items-center gap-1 shrink-0"><Clock3 size={12}/>{review.timestamp}</span>
         </div>)}</div>}
-    </div>
+    </section>
     {expanded && filteredReviews.length>10 && <Pagination size="small" current={safeReviewPage} pageSize={10} total={filteredReviews.length} showTotal={(total,range)=>`${range[0]}–${range[1]} / 已载入 ${total} 项`} onChange={setReviewPage}/>}
+    </div>
   </section>;
 };

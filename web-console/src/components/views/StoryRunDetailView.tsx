@@ -71,7 +71,7 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
 
   // 默认打开 Frame 09（方便展示异常排错诊断）或 Frame 08（展示 PASSED 态）
   const [selectedFrame, setSelectedFrame] = useState<FrameDetailItem | null>(null);
-  const [frameLayout,setFrameLayout] = useState<'GRID'|'LIST'>('GRID');
+  const [frameLayout,setFrameLayout] = useState<'GRID'|'LIST'>(() => run.frames.some(frame => hasVerifiedPreview(frame.thumbnail) || Boolean(approvedUrl(frame.frameNo))) ? 'GRID' : 'LIST');
 
   const [selectedStageKey, setSelectedStageKey] = useState<StoryRunStage>(run.currentStage);
   const [promptExpanded, setPromptExpanded] = useState(false);
