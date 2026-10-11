@@ -1089,6 +1089,17 @@ def _execute(ep,codex=None,timeout=None,run_id=None,trace_id=None,until=None,tel
                     value, _log=scoped_codex_worker.run_step(
                         ep,step,codex_raw=codex,
                         timeout=preimage_worker_timeout(task,timeout))
+                    if value == 0:
+                        # The scoped model writes the semantic Candidate, not
+                        # the authority digest. Bind trusted task/snapshot SHA
+                        # only after a genuine completed native turn and full
+                        # semantic verification. Preserve raw model bytes.
+                        sealed=preimage_task_contract.seal_scoped_native_candidate(
+                            ep, task, _log)
+                        if sealed.get("status") != "PASS":
+                            raise ValueError(
+                                "PREIMAGE native Host Candidate sealing refused: "
+                                + "; ".join(sealed.get("errors") or ["unknown"]))
                     return value
                 outcome=preimage_protocol.execute_local(ep,_worker,max_workers=workers)
                 rc=0 if outcome.get("status")=="PASS" else 4
