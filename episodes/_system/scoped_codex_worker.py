@@ -227,8 +227,8 @@ DO NOT mark PUBLISHED or fabricate metrics.
 # The parent single-writer commit validates the returned candidate separately.
 STEP_DIRECTIVES.update({
 "PREIMAGE_CHARACTER_FINALIZE": """TARGET: produce only the CHARACTER_FINALIZE Candidate declared by the execution capsule/request. Read the locked Story and Character Seed Contract. Validate final identity, wardrobe baseline, POV and textual appearance anchor. Do not rewrite Story or create pixel masters. Write only the declared candidate JSON; never modify shared authority, episode-state or gates.""",
-"PREIMAGE_ENVIRONMENT": """TARGET: produce only the ENVIRONMENT_PREPARE Candidate declared by the execution capsule/request. Cover physical environment, weather, impact and environment frame directives. The candidate must satisfy the Phase-3 Environment Contract before commit: whenever a segment condition implies a different daypart (morning/midday/afternoon/dusk/night), that segment must carry a matching time_of_day instead of inheriting an incompatible baseline. Provide directives for every frame and keep condition/time_of_day physically consistent. Do not change Character, Story, World or other visual authority. Write only the declared candidate JSON; never modify shared authority, episode-state or gates.""",
-"PREIMAGE_WORLD": """TARGET: produce only the WORLD_PREPARE Candidate declared by the execution capsule/request. Cover world identity/state, capture-event physical continuity, temporal continuity and wardrobe constraints. Do not rewrite Story or generate images. Write only the declared candidate JSON; never modify shared authority, episode-state or gates.""",
+"PREIMAGE_ENVIRONMENT": """TARGET: produce only the ENVIRONMENT_PREPARE Candidate declared by the execution capsule/request. Cover physical environment, weather, impact and environment frame directives. The candidate must satisfy the Phase-3 Environment Contract before commit: whenever a segment condition implies a different daypart (morning/midday/afternoon/dusk/night), that segment must carry a matching time_of_day instead of inheriting an incompatible baseline. For EVERY frame, frame_mode=normal_record REQUIRES impact_level 0 or 1, never 2 or higher; frame 16 is the ordinary physical act of a camera strap snapping and a companion needing support, so normal_record impact_level must be at most 1. Use anomaly_reveal only for genuinely observable anomalies with matching evidence and impact 1..2. Provide directives for every frame and keep condition/time_of_day physically consistent. Do not change Character, Story, World or other visual authority. Write only the declared candidate JSON; never modify shared authority, episode-state or gates.""",
+"PREIMAGE_WORLD": """TARGET: produce only the WORLD_PREPARE Candidate declared by the execution capsule/request. Cover world identity/state, capture-event physical continuity, temporal continuity and wardrobe constraints. The complete canonical frozen World obligations embedded as HOST_FROZEN_WORLD must be copied into their matching Candidate payload scopes at identical nested paths and with no missing keys or altered values; derived notes may be added only without altering any frozen value. Do not rewrite Story or generate images. Write only the declared candidate JSON; never modify shared authority, episode-state or gates.""",
 "PREIMAGE_VISUAL_NARRATIVE": """TARGET: produce only the VISUAL_NARRATIVE_PREPARE Candidate declared by the execution capsule/request. Cover visual narrative core, shot progression, capture grammar and anomaly progression. Do not own environment physics or character identity. Write only the declared candidate JSON; never modify shared authority, episode-state or gates.""",
 })
 
@@ -535,6 +535,24 @@ def prompt(ep,step):
     if step=="RELEASE":
         intro_policy.resolve(ep,write=True)
     capsule=execution_capsule.compile_capsule(ep,step,write=True)
+    # PREIMAGE uses one immutable Story/Snapshot authority. Give the World
+    # writer the actual Host-frozen nested values, not a vague instruction to
+    # reconstruct them by searching the repository; the independent semantic
+    # comparator still verifies every frozen leaf.
+    frozen_world_block=""
+    if step=="PREIMAGE_WORLD":
+        import preimage_authority_snapshot
+        import preimage_task_contract
+        from agents import world_prepare_model_producer
+        snapshot=preimage_authority_snapshot.build(ep,write=False)
+        task=preimage_task_contract.task_contract(ep,"WORLD_PREPARE",snapshot,resume=True)
+        frozen=world_prepare_model_producer.freeze_task(ep,task)
+        frozen_world_block=(
+            "<HOST_FROZEN_WORLD>\\n"
+            + json.dumps(frozen["input_contract"]["world_prepare_capsule"]["obligations"]["scopes"],
+                         ensure_ascii=False,sort_keys=True)
+            + "\\n</HOST_FROZEN_WORLD>"
+        )
     return f"""You are a bounded Story OS V2.1 scoped worker for exactly {rel}.
 Use the derived Execution Capsule first; do NOT reread the entire repository policy stack by default.
 Open authoritative source files listed by the capsule only when details are missing or a conflict must be resolved.
@@ -550,6 +568,8 @@ Read the embedded FAST_RUNTIME_INDEX first. Do NOT recursively scan the reposito
 <EXECUTION_CAPSULE>
 {json.dumps(capsule,ensure_ascii=False,indent=2)}
 </EXECUTION_CAPSULE>
+
+{frozen_world_block}
 
 {request_block(ep,step)}
 

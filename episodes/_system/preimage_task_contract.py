@@ -448,6 +448,119 @@ def plan_tasks(ep: Path, snapshot: dict, *, resume: bool = False) -> list[dict]:
     return tasks
 
 
+
+def seal_scoped_native_candidate(ep: Path, task: dict, model_log: str | Path, *, log_start_offset: int = 0) -> dict:
+    """Bind the *Host's* source-authority digest to a completed native model payload.
+
+    A scoped model is allowed to author only task-owned payload. It must not be
+    entrusted to transcribe 64-character input hashes into the final Candidate.
+    This function is invoked only after the CLI returned zero and its real JSONL
+    has a completed turn. It saves the model-authored bytes as an immutable
+    diagnostic before writing a Host-bound candidate; it never repairs an
+    incomplete semantic payload, forces an outcome, or fabricates telemetry.
+    """
+    import copy
+    import agent_shadow_compare
+
+    ep = Path(ep).resolve()
+    log = Path(model_log).resolve()
+    expected_log = (ep / "meta/scoped-workers").resolve()
+    if not log.is_file() or not log.is_relative_to(expected_log):
+        return {"status": "REFUSED", "errors": ["native model log outside declared scoped-worker evidence"]}
+    if type(log_start_offset) is not int or not 0 <= log_start_offset <= log.stat().st_size:
+        return {"status": "REFUSED", "errors": ["native model log offset is not within the file"]}
+    # The scoped worker uses append-only JSONL across retries. Only this
+    # dispatch's new bytes may prove its completion; old successful turns
+    # must never stand in for the latest invocation.
+    with log.open("rb") as reader:
+        reader.seek(log_start_offset)
+        current_log_bytes = reader.read()
+    events = []
+    for line in current_log_bytes.decode("utf-8", "replace").splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(event, dict):
+            events.append(event)
+    if (sum(e.get("type") == "thread.started" for e in events) != 1
+            or sum(e.get("type") == "turn.completed" for e in events) != 1
+            or any(e.get("type") == "turn.failed" for e in events)):
+        return {"status": "REFUSED", "errors": ["native Codex completed-turn proof missing or ambiguous"]}
+    p = candidate_path(ep, task["task_type"])
+    if not p.is_file():
+        return {"status": "REFUSED", "errors": ["scoped model did not write a Candidate"]}
+    original = p.read_bytes()
+    before = sha(p)
+    model_candidate = story_json.read_json(p, default=None)
+    if not isinstance(model_candidate, dict):
+        return {"status": "REFUSED", "errors": ["model Candidate is not a JSON object"]}
+    # These structural identities must already be correct. Only the
+    # source-authority SHA is Host-owned; an invented task/snapshot/scope
+    # can never be reinterpreted as the current worker.
+    if (model_candidate.get("task_id") != task["task_id"]
+            or model_candidate.get("task_type") != task["task_type"]
+            or model_candidate.get("snapshot_id") != task["snapshot_id"]
+            or set(model_candidate.get("authority_scope") or []) != set(task["authority_scope"])):
+        return {"status": "REFUSED", "errors": ["model Candidate task, snapshot, or scope identity mismatch"]}
+    sealed = copy.deepcopy(model_candidate)
+    sealed["source_authority_sha256"] = copy.deepcopy(
+        task["input_contract"]["source_authority_sha256"]
+    )
+    errors = verify_candidate(sealed, task)
+    if errors:
+        return {"status": "REFUSED", "errors": errors}
+    # Independent domain semantics use the actual frozen Host obligations.
+    # No blanket acceptance of a structurally well-formed World/Visual payload.
+    kind = task["task_type"]
+    if kind == "CHARACTER_FINALIZE":
+        semantic = agent_shadow_compare.compare_character_finalize_semantics(task, sealed)
+    elif kind == "WORLD_PREPARE":
+        from agents import world_prepare_model_producer
+        frozen = world_prepare_model_producer.freeze_task(ep, task)
+        semantic = agent_shadow_compare.compare_world_prepare_semantics(frozen, sealed)
+    elif kind == "VISUAL_NARRATIVE_PREPARE":
+        from agents import visual_narrative_prepare_model_producer
+        frozen = visual_narrative_prepare_model_producer.freeze_task(ep, task)
+        if not visual_narrative_prepare_model_producer.frozen_sources_unchanged(ep, frozen):
+            return {"status": "REFUSED", "errors": ["frozen Visual sources changed"]}
+        semantic = agent_shadow_compare.compare_visual_narrative_semantics(frozen, sealed)
+    else:
+        semantic = {"pass": True, "errors": []}
+    if semantic.get("pass") is not True:
+        return {"status": "REFUSED", "errors": semantic.get("errors") or ["domain semantic contract failed"]}
+    # Write a separate raw model artifact and proof BEFORE replacing any
+    # Candidate. Old failed candidates are not touched by this path.
+    if not isinstance(sealed.get("evidence", []), list):
+        return {"status": "REFUSED", "errors": ["model Candidate evidence is not a list"]}
+    recovery = ep / "meta/runtime/native-host-envelope-archive" / (
+        str(task["task_id"]) + "-" + str(before) + ".json"
+    )
+    recovery.parent.mkdir(parents=True, exist_ok=True)
+    with recovery.open("xb") as h:
+        h.write(original)
+    provenance = {
+        "mode": "host_bound_scoped_native_candidate",
+        "original_candidate_sha256": before,
+        "original_candidate_path": recovery.relative_to(ep).as_posix(),
+        "native_model_log_sha256": hashlib.sha256(current_log_bytes).hexdigest(),
+        "native_model_log_start_offset": log_start_offset,
+        "source_authority_digest_origin": "trusted_preimage_input_snapshot",
+        "model_turn_completed": True,
+        "authoritative_payload_unchanged": sealed.get("payload") == model_candidate.get("payload"),
+    }
+    sealed.setdefault("evidence", [])
+    if not isinstance(sealed["evidence"], list):
+        return {"status": "REFUSED", "errors": ["model Candidate evidence is not a list"]}
+    sealed["evidence"].append(provenance)
+    # Never fill unavailable token counts / elapsed seconds with guesses.
+    if sha(p) != before:
+        return {"status": "REFUSED", "errors": ["Candidate changed during Host sealing"]}
+    story_json.write_json(p, sealed)
+    return {"status": "PASS", "original_candidate_sha256": before,
+            "sealed_candidate_sha256": sha(p), "proof": provenance}
+
+
 def candidate_template(task: dict, payload: dict) -> dict:
     """Helper for host integrations/tests; callers supply independently created payload."""
     return {
