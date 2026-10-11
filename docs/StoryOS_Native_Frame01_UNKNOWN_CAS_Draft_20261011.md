@@ -32,6 +32,12 @@
 
 准入要求包括 STORYOS_TEST_MYSQL_APPROVAL 显式值、独立 Docker 容器标签 storyos.test-only=true、非 3306/3307 的 127.0.0.1 映射、专用非 root 凭据及 storyos_isolated_test_ 前缀数据库。无准入时不得运行任何真实测试写入或拿生产数据库替代。测试结束按 TEST_ 命名空间删除合成数据，不修改正式 Episode、生产 MySQL、模型生成或像素审核。
 
+## Queue 恢复幂等证明与 Review Backfill（新增）
+
+首帧成功追认后，Queue 原始 `generated` 项的 `unknown_reconciliation` 必须完整等于 Runner SHA 构造的审计回执（kind、Evidence SHA、Runner Request ID、Generation Key、Attempt#1、Frame Contract SHA、Prompt Package SHA、`pixel_review_pass=false`）。重入还需验证原 Runtime Transaction ID、执行 phase 为 COMMITTED、已完成时间、无残留外部阻断或技术失败。任何伪造的像素 PASS、模型认证、附加回执字段或缺失必须 fail closed。
+
+测试通过真正的 `review_queue.reconcile_generated` 对中断时漏入队的 generated 图片补挂 FAST_SCOUT：要求绑定同一 Generation Key、候选 SHA、双契约 SHA，Review 仍 queued 且 receipt=None；第二次重入不得重复入队。此测试只使用合成临时 PNG 和内存 Queue，不触发视觉模型，也不会将 baseline 变成已审核。
+
 ## 验收范围
 
 Windows hermetic 回归含同事务回滚模拟、完整 Ledger 追认/投影模拟、SHA 与模型门禁、防止伪造成功与像素审核、未批准基线时三帧继续阻断、Queue 保存中断后幂等恢复，未触碰正式 Episode DB；此类测试不是实际生产通过证明。

@@ -288,6 +288,40 @@ def reconcile_frame01_unknown(ep: Path, *, expected_fencing_token: int,
         connection.close()
 
 
+def _expected_queue_reconciliation(source: dict) -> dict:
+    """Immutable recovery claim: candidate provenance is not a review PASS."""
+    return {
+        "kind": "NATIVE_RUNNER_THREAD_SCOPED_SHA",
+        "evidence_sha256": source["evidence_sha256"],
+        "runner_request_id": source["runner_request_id"],
+        "generation_key": source["generation_key"],
+        "attempt_index": 1,
+        "frame_contract_sha256": source["frame_contract_sha256"],
+        "prompt_package_sha256": source["prompt_package_sha256"],
+        "pixel_review_pass": False,
+    }
+
+
+def _assert_recovered_queue_item(item: dict, source: dict) -> None:
+    """Refuse a replay if the Queue's recovery proof or review flags drift."""
+    if (item.get("status") != "generated"
+            or item.get("output_path") != source["candidate_repo_rel"]
+            or item.get("generation_key") != source["generation_key"]
+            or int(item.get("attempt_index") or 0) != 1
+            or item.get("frame_contract_sha256") != source["frame_contract_sha256"]
+            or item.get("prompt_package_sha256") != source["prompt_package_sha256"]
+            or item.get("unknown_reconciliation") != _expected_queue_reconciliation(source)
+            or (item.get("execution") or {}).get("phase") != "COMMITTED"
+            or (item.get("execution") or {}).get("transaction_id")
+            != source["runtime_transaction_id"]
+            or not item.get("completed_at")
+            or item.get("last_error") not in (None, "")
+            or any(item.get(key) for key in (
+                "external_block", "technical_failure_code", "retry_exhausted"
+            ))):
+        _deny("NATIVE_RECONCILIATION_QUEUE_IDEMPOTENCY_DRIFT")
+
+
 def reconcile_frame01_and_queue(ep: Path, *, expected_fencing_token: int,
                                  expected_evidence_sha256: str) -> dict:
     """Serial, crash-resumable handoff; never starts an image or visual review.
@@ -321,14 +355,7 @@ def reconcile_frame01_and_queue(ep: Path, *, expected_fencing_token: int,
             _deny("NATIVE_RECONCILIATION_QUEUE_IDENTITY_DRIFT")
         item = rows[0]
         if item.get("status") == "generated":
-            if (item.get("output_path") != source["candidate_repo_rel"]
-                    or item.get("generation_key") != source["generation_key"]
-                    or int(item.get("attempt_index") or 0) != 1
-                    or item.get("frame_contract_sha256") != source["frame_contract_sha256"]
-                    or item.get("prompt_package_sha256") != source["prompt_package_sha256"]
-                    or (item.get("unknown_reconciliation") or {}).get("evidence_sha256")
-                    != source["evidence_sha256"]):
-                _deny("NATIVE_RECONCILIATION_QUEUE_IDEMPOTENCY_DRIFT")
+            _assert_recovered_queue_item(item, source)
             return {**confirmed, "queue_reconciled": True, "queue_idempotent": True,
                     "visual_review_pass": False}
         if item.get("status") != "external_blocked":
@@ -343,16 +370,7 @@ def reconcile_frame01_and_queue(ep: Path, *, expected_fencing_token: int,
         item["frame_contract_sha256"] = source["frame_contract_sha256"]
         item["prompt_package_sha256"] = source["prompt_package_sha256"]
         item["completed_at"] = scheduler_core.now()
-        item["unknown_reconciliation"] = {
-            "kind": "NATIVE_RUNNER_THREAD_SCOPED_SHA",
-            "evidence_sha256": source["evidence_sha256"],
-            "runner_request_id": source["runner_request_id"],
-            "generation_key": source["generation_key"],
-            "attempt_index": 1,
-            "frame_contract_sha256": source["frame_contract_sha256"],
-            "prompt_package_sha256": source["prompt_package_sha256"],
-            "pixel_review_pass": False,
-        }
+        item["unknown_reconciliation"] = _expected_queue_reconciliation(source)
         item["last_error"] = None
         item.pop("external_block", None)
         item.pop("technical_failure_code", None)

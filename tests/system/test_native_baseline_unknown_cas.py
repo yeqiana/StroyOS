@@ -338,6 +338,138 @@ def test_mysql_atomic_rollback_if_ledger_write_raises(example, monkeypatch):
     assert db.mutations == 0
 
 
+
+
+
+@pytest.mark.parametrize("drift", [
+    "status", "output", "generation", "attempt_index", "frame_contract",
+    "prompt_package", "recovery_missing", "recovery_kind", "recovery_extra",
+    "evidence_sha", "runner_request_id", "recovery_generation",
+    "recovery_attempt_index", "recovery_frame_contract",
+    "recovery_prompt_package", "pixel_review_forged",
+    "transaction_id", "phase", "completed_at",
+    "last_error", "external_block", "technical_failure_code", "retry_exhausted",
+])
+def test_generated_queue_replay_rejects_forged_receipt(example, drift):
+    ep, raw, candidate, log, evidence_path, evidence, queue, _db = example
+    item = copy.deepcopy(queue["items"][0])
+    source = {
+        "candidate_repo_rel": candidate.relative_to(reconcile.ROOT).as_posix(),
+        "generation_key": evidence["generation_key"],
+        "frame_contract_sha256": evidence["frame_contract_sha256"],
+        "prompt_package_sha256": evidence["prompt_package_sha256"],
+        "evidence_sha256": sha(evidence_path.read_bytes()),
+        "runner_request_id": evidence["native_runner_request_id"],
+        "runtime_transaction_id": item["execution"]["transaction_id"],
+    }
+    item.update(
+        status="generated",
+        output_path=source["candidate_repo_rel"],
+        generation_key=source["generation_key"],
+        attempt_index=1,
+        frame_contract_sha256=source["frame_contract_sha256"],
+        prompt_package_sha256=source["prompt_package_sha256"],
+        unknown_reconciliation=reconcile._expected_queue_reconciliation(source),
+        completed_at="2026-10-11T21:00:00Z",
+        last_error=None,
+    )
+    item["execution"]["phase"] = "COMMITTED"
+    for key in ("external_block", "technical_failure_code", "retry_exhausted"):
+        item.pop(key, None)
+    reconcile._assert_recovered_queue_item(item, source)
+
+    receipt = item["unknown_reconciliation"]
+    if drift == "status":
+        item["status"] = "reviewed"
+    elif drift == "output":
+        item["output_path"] = "fabricated.png"
+    elif drift == "generation":
+        item["generation_key"] = "forged"
+    elif drift == "attempt_index":
+        item["attempt_index"] = 2
+    elif drift == "frame_contract":
+        item["frame_contract_sha256"] = "0" * 64
+    elif drift == "prompt_package":
+        item["prompt_package_sha256"] = "0" * 64
+    elif drift == "recovery_missing":
+        item.pop("unknown_reconciliation")
+    elif drift == "recovery_kind":
+        receipt["kind"] = "FAKE"
+    elif drift == "recovery_extra":
+        receipt["provider_model_attested"] = True
+    elif drift == "evidence_sha":
+        receipt["evidence_sha256"] = "0" * 64
+    elif drift == "runner_request_id":
+        receipt["runner_request_id"] = "0" * 32
+    elif drift == "recovery_generation":
+        receipt["generation_key"] = "forged"
+    elif drift == "recovery_attempt_index":
+        receipt["attempt_index"] = 2
+    elif drift == "recovery_frame_contract":
+        receipt["frame_contract_sha256"] = "0" * 64
+    elif drift == "recovery_prompt_package":
+        receipt["prompt_package_sha256"] = "0" * 64
+    elif drift == "pixel_review_forged":
+        receipt["pixel_review_pass"] = True
+    elif drift == "transaction_id":
+        item["execution"]["transaction_id"] = "0" * 32
+    elif drift == "phase":
+        item["execution"]["phase"] = "FAKE_COMMITTED"
+    elif drift == "completed_at":
+        item.pop("completed_at")
+    elif drift == "last_error":
+        item["last_error"] = "unfinished"
+    elif drift == "external_block":
+        item["external_block"] = {"reason": "STILL_BLOCKED"}
+    elif drift == "technical_failure_code":
+        item["technical_failure_code"] = "STILL_FAILED"
+    elif drift == "retry_exhausted":
+        item["retry_exhausted"] = True
+    with pytest.raises(reconcile.NativeReconciliationDenied, match="QUEUE_IDEMPOTENCY_DRIFT"):
+        reconcile._assert_recovered_queue_item(item, source)
+
+
+
+def test_scheduler_reconciles_missed_review_enqueue_without_false_pass(example, monkeypatch):
+    """Exercise the scheduler's actual review backfill path, not just enqueue()."""
+    import review_queue
+
+    ep, _raw, candidate, _log, evidence_path, evidence, queue, _db = example
+    source = copy.deepcopy(queue["items"][0])
+    source.update(
+        status="generated",
+        output_path=str(candidate),  # Absolute path to the hermetic fake PNG.
+        generation_key=evidence["generation_key"],
+        attempt_index=1,
+        frame_contract_sha256=evidence["frame_contract_sha256"],
+        prompt_package_sha256=evidence["prompt_package_sha256"],
+        unknown_reconciliation={"pixel_review_pass": False},
+    )
+    q = {"items": [source]}
+    policy = {"role": "vision.fast", "model_policy_sha256": "d" * 64,
+              "model": "gpt-6-luna"}
+    monkeypatch.setattr(review_queue, "telemetry", lambda *_args, **_kwargs: None)
+    digest = lambda p: sha(p.read_bytes())
+
+    created = review_queue.reconcile_generated(
+        q, episode=ep, policy=policy, sha256_file=digest,
+    )
+    assert len(created) == 1
+    review = created[0]
+    assert review["frame"] == 1
+    assert review["generation_key"] == evidence["generation_key"]
+    assert review["attempt_index"] == 1
+    assert review["artifact_sha256"] == sha(CANDIDATE)
+    assert review["frame_contract_sha256"] == evidence["frame_contract_sha256"]
+    assert review["prompt_package_sha256"] == evidence["prompt_package_sha256"]
+    assert review["status"] == "queued"
+    assert review["receipt"] is None
+    assert review_queue.reconcile_generated(
+        q, episode=ep, policy=policy, sha256_file=digest,
+    ) == []
+    assert len(q[review_queue.QUEUE_KEY]) == 1
+    assert q[review_queue.QUEUE_KEY][0]["status"] == "queued"
+
 def test_queue_crash_after_mysql_commit_only_resumes_original_item(example, monkeypatch):
     from contextlib import contextmanager
     ep, raw, candidate, log, evidence_path, evidence, original_queue, db = example
