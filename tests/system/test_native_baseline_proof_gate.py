@@ -223,4 +223,6 @@ def test_worker_requires_pixel_event_before_raw_commit():
     source = (SYSTEM / "image_worker_pool.py").read_text(encoding="utf-8")
     assert source.index("production_native_baseline_proof.record_unreviewed_pixel(") < source.index(
         "raw_candidate_budget.commit(ep,budget_token,reason=\"normalized_candidate_exists\")")
-    assert "native_baseline_proof_unverified_raw_consumed" in source
+    assert "NATIVE_BASELINE_PIXEL_TOOL_PROOF_UNVERIFIED" in source
+    assert "release_ok,release_row = raw_candidate_budget.release(" in source
+    assert "native_baseline_proof_unverified_raw_consumed" not in source

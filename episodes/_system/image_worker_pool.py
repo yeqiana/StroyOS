@@ -378,12 +378,17 @@ def execute(ep,item,timeout,codex):
                 production_native_baseline_proof.record_unreviewed_pixel(
                     ep, item, generation_lease, log, out, runner_request_id)
             except Exception as exc:
-                # The provider gateway has already consumed this real Attempt.
-                # Do not release the lease as though dispatch never occurred.
-                # Preserve its consumed budget and fail closed for read-only
-                # operator reconciliation of an unverifiable pixel.
-                raw_candidate_budget.commit(
-                    ep, budget_token, reason="native_baseline_proof_unverified_raw_consumed")
+                # IMPORTANT: post-dispatch unverifiable provider evidence is
+                # OUTCOME_UNKNOWN, NOT SUCCEEDED and NOT free to regenerate.
+                # The authority.release() path dispatches atomically to
+                # GenerationAttempt.mark_outcome_unknown() when the gateway
+                # already committed dispatch. It is NOT a pre-dispatch refund.
+                release_ok,release_row = raw_candidate_budget.release(
+                    ep, budget_token, reason="NATIVE_BASELINE_PIXEL_TOOL_PROOF_UNVERIFIED")
+                if not release_ok:
+                    raise RuntimeError(
+                        "NATIVE_BASELINE_ATTEMPT_RECONCILIATION_REQUIRED: "
+                        + str(release_row.get("decision") or "unknown")) from exc
                 message = f"NATIVE_BASELINE_PIXEL_TOOL_PROOF_UNVERIFIED: {type(exc).__name__}"
                 result = {"returncode": 94, "stdout": message, "payload": payload,
                           "output": out, "log": log, "attempt": attempt,
