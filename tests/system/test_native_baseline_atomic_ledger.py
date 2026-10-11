@@ -503,6 +503,179 @@ def test_real_repository_idempotent_replay_refuses_typed_drift(sample, monkeypat
                                         already_succeeded=True)
     assert db.state == before
 
+
+
+
+def _read_only_preview_env(sample, monkeypatch):
+    import native_baseline_readonly_preflight as preflight
+
+    source, ledger = sample
+    source["queue_item_id"] = "synthetic-queue-01"
+    source["prompt_package_sha256"] = "b" * 64
+    original = ledger["frames"]["01"]["attempts"][0]
+    captured = {"queries": 0, "sql_writes": 0}
+    row_frame = {
+        "episode_id": "test-storage-00-06",
+        "frame_no": 1,
+        "status": "TECH_FAILED",
+        "current_attempt_id": original["attempt_id"],
+        "contract_sha256": source["frame_contract_sha256"],
+        "approved_artifact_id": None,
+    }
+    row_attempt = {
+        "episode_id": "test-storage-00-06",
+        "frame_no": 1,
+        "attempt_no": 1,
+        "attempt_id": original["attempt_id"],
+        "attempt_kind": "original",
+        "status": "technical_failure",
+        "payload": deepcopy(original),
+    }
+    state = {"episode_id": "synthetic-logical-00-06",
+             "attempts_consumed": 1, "active_attempt_index": None, "fencing_counter": 5}
+    generation_raw = {
+        "FENCING_TOKEN": 5, "GENERATION_KEY": source["generation_key"],
+        "STATUS": "OUTCOME_UNKNOWN",
+        "FAILURE_CLASS": reconcile.EXPECTED_REASON,
+        "RESULT_REF": None,
+        "DISPATCH_COMMITTED_AT": datetime(2026, 10, 11, 12, 7),
+        "CONTROLLER_MODEL": "gpt-6-luna",
+        "PAYLOAD_MODEL": "gpt-image-2.5-flare",
+        "PAYLOAD_QUALITY": "high",
+        "PROVIDER": "codex_subscription",
+        "MODEL_POLICY_SHA256": "a" * 64,
+        "CONTEXT": {
+            "scope": "visual_lock",
+            "visual_lock_frame": 1,
+            "queue_item_id": source["queue_item_id"],
+            "tool_capability_claim": "UNKNOWN_NOT_YET_PROVEN",
+            "frame_contract_sha256": source["frame_contract_sha256"],
+            "prompt_package_sha256": source["prompt_package_sha256"],
+            "controller_effort": "high",
+            "model_policy_sha256": "a" * 64,
+        },
+    }
+    captured["generation_raw"] = generation_raw
+    attempt = {
+        "status": "OUTCOME_UNKNOWN",
+        "generation_key": source["generation_key"],
+        "failure_class": reconcile.EXPECTED_REASON,
+        "result_ref": None,
+        "dispatch_committed_at": datetime(2026, 10, 11, 12, 7),
+    }
+
+    class ReadOnlySqlConnection:
+        def close(self): pass
+        def query_one(self, statement, _args):
+            assert statement.lstrip().startswith("SELECT")
+            assert "FOR UPDATE" not in statement
+            captured["queries"] += 1
+            if "TB_GENERATION_ATTEMPT" in statement:
+                return deepcopy(generation_raw)
+            if "TB_PRODUCTION_FRAME" in statement:
+                return {
+                    "EPISODE_ID": row_frame["episode_id"],
+                    "FRAME_NO": row_frame["frame_no"],
+                    "STATUS": row_frame["status"],
+                    "CURRENT_ATTEMPT_ID": row_frame["current_attempt_id"],
+                    "CONTRACT_SHA256": row_frame["contract_sha256"],
+                    "APPROVED_ARTIFACT_ID": row_frame["approved_artifact_id"],
+                }
+            raise AssertionError("unrecognized read-only SELECT")
+        def query_all(self, statement, _args):
+            assert statement.lstrip().startswith("SELECT")
+            assert "FOR UPDATE" not in statement
+            captured["queries"] += 1
+            if "TB_PRODUCTION_ATTEMPT" in statement:
+                return [{
+                    "EPISODE_ID": row_attempt["episode_id"],
+                    "FRAME_NO": row_attempt["frame_no"],
+                    "ATTEMPT_NO": row_attempt["attempt_no"],
+                    "ATTEMPT_ID": row_attempt["attempt_id"],
+                    "ATTEMPT_KIND": row_attempt["attempt_kind"],
+                    "STATUS": row_attempt["status"],
+                    "PAYLOAD": deepcopy(row_attempt["payload"]),
+                }]
+            raise AssertionError("unrecognized read-only SELECT")
+
+    monkeypatch.setattr(preflight.cas, "verify_frame01_sources", lambda _ep: source)
+    monkeypatch.setattr(preflight.ledger_store, "load_authority", lambda _ep: ledger)
+    monkeypatch.setattr(preflight.attempt_authority, "frame_key", lambda *_: "frame-01")
+    monkeypatch.setattr(preflight.attempt_authority, "load_asset_state", lambda *_: state)
+    monkeypatch.setattr(preflight.attempt_authority, "load_attempt", lambda *_: attempt)
+    monkeypatch.setattr(preflight.attempt_authority, "_connect", ReadOnlySqlConnection)
+    monkeypatch.setattr(preflight, "storage_episode_id", lambda _ep: "test-storage-00-06")
+    return preflight, source, ledger, row_frame, row_attempt, state, attempt, captured
+
+
+def test_readonly_preflight_is_evidence_only_and_never_authorizes_mutation(sample, monkeypatch):
+    preflight, source, _ledger, _frame, _attempt, _state, _generation, captured = (
+        _read_only_preview_env(sample, monkeypatch)
+    )
+    result = preflight.inspect(source["episode"])
+    assert result["status"] == "READ_ONLY_EVIDENCE_READY_TEST_DB_STILL_REQUIRED"
+    assert result["source_evidence_sha256"] == source["evidence_sha256"]
+    assert result["candidate_sha256"] == source["candidate_sha256"]
+    assert result["ledger_frame_status"] == "TECH_FAILED"
+    assert result["source_model_attested"] is False
+    assert result["pixel_review_pass"] is False
+    assert result["authorized_to_mutate_production"] is False
+    assert result["real_mysql_integration_tests_passed"] is False
+    assert result["sql_writes"] == result["model_calls"] == captured["sql_writes"] == 0
+    assert captured["queries"] == 3
+
+
+@pytest.mark.parametrize("drift", [
+    "attempt_consumed", "attempt_active", "fencing", "generation_status",
+    "generation_key", "failure_class", "result_ref", "missing_dispatch",
+    "typed_frame_status", "typed_frame_contract", "typed_frame_id",
+    "typed_attempt_status", "typed_attempt_payload", "typed_attempt_namespace",
+    "raw_fencing", "raw_payload_model", "raw_context_contract", "raw_context_policy",
+])
+def test_readonly_preflight_denies_cross_authority_drift(sample, monkeypatch, drift):
+    preflight, source, _ledger, frame, typed, state, generation_row, captured = (
+        _read_only_preview_env(sample, monkeypatch)
+    )
+    if drift == "attempt_consumed":
+        state["attempts_consumed"] = 2
+    elif drift == "attempt_active":
+        state["active_attempt_index"] = 1
+    elif drift == "fencing":
+        state["fencing_counter"] = 0
+    elif drift == "generation_status":
+        generation_row["status"] = "SUCCEEDED"
+    elif drift == "generation_key":
+        generation_row["generation_key"] = "fake"
+    elif drift == "failure_class":
+        generation_row["failure_class"] = "fake"
+    elif drift == "result_ref":
+        generation_row["result_ref"] = "fake"
+    elif drift == "missing_dispatch":
+        generation_row["dispatch_committed_at"] = None
+    elif drift == "typed_frame_status":
+        frame["status"] = "ORIGINAL_READY"
+    elif drift == "typed_frame_contract":
+        frame["contract_sha256"] = "0" * 64
+    elif drift == "typed_frame_id":
+        frame["current_attempt_id"] = "fake"
+    elif drift == "typed_attempt_status":
+        typed["status"] = "success"
+    elif drift == "typed_attempt_payload":
+        typed["payload"]["result"] = "success"
+    elif drift == "typed_attempt_namespace":
+        typed["episode_id"] = "fake"
+    elif drift == "raw_fencing":
+        captured["generation_raw"]["FENCING_TOKEN"] = 4
+    elif drift == "raw_payload_model":
+        captured["generation_raw"]["PAYLOAD_MODEL"] = "fake"
+    elif drift == "raw_context_contract":
+        captured["generation_raw"]["CONTEXT"]["frame_contract_sha256"] = "0" * 64
+    elif drift == "raw_context_policy":
+        captured["generation_raw"]["CONTEXT"]["model_policy_sha256"] = "0" * 64
+    with pytest.raises(preflight.NativeFrame01PreflightDenied):
+        preflight.inspect(source["episode"])
+    assert captured["sql_writes"] == 0
+
 def test_atomic_ledger_refuses_non_mysql_mode(sample, monkeypatch):
     source, document = sample
     monkeypatch.setattr(atomic.ledger_store, "mode", lambda: "json")

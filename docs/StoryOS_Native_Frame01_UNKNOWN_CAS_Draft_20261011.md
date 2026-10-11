@@ -40,6 +40,16 @@
 
 **正式 Episode 已核实 `fast_frame_scout.required=false`：FAST_SCOUT 当前未启用，不应误认为通用 Review Queue 补挂等于本剧集 baseline 审核已派发。** 对这条剧集，正确路径是 `visual_lock_baseline_gate.awaiting_review` 在原生首帧恢复为 generated、独立 baseline 审核尚未 PASS、且三帧仍依赖 baseline 时返回 true；随后 `next_action` 选择 `REVIEW_ORDINARY_BASELINE`，由 `vision_review_executor` 经本机原生 Codex 执行（不得由 WebCodex 执行）。已新增只读/合成回归验证：即使 FAST_SCOUT 关闭仍欠 baseline 视觉审核；若已有 SHA-bound FAIL 或修复待生图则不能无界重复审核，若正式批准则无需再审。
 
+## 严格零写入 Frame01 Preflight
+
+新增 `episodes/_system/native_baseline_readonly_preflight.py`，只读检查官方 Episode 原 Runner 图片证明、RAW/规范化 PNG SHA、Prompt/Frame Contract、MySQL Generation Attempt 原行（含 Fencing、原 Context、原 Payload 模型/Provider）、完整 Ledger BLOB 及 Typed Frame/Attempt 投影。纯内存尝试 `TECH_FAILED → ORIGINAL_READY` 并核对来源。生产数据库只使用非锁定 SELECT；**不执行 SELECT FOR UPDATE、CAS、事务更新、Queue 改动或模型调用**。任何证据漂移退出 2。
+
+在代码完成安全合并后，可由本机 Python 运行：
+
+`python episodes/_system/native_baseline_readonly_preflight.py episodes/00_独立篇/06_五十亩山地之后_全新重制`
+
+若完全匹配，输出 `READ_ONLY_EVIDENCE_READY_TEST_DB_STILL_REQUIRED`、`authorized_to_mutate_production=false`、`real_mysql_integration_tests_passed=false`、`pixel_review_pass=false`。**这个状态绝不是正式追认授权**。经本轮运行时动态加载此隔离分支的新模块对真实 canonical Episode 的只读预演已通过，未写任何正式 SQL。负向测试覆盖 fencing/Context/model 与 typed 投影漂移。
+
 ## 验收范围
 
 Windows hermetic 回归含同事务回滚模拟、完整 Ledger 追认/投影模拟、SHA 与模型门禁、防止伪造成功与像素审核、未批准基线时三帧继续阻断、Queue 保存中断后幂等恢复，未触碰正式 Episode DB；此类测试不是实际生产通过证明。
