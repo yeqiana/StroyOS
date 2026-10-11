@@ -17,7 +17,7 @@ export const WorkflowWorkspaceView: React.FC = () => {
   const [filter,setFilter] = useState('ALL');
   const [keyword,setKeyword] = useState('');
   const [page,setPage]=useState(1);
-  const [pageSize,setPageSize]=useState(15);
+  const [pageSize,setPageSize]=useState(20);
   const [selected,setSelected] = useState<RuntimeStatusSummary | null>(null);
   const generation = useRef(0);
   const pagingInFlight = useRef(false);
@@ -82,8 +82,8 @@ export const WorkflowWorkspaceView: React.FC = () => {
       }
     }
   };
-  return <div id="storyos-workflow-workspace" className="w-full min-w-0 space-y-4 pb-6 text-[var(--text-primary)]">
-    <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-4">
+  return <div id="storyos-workflow-workspace" className="w-full min-w-0 space-y-3 pb-5 text-[var(--text-primary)]">
+    <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-3">
       <div><h1 className="os-page-heading">生产流程</h1><p className="mt-1 text-[12px] text-[var(--text-secondary)]">标准阶段顺序与作品所处阶段 · 只读投影</p></div>
       <Button onClick={()=>setReload(v=>v+1)} disabled={loading} icon={<RefreshCw size={15}/>}>刷新</Button>
     </header>
@@ -96,7 +96,7 @@ export const WorkflowWorkspaceView: React.FC = () => {
       <p className="mt-2 text-[12px] text-[var(--text-secondary)]">仅表示阶段定义，不代表已有运行记录通过门禁。</p>
     </details>
     <section className="min-w-0 space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="os-section-heading">各作品所处阶段</h2><p className="mt-1 text-[11px] text-[var(--text-tertiary)]">已载入 {items.length}{total!==null?' / '+total:''} 条阶段记录 · 当前匹配 {filtered.length} 条{hasMore?' · 筛选只针对已读取数据':''}</p></div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-2"><div className="flex flex-wrap items-baseline gap-3"><h2 className="os-section-heading">各作品所处阶段</h2><p className="text-[11px] text-[var(--text-tertiary)]">已载入 {items.length}{total!==null?' / '+total:''} 条 · 当前匹配 {filtered.length} 条{hasMore?' · 筛选只针对已读取数据':''}</p></div>
       <div className="os-console-filterbar flex flex-wrap items-center gap-2"><Input aria-label="搜索已载入作品" placeholder="搜索作品名称 / 标识" value={keyword} onChange={e=>{setKeyword(e.target.value);setPage(1);}} allowClear prefix={<Search size={14}/>} className="!w-[230px] max-w-full"/><Select aria-label="筛选阶段" value={filter} onChange={v=>{setFilter(v);setPage(1);}} className="w-[170px] shrink-0" options={[{value:'ALL',label:'全部阶段'},...STAGE_ORDER.map(value=>({value,label:stageLabel(value)}))]}/>{(keyword||filter!=='ALL')&&<Button size="small" aria-label="清除工作流筛选" onClick={()=>{setKeyword('');setFilter('ALL');setPage(1);}}>重置筛选</Button>}</div>
       </div>
       {error&&<p role="alert" className="flex items-center gap-2 border-l-2 border-[var(--warning)] py-2 pl-3 text-[12px] text-[var(--warning)]"><AlertCircle size={15}/>{error}</p>}
@@ -111,7 +111,7 @@ export const WorkflowWorkspaceView: React.FC = () => {
           {title:'更新时间',key:'updated',width:170,sorter:(a,b)=>String(a.updated_at||a.observed_at||'').localeCompare(String(b.updated_at||b.observed_at||'')),render:(_,x)=><span title={x.updated_at||x.observed_at||''} className="text-[12px] tabular-nums text-[var(--text-secondary)]">{readableDate(x.updated_at||x.observed_at)}</span>},
           {title:'操作',key:'action',width:90,render:(_,x)=><Button type="link" size="small" onClick={event=>{event.stopPropagation();setSelected(x);}} aria-label={'查看阶段详情：'+(x.title||x.episode_ref||x.episode_id)}>详情</Button>}
         ]}
-        pagination={{current:Math.min(page,Math.max(1,Math.ceil(filtered.length/pageSize))),pageSize,total:filtered.length,showSizeChanger:true,pageSizeOptions:['10','15','30','50'],showTotal:(n,range)=>`${range[0]}–${range[1]} / 已载入 ${n}`,onChange:(v,s)=>{setPage(v);setPageSize(s);}}}/>
+        pagination={{current:Math.min(page,Math.max(1,Math.ceil(filtered.length/pageSize))),pageSize,total:filtered.length,showSizeChanger:true,pageSizeOptions:['10','20','30','50'],showTotal:(n,range)=>`${range[0]}–${range[1]} / 已载入 ${n}`,onChange:(v,s)=>{setPage(v);setPageSize(s);}}}/>
       {hasMore && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border-subtle)] pt-3 text-[12px] text-[var(--text-secondary)]"><span>继续加载的是下一批服务端记录，不等于翻页。</span><Button loading={loadingMore} disabled={loading||loadingMore} onClick={loadNext}>加载更多</Button></div>}
     </section>
     {selected&&<WorkflowDetailPanel selected={selected} onClose={()=>setSelected(null)}/>}

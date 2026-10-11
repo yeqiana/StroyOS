@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {Button,Checkbox,Input,Pagination,Progress,Table,Select} from 'antd';
+import {Button,Checkbox,Input,Pagination,Progress,Table,Select,Segmented} from 'antd';
 import {
   Play,
   Pause,
@@ -61,6 +61,7 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [stageFilter, setStageFilter] = useState<string>('all');
   const [onlyException, setOnlyException] = useState(false);
+  const [primaryView,setPrimaryView] = useState<'stages'|'history'>('stages');
   const [page,setPage] = useState(1);
   const [pageSize,setPageSize] = useState(10);
   useEffect(()=>setPage(1),[searchKeyword,statusFilter,stageFilter,onlyException]);
@@ -322,7 +323,7 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
         <div className="flex flex-col items-start gap-1">
           <h1 className="os-page-heading">
             生产监控
-          </h1><p className="mt-1.5 text-[12px] leading-5 text-[var(--text-secondary)]">实时状态以只读 API 为准；历史 Run 快照仅用于追溯。</p>
+          </h1><p className="mt-1 text-[12px] text-[var(--text-secondary)]">作品阶段证据与历史 Run 分开查看 · 本机文件不代表在线调度</p>
         </div>
 
         <div className="flex items-center gap-2 text-xs">
@@ -344,10 +345,16 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
         </div>
       </div>
 
-      <RuntimeAuthorityPanel items={runtimeRows} coverage={runtimeCoverage} hasMore={runtimeHasMore} loadingMore={runtimeLoadingMore} onLoadMore={loadNextRuntimePage} dataState={apiState} lastSync={lastSync}/>
-
-      {apiState !== 'ok' && <div role="status" className="flex flex-wrap items-center justify-between gap-2 border-l-2 border-[var(--warning)] px-3 py-2 text-[12px] text-[var(--text-secondary)]"><span>{apiState === 'loading' ? '正在读取 Platform API 阶段摘要…' : apiWarning}</span><span className="shrink-0 text-[var(--text-tertiary)]">{lastSync ? `最近获取 ${lastSync}` : '未获得有效在线证据'}</span></div>}
-      <p className="os-section-heading pt-3">历史工作区运行快照（非实时）</p>
+      <div className="os-console-toolbar flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-3" aria-label="生产监控主工作区切换">
+        <Segmented aria-label="生产监控视图" value={primaryView} onChange={value=>setPrimaryView(value as 'stages'|'history')}
+          options={[{value:'stages',label:`阶段证据 (${runtimeCoverage.loaded})`},{value:'history',label:`历史 Run (${runs.length})`}]}/>
+        <span className="text-[11px] text-[var(--text-tertiary)]">{primaryView==='stages'?'当前来源：Platform API 只读投影':'历史快照 · 非实时 · 未验证 Worker 心跳'}</span>
+      </div>
+      {primaryView==='stages' ? <section aria-label="阶段证据主视图" className="min-w-0 space-y-3">
+        {apiState !== 'ok' && <div role="status" className="flex flex-wrap items-center justify-between gap-2 border-l-2 border-[var(--warning)] px-3 py-2 text-[12px] text-[var(--text-secondary)]"><span>{apiState === 'loading' ? '正在读取 Platform API 阶段摘要…' : apiWarning}</span><span className="shrink-0 text-[var(--text-tertiary)]">{lastSync ? `最近获取 ${lastSync}` : '未获得有效在线证据'}</span></div>}
+        <RuntimeAuthorityPanel items={runtimeRows} coverage={runtimeCoverage} hasMore={runtimeHasMore} loadingMore={runtimeLoadingMore} onLoadMore={loadNextRuntimePage} dataState={apiState} lastSync={lastSync}/>
+      </section> : <section aria-label="历史 Run 主视图" className="min-w-0 space-y-3">
+      <p className="text-[12px] text-[var(--text-secondary)]">历史工作区运行快照（非实时），与本机阶段证据不同源；仅用于追溯。</p>
       {/* ======================= 1. Operational Status Bar ======================= */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-2 py-2.5 text-xs">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
@@ -489,6 +496,7 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
         />
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border-subtle)] px-3 py-3"><span className="text-[11px] text-[var(--text-tertiary)]">历史快照 · 匹配 {filteredRuns.length} 条</span><Pagination size="small" current={safePage} pageSize={pageSize} total={filteredRuns.length} showSizeChanger pageSizeOptions={["10","20","50","100"]} showTotal={n=>`共 ${n} 条`} onChange={(p,s)=>{setPage(p);setPageSize(s);}} /></div>
       </div>
+      </section>}
 
       {/* 极简详情抽屉 (不繁琐、无冗余AI堆砌) */}
       {selectedRunForDetail && (

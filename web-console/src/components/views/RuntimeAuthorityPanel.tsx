@@ -8,7 +8,7 @@ export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMor
   const [selected, setSelected] = useState<RuntimeStatusSummary | null>(null);
   const [page,setPage]=useState(1);
   const [stageFilter,setStageFilter]=useState('ALL');
-  const [pageSize,setPageSize]=useState(6);
+  const [pageSize,setPageSize]=useState(12);
   const stageChoices=Array.from(new Set(items.map(item=>item.production_stage).filter((stage):stage is string=>Boolean(stage))));
   const filtered=stageFilter==='ALL'?items:items.filter(item=>item.production_stage===stageFilter);
   const safePage=Math.min(page,Math.max(1,Math.ceil(filtered.length/pageSize)));
@@ -29,8 +29,8 @@ export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMor
   }, [ref]);
   const text = (value?: string | number | boolean | null) => value === null || value === undefined || value === '' ? '未提供' : String(value);
   return <section aria-label="只读状态记录及数据来源" className="min-w-0 overflow-hidden border-y border-[var(--border-subtle)] text-[12px] text-[var(--text-primary)]">
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-4 py-2.5">
-      <div><h2 className="os-section-heading">{items.some(item => item.state_source === 'local_workspace_episode_state_file') ? '本机作品状态文件记录' : '平台阶段证据'}</h2><p className="mt-1 text-[11px] text-[var(--text-tertiary)]">来自当前配置的只读状态 API；本机文件模式是磁盘证据，不代表在线 Runtime。</p></div>
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-3 py-2">
+      <div className="flex flex-wrap items-baseline gap-3"><h2 className="os-section-heading">{items.some(item => item.state_source === 'local_workspace_episode_state_file') ? '本机作品状态文件记录' : '平台阶段证据'}</h2><span className="text-[11px] text-[var(--text-tertiary)]">只读 · 非实时 Runtime</span></div>
       <span className="shrink-0 text-[11px] text-[var(--text-tertiary)]">{lastSync ? '读取于 ' + lastSync : '未获取成功'}</span>
     </div>
     {items.some(item => item.state_source === 'local_workspace_episode_state_file') && <p role="status" className="os-source-warning mx-4 my-2 px-3 py-1.5 text-[12px]">本机真实作品状态文件：只读磁盘记录，不是实时调度、Worker 心跳或 MySQL 权威状态。</p>}
@@ -55,7 +55,7 @@ export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMor
           {title:'数据来源',dataIndex:'state_source',key:'source',width:190,render:(value:string)=><span title={value||'未提供'} className="text-[12px] text-[var(--text-tertiary)]">{value==='local_workspace_episode_state_file'?'本机文件 · 只读':value==='isolated-test'?'隔离测试':value||'未提供'}</span>},
           {title:'',key:'action',width:90,align:'right',render:(_,item)=><Button type="link" aria-label={'查看权威阶段：'+(item.title||item.episode_ref||item.episode_id)} size="small" onClick={event=>{event.stopPropagation();setSelected(item);}}>详情</Button>}
         ]}
-        pagination={{current:safePage,pageSize,total:filtered.length,showSizeChanger:true,pageSizeOptions:['6','10','20','50'],showTotal:n=>`本次匹配 ${n} 条`,onChange:(next,size)=>{setPage(next);setPageSize(size);}}}
+        pagination={{current:safePage,pageSize,total:filtered.length,showSizeChanger:true,pageSizeOptions:['12','20','50'],showTotal:n=>`本次匹配 ${n} 条`,onChange:(next,size)=>{setPage(next);setPageSize(size);}}}
       />
       {hasMore&&<div className="flex items-center justify-between border-t border-[var(--border-subtle)] px-4 py-3"><span className="text-[12px] text-[var(--text-tertiary)]">仍有服务端记录未加载</span><Button loading={loadingMore} onClick={onLoadMore}>从 Platform API 加载下一页</Button></div>}
     </>}
