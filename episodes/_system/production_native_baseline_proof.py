@@ -188,6 +188,112 @@ def observe_real_tool_pixel(log: Path, pixel: Path) -> dict | None:
         return None
 
 
+
+def verify_runner_scoped_generated_image(
+    *,
+    runner_result: dict,
+    runner_request_id: str,
+    codex_log: Path,
+    raw_pixel: Path,
+    trusted_codex_home: Path,
+) -> dict | None:
+    """Read-only runner attestation for an exported native Codex image.
+
+    This verifies *provenance*, not the paid payload model or visual quality.
+    Unlike the CLI JSONL, the native user-mode Runner exports thread-specific
+    generated_images artifacts, including when Codex emits no image tool event
+    into the public --json stream. Never set Generation Attempt state here.
+    """
+    try:
+        if not isinstance(runner_result, dict) or not re.fullmatch(
+            r"[0-9a-f]{32}", str(runner_request_id or "")
+        ):
+            return None
+        ev = runner_result.get("evidence")
+        if (not isinstance(ev, dict)
+                or runner_result.get("request_id") != runner_request_id
+                or ev.get("request_id") != runner_request_id
+                or runner_result.get("returncode") != 0
+                or ev.get("returncode") != 0
+                or ev.get("task_type") != "image"
+                or ev.get("transport_route") != "native_codex"):
+            return None
+        threads = ev.get("thread_ids")
+        artifacts = ev.get("generated_artifacts")
+        if (not isinstance(threads, list) or len(threads) != 1
+                or not isinstance(artifacts, list) or len(artifacts) != 1):
+            return None
+        thread = threads[0]
+        if not isinstance(thread, str) or not re.fullmatch(r"[0-9a-f-]{36}", thread):
+            return None
+        relative_str = artifacts[0]
+        if not isinstance(relative_str, str) or "\\" in relative_str:
+            return None
+        relative = Path(relative_str)
+        if (relative.is_absolute()
+                or len(relative.parts) != 2
+                or relative.parts[0] != thread
+                or not relative.parts[1].lower().endswith(".png")):
+            return None
+        source_root = (Path(trusted_codex_home).resolve() / "generated_images").resolve()
+        exported = (source_root / relative).resolve()
+        if not exported.is_relative_to(source_root) or not exported.is_file():
+            return None
+        raw_pixel = Path(raw_pixel)
+        log = Path(codex_log)
+        if not raw_pixel.is_file() or not log.is_file():
+            return None
+        def png_sha(file: Path) -> str | None:
+            if file.stat().st_size < 40:
+                return None
+            with file.open("rb") as stream:
+                if stream.read(8) != b"\x89PNG\r\n\x1a\n":
+                    return None
+            return hashlib.sha256(file.read_bytes()).hexdigest()
+        exported_sha = png_sha(exported)
+        raw_sha = png_sha(raw_pixel)
+        if not exported_sha or exported_sha != raw_sha:
+            return None
+        events = []
+        for line in log.read_text(encoding="utf-8", errors="replace").splitlines():
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(event, dict):
+                events.append(event)
+        starts = [row for row in events if row.get("type") == "thread.started"]
+        ends = [row for row in events if row.get("type") == "turn.completed"]
+        if (len(starts) != 1 or starts[0].get("thread_id") != thread
+                or len(ends) != 1 or any(row.get("type") == "turn.failed" for row in events)):
+            return None
+        native_tool_events = [
+            row for row in events if row.get("type") == "item.completed"
+            and isinstance(row.get("item"), dict)
+            and (row["item"].get("type") == "image_generation_call"
+                 or (row["item"].get("type") == "tool_call"
+                     and row["item"].get("name") == "image_generation"))
+        ]
+        # Even a perfect runner provenance check is not pixel QA, an
+        # attested payload-model identity, or a MySQL Attempt resolution.
+        return {
+            "proof_kind": "TRUSTED_NATIVE_RUNNER_THREAD_SCOPED_IMAGE_SHA",
+            "runner_request_id": runner_request_id,
+            "native_codex_thread_id": thread,
+            "exported_artifact_relative_path": relative.as_posix(),
+            "source_png_sha256": exported_sha,
+            "raw_png_sha256": raw_sha,
+            "raw_png_bytes": raw_pixel.stat().st_size,
+            "native_codex_log_sha256": hashlib.sha256(log.read_bytes()).hexdigest(),
+            "native_image_generation_jsonl_events": len(native_tool_events),
+            "provider_model_attested": False,
+            "review_pass": False,
+            "mysql_generation_attempt_state_changed": False,
+        }
+    except (OSError, ValueError, TypeError, KeyError):
+        return None
+
+
 def record_unreviewed_pixel(ep: Path, item: dict, lease: dict,
                            log: Path, pixel: Path, runner_request_id: str) -> dict:
     """Append-only, never a reviewer or entitlement PASS; refuse duplicates."""
