@@ -4,11 +4,11 @@ import { HeaderBar } from './components/HeaderBar';
 import { StatusFlowBanner } from './components/StatusFlowBanner';
 import { StoryNextAction } from './components/StoryNextAction';
 import { ProductionMetricsPanel } from './components/ProductionMetricsPanel';
-import { ActivityStream } from './components/ActivityStream';
 import { CommandDock } from './components/CommandDock';
 import { ContextPanel } from './components/ContextPanel';
 
 // Views
+const ActivityStream = React.lazy(() => import('./components/ActivityStream').then(m => ({ default: m.ActivityStream })));
 const ProductionMonitorView = React.lazy(() => import('./components/views/ProductionMonitorView').then(m => ({ default: m.ProductionMonitorView })));
 const HomeOverviewView = React.lazy(() => import('./components/views/HomeOverviewView').then(m=>({default:m.HomeOverviewView})));
 const AntdSurface = React.lazy(() => import('./components/AntdSurface'));
