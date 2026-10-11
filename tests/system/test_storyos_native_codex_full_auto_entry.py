@@ -121,6 +121,13 @@ def _proofs(status="ATTEMPT_HISTORY_READ_ONLY", driver="NEVER_STARTED",
             }
         if script.endswith("runtime_driver.py"):
             return 0, {"driver_state": driver}
+        if script.endswith("storyos_visual_lock_readonly.py"):
+            # Readiness diagnostics are independent of Driver admission.
+            # A synthetic Storyboard episode is NOT proof of image tools.
+            return 0, {"status": "BLOCKED",
+                       "reason": "REAL_NATIVE_IMAGE_PIXEL_PROOF_NOT_YET_ESTABLISHED",
+                       "tool_generation_proven": False, "read_only": True,
+                       "model_calls": 0, "sql_writes": 0}
         raise AssertionError(f"Unexpected probe {script}: {args}")
     return probe
 
@@ -151,6 +158,8 @@ def test_native_preflight_exposes_unlocked_story_without_reuse_authority(monkeyp
     assert recovery["model_success_is_story_lock"] is False
     assert recovery["model_generation_required"] is None
     assert result["production_authorization"] is False
+    assert result["visual_lock_admission"]["status"] == "BLOCKED"
+    assert result["visual_lock_admission"]["tool_generation_proven"] is False
 
 
 def test_preflight_blocks_incompatible_cli_before_paid_production(monkeypatch):
