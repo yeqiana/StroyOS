@@ -37,6 +37,8 @@
     "test:r23": "node scripts/test-r23-four-slots-browser.mjs",
     "test:r24": "node scripts/test-r24-layout-browser.mjs",
     "test:r25": "node scripts/test-r25-creator-browser.mjs",
+    "test:r26": "node scripts/test-r26-creator-browser.mjs",
+    "capture:r26": "node scripts/capture-r26-compare-cdp.mjs",
     "test:responsive": "node scripts/test-r17-responsive-browser.mjs"
   },
   "dependencies": {
