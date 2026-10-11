@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import {Button, Select, Steps, Table} from 'antd';
-import { AlertCircle, GitBranch, RefreshCw } from 'lucide-react';
+import {Button, Input, Select, Steps, Table} from 'antd';
+import { AlertCircle, RefreshCw, Search } from 'lucide-react';
 import { platformApi, RuntimeStatusSummary, stageLabel } from '../../api/platformApi';
 import { WorkflowDetailPanel } from './WorkflowDetailPanel';
 
@@ -15,6 +15,7 @@ export const WorkflowWorkspaceView: React.FC = () => {
   const [loadingMore,setLoadingMore] = useState(false);
   const [total,setTotal] = useState<number | null>(null);
   const [filter,setFilter] = useState('ALL');
+  const [keyword,setKeyword] = useState('');
   const [page,setPage]=useState(1);
   const [pageSize,setPageSize]=useState(15);
   const [selected,setSelected] = useState<RuntimeStatusSummary | null>(null);
@@ -31,7 +32,6 @@ export const WorkflowWorkspaceView: React.FC = () => {
       if(!active || requestId !== generation.current)return;
       setItems(data.items ?? []);
       nextOffset.current = (data.items ?? []).length;
-      setSelected(null);
       setHasMore(Boolean(data.has_more));
       setTotal(typeof data.total === 'number' ? data.total : null);
       setError(data.errors?.length ? '部分状态数据读取失败，以下仅展示成功返回的阶段投影。' : null);
@@ -44,7 +44,11 @@ export const WorkflowWorkspaceView: React.FC = () => {
     }).finally(() => {if(active && requestId === generation.current)setLoading(false)});
     return () => {active=false;generation.current += 1;pagingInFlight.current=false};
   },[reload]);
-  const filtered=items.filter(x => filter==='ALL' || x.production_stage===filter);
+  const filtered=items.filter(x => {
+    if (filter !== 'ALL' && x.production_stage !== filter) return false;
+    const search = keyword.trim().toLocaleLowerCase();
+    return !search || [x.title,x.episode_ref,x.episode_id].some(value=>String(value||'').toLocaleLowerCase().includes(search));
+  });
   const loadNext = async () => {
     if (!hasMore || pagingInFlight.current || loading) return;
     const requestId = generation.current;
@@ -92,8 +96,8 @@ export const WorkflowWorkspaceView: React.FC = () => {
       <p className="mt-2 text-[12px] text-[var(--text-secondary)]">仅表示阶段定义，不代表已有运行记录通过门禁。</p>
     </details>
     <section className="min-w-0 space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="os-section-heading">各作品所处阶段</h2><p className="mt-1 text-[11px] text-[var(--text-tertiary)]">已载入 {items.length}{total!==null?' / '+total:''} 条阶段记录{hasMore?' · 尚有服务端数据未读取':''}</p></div>
-      <Select aria-label="筛选阶段" value={filter} onChange={v=>{setFilter(v);setPage(1);}} className="w-[170px] shrink-0" options={[{value:'ALL',label:'全部阶段'},...STAGE_ORDER.map(value=>({value,label:stageLabel(value)}))]}/>
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="os-section-heading">各作品所处阶段</h2><p className="mt-1 text-[11px] text-[var(--text-tertiary)]">已载入 {items.length}{total!==null?' / '+total:''} 条阶段记录 · 当前匹配 {filtered.length} 条{hasMore?' · 筛选只针对已读取数据':''}</p></div>
+      <div className="os-console-filterbar flex flex-wrap items-center gap-2"><Input aria-label="搜索已载入作品" placeholder="搜索作品名称 / 标识" value={keyword} onChange={e=>{setKeyword(e.target.value);setPage(1);}} allowClear prefix={<Search size={14}/>} className="!w-[230px] max-w-full"/><Select aria-label="筛选阶段" value={filter} onChange={v=>{setFilter(v);setPage(1);}} className="w-[170px] shrink-0" options={[{value:'ALL',label:'全部阶段'},...STAGE_ORDER.map(value=>({value,label:stageLabel(value)}))]}/></div>
       </div>
       {error&&<p role="alert" className="flex items-center gap-2 border-l-2 border-[var(--warning)] py-2 pl-3 text-[12px] text-[var(--warning)]"><AlertCircle size={15}/>{error}</p>}
       <Table<RuntimeStatusSummary> size="small" rowKey={x=>x.episode_id||x.episode_ref||x.title||'unknown'}
