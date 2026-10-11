@@ -32,6 +32,17 @@
 
 准入要求包括 STORYOS_TEST_MYSQL_APPROVAL 显式值、独立 Docker 容器标签 storyos.test-only=true、非 3306/3307 的 127.0.0.1 映射、专用非 root 凭据及 storyos_isolated_test_ 前缀数据库。无准入时不得运行任何真实测试写入或拿生产数据库替代。测试结束按 TEST_ 命名空间删除合成数据，不修改正式 Episode、生产 MySQL、模型生成或像素审核。
 
+## 2026-10-11 真实 TEST_ONLY MySQL 验收回执
+
+经用户明确授权，仅在本机独立 Docker `storyos-test-only-mysql-frame01-pr72-20261011` 中执行。容器镜像 `mysql:8.0`，标签 `storyos.test-only=true`，映射 `127.0.0.1:13306 → 3306`，数据库 `storyos_isolated_test_native_pr72`，非 root 用户 `storyos_test_pr72`。专用随机凭据保存在仓库外；没有复用本机正式 `mysql8.0` / 端口 `3307`，没有写入正式 Episode。
+
+- **真实 InnoDB 测试：`5 passed in 4.27s`**，执行命令为 `pytest -q tests/system/test_native_baseline_isolated_mysql_contract.py --storyos-isolated-mysql`，没有 5 个 SKIP。
+- **同库核心恢复安全回归：`181 passed in 7.30s`**，含实际 MySQL 的 5 项测试。
+- **完整 15 个关联文件回归：`259 passed in 18.38s`，`0 skipped`**，所有真实 MySQL 用例均运行；输出中不包括任何模型调用或正式 DB 写入。
+- Docker admission 使用真实仓库常量 `STORYOS_TEST_MYSQL_APPROVAL=I_AUTHORIZE_ISOLATED_TEST_DB_WRITES`，且容器命名符合 `storyos-test-only-mysql-*`。此前文案中 `I_ACKNOWLEDGE_TEST_ONLY_MYSQL` 及 `storyos-mysql-testonly` 均**不符合**代码准入，应废弃。
+
+已完成的是真实测试库验收，不是正式生产授权。受控正式追认仍需独立 PR 代码审查、合并和生产 Owner/fencing 二次核验。后续像素审核严格走本机原生 Codex `REVIEW_ORDINARY_BASELINE`；本轮 WebCodex Runner 中 `codex login status` 为 `Not logged in`，此事实不等同于用户桌面独立会话的登录状态，不能据此声称模型 entitlement 已验证。
+
 ## Queue 恢复幂等证明与 Review Backfill（新增）
 
 首帧成功追认后，Queue 原始 `generated` 项的 `unknown_reconciliation` 必须完整等于 Runner SHA 构造的审计回执（kind、Evidence SHA、Runner Request ID、Generation Key、Attempt#1、Frame Contract SHA、Prompt Package SHA、`pixel_review_pass=false`）。重入还需验证原 Runtime Transaction ID、执行 phase 为 COMMITTED、已完成时间、无残留外部阻断或技术失败。任何伪造的像素 PASS、模型认证、附加回执字段或缺失必须 fail closed。
