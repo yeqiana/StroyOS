@@ -317,20 +317,20 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
   };
 
   return (
-    <div id="storyos-production-monitor-view" className="w-full min-w-0 space-y-4 pb-5 font-sans text-[var(--text-primary)]">
+    <div id="storyos-production-monitor-view" className="w-full min-w-0 space-y-3 pb-5 font-sans text-[var(--text-primary)]">
       {/* 顶部标题与控制栏 (UI Baseline v1: 弱装饰、扁平、简洁) */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-3">
         <div className="flex flex-col items-start gap-1">
           <h1 className="os-page-heading">
             生产监控
-          </h1><p className="mt-1 text-[12px] text-[var(--text-secondary)]">作品阶段证据与历史 Run 分开查看 · 本机文件不代表在线调度</p>
+          </h1><p className="mt-1 text-[12px] text-[var(--text-secondary)]">阶段记录主表与历史 Run 分离 · 数据范围可追溯，未验证在线调度不推断</p>
         </div>
 
         <div className="flex items-center gap-2 text-xs">
           {/* 自动刷新下拉切换 */}
-          <div className="flex items-center gap-1.5 h-9 px-2 rounded-[5px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-secondary)]">
-            <span className={`w-1.5 h-1.5 rounded-full ${isRefreshing ? 'bg-[var(--success)] animate-ping' : 'bg-[var(--success)]'}`} />
-            <span className="text-[var(--text-tertiary)]">刷新:</span>
+          <div className="flex items-center gap-1.5 h-9 px-2 rounded-[5px] border border-[var(--border-subtle)] text-[var(--text-secondary)]">
+            <span className={`w-1.5 h-1.5 rounded-full ${isRefreshing?'bg-[var(--info)]':apiState==='ok'?'bg-[var(--text-tertiary)]':'bg-[var(--warning)]'}`} />
+            <span className="text-[var(--text-tertiary)]">读取间隔:</span>
             <Select aria-label="刷新间隔" size="small" variant="borderless" className="!min-w-[66px]" value={refreshInterval} onChange={setRefreshInterval} options={[{value:5,label:'5 秒'},{value:10,label:'10 秒'},{value:30,label:'30 秒'},{value:0,label:'关闭'}]} />
           </div>
 
@@ -338,17 +338,18 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
             type="button"
             onClick={() => loadLatestStatuses(true)}
             className="h-9 w-9 flex items-center justify-center rounded-[4px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer"
-            title="手动刷新"
+            title="手动刷新阶段证据"
+            aria-label="手动刷新阶段证据"
           >
             <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin text-[var(--text-primary)]' : ''}`} />
           </button>
         </div>
       </div>
 
-      <div className="os-console-toolbar flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-3" aria-label="生产监控主工作区切换">
+      <div className="os-console-toolbar flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] py-1 pb-3" aria-label="生产监控主工作区切换">
         <Segmented aria-label="生产监控视图" value={primaryView} onChange={value=>setPrimaryView(value as 'stages'|'history')}
           options={[{value:'stages',label:`阶段证据 (${runtimeCoverage.loaded})`},{value:'history',label:`历史 Run (${runs.length})`}]}/>
-        <span className="text-[11px] text-[var(--text-tertiary)]">{primaryView==='stages'?'当前来源：Platform API 只读投影':'历史快照 · 非实时 · 未验证 Worker 心跳'}</span>
+        <div className="flex flex-wrap items-center gap-3 text-[11px] text-[var(--text-tertiary)]"><span>{primaryView==='stages'?'Platform API 只读阶段 · 本机文件非实时':'历史 Run 快照 · 非实时 Worker 视图'}</span><span className="tabular-nums">{primaryView==='stages'?`已读取 ${runtimeCoverage.loaded} 条`:`${runs.length} 个历史实例`}</span></div>
       </div>
       {primaryView==='stages' ? <section aria-label="阶段证据主视图" className="min-w-0 space-y-3">
         {apiState !== 'ok' && <div role="status" className="flex flex-wrap items-center justify-between gap-2 border-l-2 border-[var(--warning)] px-3 py-2 text-[12px] text-[var(--text-secondary)]"><span>{apiState === 'loading' ? '正在读取 Platform API 阶段摘要…' : apiWarning}</span><span className="shrink-0 text-[var(--text-tertiary)]">{lastSync ? `最近获取 ${lastSync}` : '未获得有效在线证据'}</span></div>}

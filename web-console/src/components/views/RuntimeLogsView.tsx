@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import {Drawer, Pagination, Select} from 'antd';
+import {Drawer, Input, Pagination, Segmented, Select} from 'antd';
 import {
   Terminal,
   Download,
@@ -269,7 +269,7 @@ export const RuntimeLogsView: React.FC = () => {
   return (
     <div id="runtime-logs-view" className="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--bg-app)] font-sans text-[var(--text-primary)]">
       {/* 1. 顶部全局工具栏与状态统计 (占满宽度) */}
-      <div className="os-console-toolbar flex shrink-0 flex-col justify-between gap-3 border-b border-[var(--border-subtle)] bg-[var(--bg-app)] px-4 py-3 lg:flex-row lg:items-center">
+      <div className="os-console-toolbar flex shrink-0 flex-col justify-between gap-2 border-b border-[var(--border-subtle)] bg-[var(--bg-app)] px-4 py-2 lg:flex-row lg:items-center">
         <div className="flex items-center gap-3">
           <div className="text-[var(--text-tertiary)]">
             <Terminal className="w-4 h-4" />
@@ -335,34 +335,17 @@ export const RuntimeLogsView: React.FC = () => {
       </div>
 
       {loadError && <p role="alert" className="shrink-0 border-b border-[var(--border-subtle)] px-4 py-2 text-[12px] text-[var(--warning)]">{loadError}</p>}
+      <div aria-label="已加载审计事件统计" className="flex shrink-0 flex-wrap items-center gap-x-6 gap-y-2 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-2 text-[12px]">
+        {[{label:'已载入',count:logs.length,color:'var(--text-primary)'},{label:'ERROR',count:logs.filter(log=>log.level==='ERROR').length,color:'var(--danger)'},{label:'WARN',count:logs.filter(log=>log.level==='WARN').length,color:'var(--warning)'},{label:'当前匹配',count:filteredLogs.length,color:'var(--info)'}].map(entry=><div key={entry.label} className="flex items-baseline gap-2"><span className="text-[var(--text-tertiary)]">{entry.label}</span><strong className="text-[16px] tabular-nums" style={{color:entry.color}}>{entry.count}</strong></div>)}
+        <span className="ml-auto text-[11px] text-[var(--text-tertiary)]">本次最多读取 100 条 · 非全量审计数据</span>
+      </div>
 
       {/* 2. 多维组合筛选条 (Filter Bar) */}
-      <div className="os-console-filterbar shrink-0 p-3 lg:px-5 border-b border-[var(--border-subtle)] bg-[var(--bg-workspace)] flex flex-wrap items-center justify-between gap-2.5 text-xs">
+      <div className="os-console-filterbar shrink-0 border-b border-[var(--border-subtle)] bg-[var(--bg-workspace)] px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
         {/* 左侧：搜索框与筛选器 */}
         <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
           {/* 全文关键字搜索 */}
-          <div className="relative w-full min-w-[190px] max-w-[360px] flex-1">
-            <Search className="w-3.5 h-3.5 text-[var(--text-tertiary)] absolute left-2.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setCurrentPage(1);
-              }}
-              placeholder="搜索 Trace ID、模块、消息或 JSON 字段..."
-              className="h-9 w-full pl-8 pr-7 rounded-[5px] bg-[var(--bg-surface)] border border-[var(--border-normal)] text-[var(--text-primary)] placeholder-[var(--text-tertiary)] text-xs focus:outline-hidden focus:border-[#58A6FF] font-mono"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            )}
-          </div>
+          <Input.Search aria-label="搜索日志内容" value={searchQuery} onChange={event=>{setSearchQuery(event.target.value);setCurrentPage(1);}} allowClear placeholder="搜索 Trace ID、模块、消息或 JSON 字段..." className="!w-[320px] max-w-full"/>
 
           {/* 模块选择下拉 */}
           <div className="flex items-center gap-1.5">
@@ -382,41 +365,14 @@ export const RuntimeLogsView: React.FC = () => {
             />
           </div>
 
-          {/* 级别标签切换组 */}
-          <div className="flex items-center rounded-[5px] p-0.5 bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
-            {(['ALL', 'ERROR', 'WARN', 'INFO', 'SUCCESS', 'DEBUG'] as const).map((lvl) => {
-              const count = lvl === 'ALL'
-                ? logs.length
-                : logs.filter(l => l.level === lvl).length;
-              const isSelected = filterLevel === lvl;
-              return (
-                <button
-                  key={lvl}
-                  type="button"
-                  onClick={() => {
-                    setFilterLevel(lvl);
-                    setCurrentPage(1);
-                  }}
-                  className={`px-2 py-0.5 rounded-[3px] text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1 ${
-                    isSelected
-                      ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-bold shadow-xs border border-[var(--border-normal)]'
-                      : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
-                  }`}
-                >
-                  <span>{lvl}</span>
-                  {count > 0 && (
-                    <span className={`text-[10px] px-1 rounded ${
-                      lvl === 'ERROR' ? 'bg-red-500/20 text-red-400' :
-                      lvl === 'WARN' ? 'bg-amber-500/20 text-amber-400' :
-                      lvl === 'SUCCESS' ? 'bg-emerald-500/20 text-emerald-400' :
-                      'bg-[var(--bg-hover)] text-[var(--text-tertiary)]'
-                    }`}>
-                      {count}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+          {/* 使用 Ant Design 原生 Segmented；所有计数都限制在实际已载入事件内 */}
+          <div className="min-w-0 max-w-full overflow-x-auto">
+            <Segmented size="small" aria-label="审计级别筛选" value={filterLevel}
+              onChange={value=>{setFilterLevel(value);setCurrentPage(1);}}
+              options={(['ALL','ERROR','WARN','INFO','SUCCESS','DEBUG'] as const).map(level=>({
+                value:level,
+                label:<span className="inline-flex items-center gap-1.5 text-[11px]"><span>{level}</span><span className="tabular-nums opacity-70">{level==='ALL'?logs.length:logs.filter(item=>item.level===level).length}</span></span>
+              }))}/>
           </div>
 
           {(searchQuery || filterModule !== 'ALL' || filterLevel !== 'ALL') && (
@@ -441,7 +397,7 @@ export const RuntimeLogsView: React.FC = () => {
       <div className="flex-1 flex overflow-hidden relative">
         {/* 表格容器 */}
         <div className="flex-1 overflow-y-auto overflow-x-auto scrollbar-thin">
-          <table className="w-full border-collapse text-left font-mono text-xs">
+          <table className="w-full min-w-[960px] border-collapse text-left font-mono text-xs">
             <thead className="sticky top-0 z-10 bg-[var(--bg-surface)] border-b border-[var(--border-subtle)] text-[11px] text-[var(--text-tertiary)] font-medium">
               <tr>
                 <th className="py-2 px-3 w-44">时间戳</th>
@@ -456,8 +412,8 @@ export const RuntimeLogsView: React.FC = () => {
             <tbody className="divide-y divide-[var(--border-subtle)] bg-[var(--bg-app)]">
               {paginatedLogs.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-16 text-center text-[var(--text-tertiary)] text-xs">
-                    未检索到符合条件的日志条目
+                  <td colSpan={7} className="py-7 text-center text-[var(--text-tertiary)] text-xs">
+                    {loadError?'事件 API 当前不可读取，无法确认是否存在日志':logs.length?'当前筛选条件下没有匹配的日志':'接口已返回，但当前未载入日志事件'}
                   </td>
                 </tr>
               ) : (
@@ -651,7 +607,7 @@ export const RuntimeLogsView: React.FC = () => {
         )}
       </div>
 
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-2 text-[12px] text-[var(--text-secondary)]"><span>本次筛选结果：{totalItems} 条</span><Pagination size="small" current={safeCurrentPage} pageSize={pageSize} total={totalItems} showSizeChanger pageSizeOptions={["15","20","50","100"]} showTotal={(total,range)=>`${range[0]}–${range[1]} / ${total} 条`} onChange={(next,size)=>{setCurrentPage(next);setPageSize(size);}} /></div>
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-2 text-[12px] text-[var(--text-secondary)]"><span>已加载筛选 {totalItems} 条 · 仅本批次内分页</span><Pagination size="small" current={safeCurrentPage} pageSize={pageSize} total={totalItems} showSizeChanger pageSizeOptions={["15","20","50","100"]} showTotal={(total,range)=>`${range[0]}–${range[1]} / ${total} 条`} onChange={(next,size)=>{setCurrentPage(next);setPageSize(size);}} /></div>
     </div>
   );
 };

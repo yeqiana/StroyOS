@@ -1,7 +1,7 @@
 import React, {useMemo, useState} from 'react';
-import {Button, Drawer, Input, Pagination, Progress, Segmented, Select, Table} from 'antd';
+import {Button, Checkbox, Drawer, Input, Pagination, Progress, Segmented, Select, Table} from 'antd';
 import type {TableColumnsType} from 'antd';
-import {Clapperboard, ImageOff, Plus} from 'lucide-react';
+import {Clapperboard, Plus} from 'lucide-react';
 import type {Episode} from '../../types';
 import {useLocalApprovedMedia} from '../../api/localApprovedMedia';
 
@@ -13,11 +13,14 @@ export const SeriesLibraryView: React.FC<Props> = ({episodes,activeEpisode,onSel
   const coverFor=(ep:Episode)=>findEpisode(ep.title,ep.code)?.frames[0]?.url || (ep.coverImage && !ep.coverImage.startsWith('data:image/svg+xml') ? ep.coverImage : '');
   const [query,setQuery]=useState('');
   const [stage,setStage]=useState('ALL');
+  const [approvedOnly,setApprovedOnly]=useState(false);
   const [viewMode,setViewMode]=useState<'gallery'|'list'>('gallery');
   const [selectedEpisode,setSelectedEpisode]=useState<Episode|null>(null);
   const [page,setPage]=useState(1);
   const [pageSize,setPageSize]=useState(10);
-  const rows=useMemo(()=>episodes.filter(ep=>(stage==='ALL'||ep.currentStage===stage)&&`${ep.title} ${ep.code} ${ep.genre}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())),[episodes,stage,query]);
+  const rows=useMemo(()=>episodes.filter(ep=>(stage==='ALL'||ep.currentStage===stage)&&(!approvedOnly||Boolean(findEpisode(ep.title,ep.code)?.frames.length))&&`${ep.title} ${ep.code} ${ep.genre}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())),[episodes,stage,approvedOnly,query,findEpisode]);
+  const publishedCount=episodes.filter(ep=>['PUBLISHED','POST_MORTEM'].includes(ep.currentStage)).length;
+  const verifiedCount=episodes.filter(ep=>Boolean(findEpisode(ep.title,ep.code)?.frames.length)).length;
   const visiblePage=Math.min(page,Math.max(1,Math.ceil(rows.length/pageSize)));
   // Image-first presentation for creator browsing; keep the original stable order in list mode.
   const gallerySortedRows=[...rows].sort((a,b)=>Number(Boolean(findEpisode(b.title,b.code)?.frames.length))-Number(Boolean(findEpisode(a.title,a.code)?.frames.length)));
@@ -32,26 +35,36 @@ export const SeriesLibraryView: React.FC<Props> = ({episodes,activeEpisode,onSel
   ];
   return <section id="series-library-view" className="w-full min-w-0 space-y-3 pb-6 text-[var(--text-primary)]">
     <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-3">
-      <div><h1 className="os-page-heading">作品与项目</h1><p className="mt-1.5 text-[13px] text-[var(--text-secondary)]">{episodes.length} 部作品 · 工作区快照</p></div>
+      <div><h1 className="os-page-heading">作品与项目</h1><p className="mt-1 text-[12px] text-[var(--text-secondary)]">作品素材库 · 图片优先，工作区状态与批准素材分开计数</p></div>
       <Button type="primary" icon={<Plus size={15}/>} onClick={onNewStoryClick}>新建故事</Button>
     </header>
+    <section aria-label="作品库概况" className="flex flex-wrap items-center gap-x-8 gap-y-2 border-b border-[var(--border-subtle)] py-1.5">
+      {[{label:'已收录',count:episodes.length},{label:'工作区未发布',count:episodes.length-publishedCount},{label:'含已批准图片',count:verifiedCount}].map(metric=><div key={metric.label} className="flex items-baseline gap-2"><span className="text-[11px] text-[var(--text-tertiary)]">{metric.label}</span><strong className="text-[16px] font-semibold tabular-nums">{metric.count}</strong></div>)}
+      <span className="ml-auto text-[11px] text-[var(--text-tertiary)]">数据范围：当前工作区 · 本机素材目录只读</span>
+    </section>
     <div className="os-console-filterbar flex flex-wrap items-center gap-3 border-b border-[var(--border-subtle)] pb-3">
       <Input.Search aria-label="搜索故事标题、编号或类型" value={query} onChange={e=>{setQuery(e.target.value);setPage(1);}} placeholder="搜索作品 / 编号 / 类型" allowClear className="min-w-[220px] max-w-[360px] flex-1"/>
       <Select aria-label="筛选生产阶段" value={stage} onChange={v=>{setStage(v);setPage(1);}} className="w-[170px]" options={[{value:'ALL',label:'全部阶段'},...Object.entries(STAGES).map(([value,label])=>({value,label}))]}/>
-      <Segmented size="small" aria-label="作品显示方式" value={viewMode} onChange={value=>{setViewMode(value as 'gallery'|'list');setPage(1);setPageSize(value==='gallery'?12:10);}} options={[{value:'gallery',label:'封面画廊'},{value:'list',label:'列表'}]}/>
+      <Checkbox checked={approvedOnly} onChange={event=>{setApprovedOnly(event.target.checked);setPage(1);}}>只看有批准图片</Checkbox>
+      <Segmented size="small" aria-label="作品显示方式" value={viewMode} onChange={value=>{setViewMode(value as 'gallery'|'list');setPage(1);setPageSize(value==='gallery'?15:10);}} options={[{value:'gallery',label:'封面画廊'},{value:'list',label:'列表'}]}/>
       <span className="ml-auto text-[12px] tabular-nums text-[var(--text-tertiary)]">显示 {rows.length} / {episodes.length} 部</span>
     </div>
     {viewMode==='gallery'?<section aria-label="作品封面画廊" className="space-y-3">
-      {galleryItems.length?<div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-        {galleryItems.map(ep=>{const media=findEpisode(ep.title,ep.code);const cover=coverFor(ep);return <button type="button" key={ep.id} onClick={()=>setSelectedEpisode(ep)} aria-label={'预览作品 '+ep.title} className="group min-w-0 overflow-hidden rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-left hover:border-[var(--info)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus)]">
+      {galleryItems.length?<div className="space-y-4">
+        {galleryItems.some(ep=>Boolean(findEpisode(ep.title,ep.code)?.frames.length))&&<section aria-label="已批准素材作品画廊" className="space-y-2"><div className="flex items-center justify-between gap-3"><h2 className="os-section-heading">已有图片的作品</h2><span className="text-[11px] text-[var(--text-tertiary)]">从本机已批准素材目录读取</span></div><div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-4">
+        {galleryItems.filter(ep=>Boolean(findEpisode(ep.title,ep.code)?.frames.length)).map(ep=>{const media=findEpisode(ep.title,ep.code);const cover=coverFor(ep);return <button type="button" key={ep.id} onClick={()=>setSelectedEpisode(ep)} aria-label={'预览作品 '+ep.title} className="group min-w-0 overflow-hidden rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-left hover:border-[var(--info)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus)]">
           <div className="relative aspect-[4/3] overflow-hidden bg-[var(--bg-elevated)]">
-            {cover?<img src={cover} alt={ep.title+'的已验证封面'} loading="lazy" className="h-full w-full object-cover object-top transition-transform duration-150 group-hover:scale-[1.02]"/>:<div className="flex h-full flex-col items-center justify-center gap-2 text-[var(--text-tertiary)]"><ImageOff size={22}/><span className="text-[11px]">暂无可验证封面</span></div>}
+            {cover&&<img src={cover} alt={ep.title+'的已批准素材封面'} loading="lazy" className="h-full w-full object-cover object-top transition-transform duration-150 group-hover:scale-[1.02]"/>}
             {media?.frames.length?<span className="absolute bottom-2 right-2 border border-[var(--border-normal)] bg-[var(--bg-workspace)] px-2 py-1 text-[11px] tabular-nums text-[var(--text-primary)]">已批准 {media.frames.length} 帧</span>:null}
           </div>
           <div className="space-y-1 px-3 py-2"><h3 className="truncate text-[13px] font-semibold text-[var(--text-primary)]">{ep.title}</h3><p className="truncate text-[11px] text-[var(--text-tertiary)]">{ep.code} · {ep.genre||'未分类'}</p><div className="flex items-center justify-between gap-2 pt-1 text-[11px] text-[var(--text-secondary)]"><span>{STAGES[ep.currentStage]||ep.currentStage}</span><span className="tabular-nums">工作区 {ep.completedFrames}/{ep.totalFrames} 帧</span></div></div>
         </button>;})}
+        </div></section>}
+        {galleryItems.some(ep=>!findEpisode(ep.title,ep.code)?.frames.length)&&<section aria-label="无批准图片作品紧凑列表" className="space-y-2"><div className="flex items-center justify-between gap-3"><h2 className="os-section-heading">其他作品</h2><span className="text-[11px] text-[var(--text-tertiary)]">未找到可验证批准封面 · 保留作品入口</span></div><div className="divide-y divide-[var(--border-subtle)] border-y border-[var(--border-subtle)]">
+          {galleryItems.filter(ep=>!findEpisode(ep.title,ep.code)?.frames.length).map(ep=><button key={ep.id} type="button" onClick={()=>setSelectedEpisode(ep)} aria-label={'预览作品 '+ep.title} className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_120px_115px] items-center gap-3 px-3 py-2 text-left text-[12px] hover:bg-[var(--bg-hover)] sm:grid-cols-[minmax(0,1fr)_170px_145px]"><span className="min-w-0"><strong className="block truncate text-[13px] font-medium text-[var(--text-primary)]">{ep.title}</strong><span className="block truncate text-[11px] text-[var(--text-tertiary)]">{ep.code} · {ep.genre||'未分类'}</span></span><span className="truncate text-[var(--text-secondary)]">{STAGES[ep.currentStage]||ep.currentStage}</span><span className="text-right tabular-nums text-[var(--text-secondary)]">工作区 {ep.completedFrames}/{ep.totalFrames} 帧</span></button>)}
+        </div></section>}
       </div>:<p className="border border-dashed border-[var(--border-normal)] p-6 text-[13px] text-[var(--text-secondary)]">当前筛选条件下没有作品。</p>}
-      <div className="flex justify-end"><Pagination size="small" current={visiblePage} pageSize={pageSize} total={rows.length} showSizeChanger pageSizeOptions={['12','20','40']} showTotal={(total,range)=>`${range[0]}–${range[1]} / ${total} 部`} onChange={(next,size)=>{setPage(next);setPageSize(size);}}/></div>
+      <div className="flex justify-end"><Pagination size="small" current={visiblePage} pageSize={pageSize} total={rows.length} showSizeChanger pageSizeOptions={['10','15','30','60']} showTotal={(total,range)=>`${range[0]}–${range[1]} / ${total} 部`} onChange={(next,size)=>{setPage(next);setPageSize(size);}}/></div>
     </section>:<Table<Episode> rowKey="id" size="small" columns={columns} dataSource={rows} scroll={{x:820}} rowClassName={ep=>ep.id===activeEpisode.id?'storyos-ant-selected':''}
       pagination={{current:visiblePage,pageSize,total:rows.length,showSizeChanger:true,pageSizeOptions:['10','20','30','50'],showTotal:(total,range)=>`${range[0]}–${range[1]} / ${total} 条`,onChange:(next,size)=>{setPage(next);setPageSize(size);}}}
       locale={{emptyText:'暂无符合条件的作品，请修改筛选条件'}}/>}
@@ -65,6 +78,6 @@ export const SeriesLibraryView: React.FC<Props> = ({episodes,activeEpisode,onSel
         <p className="text-[11px] leading-5 text-[var(--text-tertiary)]">仅展示可验证的工作区记录。进入创作台不会触发生产、生成或审核写入。</p>
       </section>}
     </Drawer>
-    <p className="border-t border-[var(--border-subtle)] pt-2 text-[12px] leading-5 text-[var(--text-tertiary)]">阶段与帧数来源为当前工作区记录；生产执行、审核及发布结果应以正式 Runtime 证据为准。</p>
+    <p className="border-t border-[var(--border-subtle)] pt-2 text-[11px] leading-5 text-[var(--text-tertiary)]">阶段与帧数来自工作区记录，已批准图片仅取自可验证的素材目录；正式生产与发布状态以受控 Runtime 为准。</p>
   </section>;
 };

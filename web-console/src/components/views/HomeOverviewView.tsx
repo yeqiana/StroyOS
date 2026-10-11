@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import {Pagination} from 'antd';
+import {Input, Pagination, Table} from 'antd';
 import { ArrowRight, CheckCircle2, CircleAlert, Clock3, Folder, Plus, RefreshCw, Search, SlidersHorizontal } from 'lucide-react';
 import { Episode, NavigationTab, ProjectItem } from '../../types';
 import { platformApi, RuntimeStatusSummary, stageLabel } from '../../api/platformApi';
@@ -63,7 +63,6 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
     <div id="storyos-home-overview" className="w-full min-w-0 space-y-4 pb-6 text-[var(--text-primary)]">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-3">
         <div>
-          <p className="mb-1 text-[11px] font-semibold tracking-[.08em] text-[var(--text-tertiary)]">内容工作区</p>
           <h1 className="os-page-heading">工作台</h1>
           <p className="mt-1 text-[13px] leading-5 text-[var(--text-secondary)]">正在制作的故事与已记录的生产状态</p>
         </div>
@@ -75,42 +74,46 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
           { label: '故事', value: episodes.length, note: '已收录' },
           { label: '待继续', value: pending, note: '尚未发布' }
         ].map((m) => <div key={m.label} className="flex min-w-0 items-center gap-3 bg-[var(--bg-app)] px-4 py-2.5 sm:gap-4">
-          <div className="text-[23px] font-semibold leading-none tabular-nums text-[var(--text-primary)]">{m.value}</div><div className="min-w-0"><div className="os-stat-label">{m.label}</div><div className="hidden truncate text-[11px] text-[var(--text-tertiary)] sm:block">{m.note}</div></div>
+          <div className="text-[18px] font-semibold leading-none tabular-nums text-[var(--text-primary)]">{m.value}</div><div className="min-w-0"><div className="os-stat-label">{m.label}</div><div className="hidden truncate text-[11px] text-[var(--text-tertiary)] sm:block">{m.note}</div></div>
         </div>)}
       </section>
-      <div className="grid min-w-0 grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_300px] 2xl:grid-cols-[minmax(0,1fr)_340px]">
-        <section className="min-w-0 space-y-3">
-          <div className="mb-3 flex items-center justify-between gap-3">
+      <div className="flex min-w-0 flex-col gap-4">
+        <section className="order-2 min-w-0 space-y-3" aria-label="工作台继续制作主列表">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-2">
             <div><h2 className="os-section-heading">继续制作</h2><p className="mt-1 text-[12px] text-[var(--text-tertiary)]">工作区作品快照 · 新建草稿仅保存在本机</p></div>
-            <button type="button" onClick={() => onNavigate('episodes')} className="flex items-center gap-1 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]">全部作品 <ArrowRight size={14}/></button>
+            <div className="flex items-center gap-3"><span className="text-[11px] tabular-nums text-[var(--text-tertiary)]">工作区 {filtered.length} / {episodes.length} 部</span><button type="button" onClick={() => onNavigate('episodes')} className="flex items-center gap-1 text-[12px] text-[var(--info)] hover:text-[var(--text-primary)]">全部作品 <ArrowRight size={14}/></button></div>
           </div>
-          <label className="relative block mb-2 max-w-[420px]"><Search size={15} aria-hidden="true" className="absolute left-3 top-2.5 text-[var(--text-tertiary)]"/><input aria-label="搜索作品" value={query} onChange={e => {setQuery(e.target.value);setStoryPage(1)}} placeholder="搜索故事或编号" className="h-9 w-full rounded-[5px] border border-[var(--border-normal)] bg-[var(--bg-surface)] pl-9 pr-3 text-[13px] outline-[#58A6FF] placeholder:text-[var(--text-tertiary)]"/></label>
-          <div className="overflow-hidden border-y border-[var(--border-subtle)]">
-            {filtered.length === 0 && <p className="py-10 text-center text-[13px] text-[var(--text-tertiary)]">没有符合条件的故事。可以清除搜索后继续查看。</p>}
-            {filtered.slice((storyPage-1)*storyPageSize,storyPage*storyPageSize).map(ep => <button key={ep.id} type="button" onClick={() => onSelectEpisode(ep)}
-              aria-label={`打开故事 ${ep.title}`} className="os-data-row group w-full min-w-0 flex items-center gap-4 px-4 py-2.5 border-b last:border-b-0 border-[var(--border-subtle)] text-left">
-              <div className="flex h-12 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]">{coverFor(ep) ? <img alt="" loading="lazy" src={coverFor(ep)} className="h-full w-full object-cover" /> : <Folder size={16} className="text-[var(--text-tertiary)]" />}</div>
-              <div className="min-w-0 flex-1"><div className="truncate text-[14px] font-semibold leading-5">{ep.title}</div><div className="mt-1 truncate text-[12px] text-[var(--text-secondary)]">{STAGES[ep.currentStage] ?? ep.currentStage} · {ep.completedFrames}/{ep.totalFrames} 帧</div></div>
-              <div className="hidden sm:block w-24 shrink-0"><div className="h-1 rounded-full bg-[var(--border-normal)]"><div className="h-full rounded-full bg-[#58A6FF]" style={{width: `${percentage(ep)}%`}}/></div><div className="mt-1 text-right text-[11px] tabular-nums text-[var(--text-tertiary)]">{percentage(ep)}%</div></div>
-              <ArrowRight size={15} className="shrink-0 text-[var(--text-tertiary)] group-hover:text-[var(--text-primary)]"/>
-            </button>)}
+          <div className="os-console-filterbar flex flex-wrap items-center gap-2">
+            <Input.Search aria-label="搜索作品" placeholder="搜索故事标题、编号或类型" value={query} onChange={e=>{setQuery(e.target.value);setStoryPage(1);}} allowClear className="!w-[310px] max-w-full"/>
+            <span className="ml-auto text-[11px] text-[var(--text-tertiary)]">点击作品进入故事制作 · 已载入工作区数据</span>
           </div>
-          {filtered.length>storyPageSize && <Pagination size="small" current={storyPage} pageSize={storyPageSize} total={filtered.length} onChange={setStoryPage} showTotal={total=>`共 ${total} 部作品`}/>}
+          <Table<Episode> size="small" rowKey="id" dataSource={filtered} scroll={{x:760}} className="storyos-home-episode-grid"
+            onRow={ep=>({onClick:()=>onSelectEpisode(ep),className:'cursor-pointer'})}
+            locale={{emptyText:'没有符合条件的故事，可清除筛选后继续查看。'}}
+            columns={[
+              {title:'作品',key:'title',render:(_,ep)=><div className="flex min-w-0 items-center gap-3"><div className="flex h-12 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]">{coverFor(ep)?<img alt="" loading="lazy" src={coverFor(ep)} className="h-full w-full object-cover"/>:<Folder size={16} className="text-[var(--text-tertiary)]"/>}</div><div className="min-w-0"><button type="button" onClick={event=>{event.stopPropagation();onSelectEpisode(ep);}} aria-label={`打开故事 ${ep.title}`} className="block max-w-[38vw] truncate text-left text-[13px] font-semibold hover:text-[var(--info)]">{ep.title}</button><span className="block truncate text-[11px] text-[var(--text-tertiary)]">{ep.code} · {ep.genre||'未分类'}</span></div></div>},
+              {title:'工作区阶段',key:'stage',width:168,render:(_,ep)=><span className="text-[12px] text-[var(--text-secondary)]">{STAGES[ep.currentStage]??ep.currentStage}</span>},
+              {title:'帧进度',key:'progress',width:180,render:(_,ep)=><div className="flex items-center gap-3 text-[12px] tabular-nums"><span className="shrink-0">{ep.completedFrames}/{ep.totalFrames}</span><div className="h-1 w-20 overflow-hidden rounded-[2px] bg-[var(--border-normal)]"><div className="h-full bg-[var(--info)]" style={{width:`${percentage(ep)}%`}}/></div><span className="text-[var(--text-tertiary)]">{percentage(ep)}%</span></div>},
+              {title:'最近更新',key:'updated',width:165,sorter:(a,b)=>String(a.updatedAt||'').localeCompare(String(b.updatedAt||'')),render:(_,ep)=><span className="text-[11px] tabular-nums text-[var(--text-tertiary)]">{ep.updatedAt?new Date(ep.updatedAt).toLocaleDateString('zh-CN'):'未知'}</span>},
+              {title:'',key:'action',width:90,align:'right',render:(_,ep)=><button type="button" onClick={event=>{event.stopPropagation();onSelectEpisode(ep);}} className="inline-flex items-center gap-1 text-[12px] text-[var(--info)]">打开 <ArrowRight size={13}/></button>}
+            ]}
+            pagination={{current:Math.min(storyPage,Math.max(1,Math.ceil(filtered.length/storyPageSize))),pageSize:storyPageSize,total:filtered.length,showTotal:(n,range)=>`${range[0]}–${range[1]} / ${n} 部`,onChange:setStoryPage}}
+          />
         </section>
-        <aside className="min-w-0 space-y-5 border-t border-[var(--border-subtle)] pt-4 xl:sticky xl:top-1 xl:border-l xl:border-t-0 xl:pl-5 xl:pt-1">
+        <aside className="order-1 grid min-w-0 gap-x-6 gap-y-2 border-b border-[var(--border-subtle)] pb-3 md:grid-cols-[minmax(0,1fr)_minmax(280px,.9fr)]" aria-label="工作台关注事项与快捷入口">
           <section className="space-y-2">
             <h2 className="os-section-heading flex items-center gap-2"><CircleAlert size={16} className={attention.length ? 'text-[var(--danger)]' : 'text-[var(--text-tertiary)]'}/> 需要关注</h2>
             {attention.length === 0
               ? <div className="flex items-start gap-2 pt-4 text-[12px] text-[var(--text-secondary)]"><CheckCircle2 size={16} className="text-[var(--success)] shrink-0"/> 当前已载入作品中没有明确阻塞的审核记录。此处不代表平台实时健康状态。</div>
               : <div className="mt-3 space-y-3">{attention.map(({ep,blocked,failed}) => <button key={ep.id} type="button" onClick={() => onSelectEpisode(ep)} className="w-full text-left border-b last:border-b-0 border-[var(--border-subtle)] pb-3 text-[12px]"><span className="block font-medium text-[var(--text-primary)] truncate">{ep.title}</span><span className="mt-1 block text-[var(--danger)]">{blocked} 项阻塞检查 · {failed} 帧审核失败</span></button>)}</div>}
           </section>
-          <section className="space-y-2 border-t border-[var(--border-subtle)] pt-4">
-            <h2 className="text-[14px] font-semibold mb-3">快捷入口</h2>
-            <div className="space-y-1">
-              {[{id:'production_monitor',label:'查看生产监控',icon:SlidersHorizontal},{id:'pipeline',label:'查看生产流程',icon:Clock3},{id:'episodes',label:'管理全部作品',icon:Folder}].map(item => { const Icon = item.icon; return <button type="button" key={item.id} onClick={() => onNavigate(item.id as NavigationTab)} className="flex items-center justify-between w-full py-2 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"><span className="flex items-center gap-2"><Icon size={15}/>{item.label}</span><ArrowRight size={14}/></button>; })}
+          <section className="space-y-2 md:border-l md:border-[var(--border-subtle)] md:pl-5">
+            <h2 className="os-section-heading">快捷入口</h2>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
+              {[{id:'production_monitor',label:'查看生产监控',icon:SlidersHorizontal},{id:'pipeline',label:'查看生产流程',icon:Clock3},{id:'episodes',label:'管理全部作品',icon:Folder}].map(item => { const Icon = item.icon; return <button type="button" key={item.id} onClick={() => onNavigate(item.id as NavigationTab)} className="inline-flex items-center gap-2 py-1.5 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"><span className="flex items-center gap-2"><Icon size={15}/>{item.label}</span><ArrowRight size={14}/></button>; })}
             </div>
           </section>
-          <p className="text-[11px] leading-5 text-[var(--text-tertiary)]">显示的是工作区证据投影，不等同于实时 Worker、队列或生产执行状态。实时信息请以 Platform API 为准。</p>
+          <p className="text-[11px] leading-5 text-[var(--text-tertiary)] md:col-span-2">工作区证据投影 · 非实时 Worker、队列或生产执行状态；正式执行信息请以 Platform API 为准。</p>
         </aside>
       </div>
       <section aria-label="平台生产阶段摘要" className="space-y-3">

@@ -82,12 +82,20 @@ export const WorkflowWorkspaceView: React.FC = () => {
       }
     }
   };
-  return <div id="storyos-workflow-workspace" className="w-full min-w-0 space-y-3 pb-5 text-[var(--text-primary)]">
+  return <div id="storyos-workflow-workspace" className="flex w-full min-w-0 flex-col gap-3 pb-5 text-[var(--text-primary)]">
     <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-3">
-      <div><h1 className="os-page-heading">生产流程</h1><p className="mt-1 text-[12px] text-[var(--text-secondary)]">标准阶段顺序与作品所处阶段 · 只读投影</p></div>
+      <div><h1 className="os-page-heading">生产流程</h1><p className="mt-1 text-[12px] text-[var(--text-secondary)]">七阶段进度分布与作品记录 · 只读阶段投影，不代表实际执行状态</p></div>
       <Button onClick={()=>setReload(v=>v+1)} disabled={loading} icon={<RefreshCw size={15}/>}>刷新</Button>
     </header>
-    <details className="group border-b border-[var(--border-subtle)] pb-3" aria-label="七阶段流程">
+    <nav aria-label="工作流阶段快速筛选" className="order-1 min-w-0 overflow-x-auto border-y border-[var(--border-subtle)]">
+      <div className="flex min-w-[830px] items-stretch gap-px bg-[var(--border-subtle)]">
+        {[{value:'ALL',label:'全部作品'},...STAGE_ORDER.map(value=>({value,label:stageLabel(value)}))].map(choice=>{
+          const count=choice.value==='ALL'?items.length:items.filter(item=>item.production_stage===choice.value).length;
+          return <button key={choice.value} type="button" aria-pressed={filter===choice.value} onClick={()=>{setFilter(choice.value);setPage(1);}} className={`flex min-h-[58px] flex-1 flex-col items-start justify-center gap-1 bg-[var(--bg-surface)] px-3 text-left hover:bg-[var(--bg-hover)] ${filter===choice.value?'shadow-[inset_0_-2px_0_var(--info)]':'text-[var(--text-secondary)]'}`}><span className="truncate text-[11px]">{choice.label}</span><span className="text-[17px] font-semibold tabular-nums text-[var(--text-primary)]">{count}</span></button>;
+        })}
+      </div>
+    </nav>
+    <details className="order-3 group border-t border-[var(--border-subtle)] pt-3" aria-label="七阶段流程">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-1 text-[13px] font-semibold text-[var(--text-primary)]">
         <span>标准七阶段 <span className="ml-2 text-[12px] font-normal text-[var(--text-tertiary)]">参考流程 · 非可点击执行步骤</span></span>
         <span className="text-[12px] font-normal text-[var(--info)] group-open:hidden">展开流程</span><span className="hidden text-[12px] font-normal text-[var(--info)] group-open:inline">收起流程</span>
@@ -95,8 +103,8 @@ export const WorkflowWorkspaceView: React.FC = () => {
       <div className="mt-3 overflow-x-auto"><div className="min-w-[890px] py-1.5"><Steps size="small" current={-1} responsive={false} items={STAGE_ORDER.map(stage=>({title:stageLabel(stage),status:'wait' as const}))}/></div></div>
       <p className="mt-2 text-[12px] text-[var(--text-secondary)]">仅表示阶段定义，不代表已有运行记录通过门禁。</p>
     </details>
-    <section className="min-w-0 space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-2"><div className="flex flex-wrap items-baseline gap-3"><h2 className="os-section-heading">各作品所处阶段</h2><p className="text-[11px] text-[var(--text-tertiary)]">已载入 {items.length}{total!==null?' / '+total:''} 条 · 当前匹配 {filtered.length} 条{hasMore?' · 筛选只针对已读取数据':''}</p></div>
+    <section className="order-2 min-w-0 space-y-2" aria-label="工作流主数据列表">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-2"><div className="flex flex-wrap items-baseline gap-3"><h2 className="os-section-heading">作品阶段清单</h2><p className="text-[11px] text-[var(--text-tertiary)]">已载入 {items.length}{total!==null?' / '+total:''} 条 · 当前匹配 {filtered.length} 条{hasMore?' · 筛选只针对已读取数据':''}</p></div>
       <div className="os-console-filterbar flex flex-wrap items-center gap-2"><Input aria-label="搜索已载入作品" placeholder="搜索作品名称 / 标识" value={keyword} onChange={e=>{setKeyword(e.target.value);setPage(1);}} allowClear prefix={<Search size={14}/>} className="!w-[230px] max-w-full"/><Select aria-label="筛选阶段" value={filter} onChange={v=>{setFilter(v);setPage(1);}} className="w-[170px] shrink-0" options={[{value:'ALL',label:'全部阶段'},...STAGE_ORDER.map(value=>({value,label:stageLabel(value)}))]}/>{(keyword||filter!=='ALL')&&<Button size="small" aria-label="清除工作流筛选" onClick={()=>{setKeyword('');setFilter('ALL');setPage(1);}}>重置筛选</Button>}</div>
       </div>
       {error&&<p role="alert" className="flex items-center gap-2 border-l-2 border-[var(--warning)] py-2 pl-3 text-[12px] text-[var(--warning)]"><AlertCircle size={15}/>{error}</p>}
@@ -105,7 +113,7 @@ export const WorkflowWorkspaceView: React.FC = () => {
         onRow={record=>({onClick:()=>setSelected(record),className:'cursor-pointer'})}
         locale={{emptyText:'暂无可展示的阶段记录'}}
         columns={[
-          {title:'作品',key:'title',sorter:(a,b)=>String(a.title||a.episode_ref||'').localeCompare(String(b.title||b.episode_ref||''),'zh-CN'),render:(_,x)=><div className="min-w-0"><div title={x.episode_ref||x.episode_id} className="truncate text-[14px] font-semibold text-[var(--text-primary)]">{x.title||x.episode_ref||x.episode_id||'未命名作品'}</div><span className="sr-only">作品标识 {x.episode_ref||x.episode_id}</span></div>},
+          {title:'作品',key:'title',sorter:(a,b)=>String(a.title||a.episode_ref||'').localeCompare(String(b.title||b.episode_ref||''),'zh-CN'),render:(_,x)=><div className="min-w-0"><div title={x.episode_ref||x.episode_id} className="truncate text-[13px] font-semibold text-[var(--text-primary)]">{x.title||x.episode_ref||x.episode_id||'未命名作品'}</div><span className="block truncate font-mono text-[10px] text-[var(--text-tertiary)]">{x.episode_ref||x.episode_id||'未提供作品标识'}</span></div>},
           {title:'生产阶段',dataIndex:'production_stage',key:'stage',width:150,render:(v:string)=><span className="inline-flex items-center gap-2 text-[13px] text-[var(--text-secondary)]"><span className="h-1.5 w-1.5 rounded-full bg-[var(--text-tertiary)]"/>{stageLabel(v||'NO_STATE')}</span>},
           {title:'数据来源',dataIndex:'state_source',key:'source',width:215,ellipsis:true,render:(v:string)=><span title={v||'未提供'} className="text-[12px] text-[var(--text-secondary)]">{v==='local_workspace_episode_state_file'?'本机状态文件 · 只读':v||'未提供'}</span>},
           {title:'更新时间',key:'updated',width:170,sorter:(a,b)=>String(a.updated_at||a.observed_at||'').localeCompare(String(b.updated_at||b.observed_at||'')),render:(_,x)=><span title={x.updated_at||x.observed_at||''} className="text-[12px] tabular-nums text-[var(--text-secondary)]">{readableDate(x.updated_at||x.observed_at)}</span>},
