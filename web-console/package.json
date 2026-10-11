@@ -33,6 +33,7 @@
     "test:media": "node scripts/test-local-approved-media-r16.mjs",
     "test:r19": "node scripts/test-r19-layout-interaction.mjs",
     "test:r20": "node scripts/test-r20-console-layout.mjs",
+    "test:r22": "node scripts/test-r22-four-slots-browser.mjs",
     "test:responsive": "node scripts/test-r17-responsive-browser.mjs"
   },
   "dependencies": {
