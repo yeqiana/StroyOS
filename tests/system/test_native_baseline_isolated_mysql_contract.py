@@ -40,7 +40,12 @@ def admitted_db(request, monkeypatch, tmp_path):
     from platform.repository.mysql.schema_v2 import DDL_STEPS
 
     database = connection_factory()()
-    storage_id = "EPU_TEST_" + uuid.uuid4().hex[:18]
+    # Production uses DISTINCT namespaces: hashed storage Ledger ID and
+    # logical Generation Authority Episode ID. Do not hide cross-ID joins.
+    suffix = uuid.uuid4().hex[:18]
+    storage_id = "EPU_TEST_" + suffix
+    logical_id = "storyos-test-only-episode/" + suffix
+    assert storage_id != logical_id
     schema_steps = {
         "create_production_frame",
         "create_production_attempt",
@@ -80,9 +85,10 @@ def admitted_db(request, monkeypatch, tmp_path):
         asset_key = "synthetic-frame-01"
         source["queue_item_id"] = "synthetic-queue-01"
         source["prompt_package_sha256"] = "b" * 64
-        source["generation_key"] = generation.stable_generation_key(storage_id, asset_key, 1)
+        source["logical_episode_id"] = logical_id
+        source["generation_key"] = generation.stable_generation_key(logical_id, asset_key, 1)
         source["candidate"] = ep / "synthetic-image-isolation-only.png"
-        monkeypatch.setattr(reconciliation.logical_asset_identity, "episode_id", lambda _: storage_id)
+        monkeypatch.setattr(reconciliation.logical_asset_identity, "episode_id", lambda _: logical_id)
         monkeypatch.setattr(generation, "frame_key", lambda _ep, _frame: asset_key)
         monkeypatch.setattr(reconciliation, "verify_frame01_sources",
                             lambda _ep, allow_generated=False: dict(source))
@@ -131,7 +137,7 @@ def admitted_db(request, monkeypatch, tmp_path):
             database.execute(
                 "INSERT INTO TB_GENERATION_ASSET_STATE "
                 "(EPISODE_ID,LOGICAL_ASSET_KEY,ATTEMPTS_CONSUMED,ACTIVE_ATTEMPT_INDEX,FENCING_COUNTER) "
-                "VALUES (%s,%s,1,NULL,1)", (storage_id, asset_key),
+                "VALUES (%s,%s,1,NULL,1)", (logical_id, asset_key),
             )
             database.execute(
                 "INSERT INTO TB_GENERATION_ATTEMPT "
@@ -140,7 +146,7 @@ def admitted_db(request, monkeypatch, tmp_path):
                 "DISPATCH_COMMITTED_AT,MODEL_ROLE,MODEL_POLICY_SHA256,CONTROLLER_MODEL,"
                 "PAYLOAD_MODEL,PAYLOAD_QUALITY,PROVIDER,FAILURE_CLASS,CONTEXT) "
                 "VALUES (%s,%s,1,%s,%s,1,'OUTCOME_UNKNOWN',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (storage_id, asset_key, source["generation_key"], "f" * 64,
+                (logical_id, asset_key, source["generation_key"], "f" * 64,
                  now, now, now, now, "image.payload", model_sha, "gpt-6-luna",
                  "gpt-image-2.5-flare", "high", "codex_subscription",
                  reconciliation.EXPECTED_REASON, json.dumps(context)),
@@ -156,7 +162,8 @@ def admitted_db(request, monkeypatch, tmp_path):
         for table in ("TB_GENERATION_ATTEMPT", "TB_GENERATION_ASSET_STATE",
                       "TB_PRODUCTION_ATTEMPT", "TB_PRODUCTION_FRAME",
                       "TB_PRODUCTION_LEDGER_AUTHORITY"):
-            database.execute(f"DELETE FROM {table} WHERE EPISODE_ID=%s", (storage_id,))
+            target_id = logical_id if table.startswith("TB_GENERATION_") else storage_id
+            database.execute(f"DELETE FROM {table} WHERE EPISODE_ID=%s", (target_id,))
         database.close()
 
 
@@ -222,7 +229,7 @@ def test_real_isolated_mysql_generation_attempt_and_ledger_one_transaction(admit
     authority_row = db.query_one(
         "SELECT STATUS,RESULT_REF,FAILURE_CLASS,TERMINAL_AT FROM TB_GENERATION_ATTEMPT "
         "WHERE EPISODE_ID=%s AND LOGICAL_ASSET_KEY=%s AND ATTEMPT_INDEX=1",
-        (storage_id, "synthetic-frame-01"),
+        (source["logical_episode_id"], "synthetic-frame-01"),
     )
     assert authority_row["STATUS"] == "SUCCEEDED"
     assert authority_row["RESULT_REF"] == str(source["candidate"])
@@ -274,7 +281,7 @@ def test_real_isolated_mysql_competing_attempt_cas_single_winner(admitted_db):
     asset_state = db.query_one(
         "SELECT ATTEMPTS_CONSUMED,ACTIVE_ATTEMPT_INDEX,FENCING_COUNTER "
         "FROM TB_GENERATION_ASSET_STATE WHERE EPISODE_ID=%s AND LOGICAL_ASSET_KEY=%s",
-        (storage_id, "synthetic-frame-01"),
+        (source["logical_episode_id"], "synthetic-frame-01"),
     )
     assert asset_state["ATTEMPTS_CONSUMED"] == 1
     assert asset_state["ACTIVE_ATTEMPT_INDEX"] is None
@@ -310,6 +317,6 @@ def test_real_isolated_mysql_final_cas_conflict_rolls_back_ledger(admitted_db, m
     row = db.query_one(
         "SELECT STATUS FROM TB_GENERATION_ATTEMPT WHERE EPISODE_ID=%s "
         "AND LOGICAL_ASSET_KEY=%s AND ATTEMPT_INDEX=1",
-        (storage_id, "synthetic-frame-01"),
+        (source["logical_episode_id"], "synthetic-frame-01"),
     )
     assert row["STATUS"] == "OUTCOME_UNKNOWN"

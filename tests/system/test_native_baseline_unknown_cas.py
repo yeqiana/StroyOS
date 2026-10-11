@@ -409,6 +409,30 @@ def test_queue_crash_after_mysql_commit_only_resumes_original_item(example, monk
     assert review_result["item"]["status"] == "queued"
     assert review_result["item"]["receipt"] is None
     assert review_result["item"]["generation_key"] == evidence["generation_key"]
+    # The canonical image Scheduler must not treat generated pixels as
+    # baseline approval. All 3 dependent image frames remain fenced until
+    # independent actual-pixel baseline approval is durable.
+    import image_scheduler
+    monkeypatch.setattr(
+        image_scheduler.visual_lock_baseline_gate,
+        "is_baseline_dependency", lambda _ep, dependency: dependency == 1,
+    )
+    monkeypatch.setattr(
+        image_scheduler.visual_lock_baseline_gate,
+        "approved", lambda _ep: False,
+    )
+    pending, waiting = image_scheduler.ready_items(ep, persisted["queue"])
+    assert pending == []
+    assert {item["frame"] for item in waiting} == {8, 16, 17}
+    assert review_result["item"]["status"] == "queued"
+    monkeypatch.setattr(
+        image_scheduler.visual_lock_baseline_gate,
+        "approved", lambda _ep: True,
+    )
+    approved_ready, waiting = image_scheduler.ready_items(ep, persisted["queue"])
+    assert {item["frame"] for item in approved_ready} == {8, 16, 17}
+    assert waiting == []
+
     assert frame["execution"]["transaction_id"] == "9" * 32
     assert frame["execution"]["phase"] == "COMMITTED"
     assert all(x["status"] == "queued" for x in persisted["queue"]["items"][1:])
