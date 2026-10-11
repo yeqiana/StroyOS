@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import {Button,Table} from 'antd';
-import {X} from 'lucide-react';
+import {Button,Drawer,Table} from 'antd';
 import { platformApi, RuntimeStatusDetail, RuntimeStatusSummary, stageLabel } from '../../api/platformApi';
 import type { RuntimeCoverage } from '../../api/runtimeCoverage';
 
@@ -57,20 +56,26 @@ export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMor
       />
       {hasMore&&<div className="flex items-center justify-between border-t border-[var(--border-subtle)] px-4 py-3"><span className="text-[12px] text-[var(--text-tertiary)]">仍有服务端记录未加载</span><Button loading={loadingMore} onClick={onLoadMore}>从 Platform API 加载下一页</Button></div>}
     </>}
-    {selected && <div className="space-y-4 border-t border-[var(--border-strong)] bg-[var(--bg-elevated)] px-5 py-5">
-      <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="text-[13px] font-semibold truncate">{selected.title || selected.episode_ref || selected.episode_id}</h3><p className="mt-1 text-[11px] text-[var(--text-tertiary)]">阶段详情（请参考实际数据源标记，未知字段不推断）</p></div><button onClick={() => setSelected(null)} aria-label="关闭阶段详情" type="button" className="p-1.5 rounded hover:bg-[var(--bg-hover)]"><X size={16}/></button></div>
-      {detailState === 'loading' ? <p role="status" className="text-[var(--text-secondary)]">读取阶段详情中…</p> : detailState === 'unavailable' ? <p role="alert" className="text-[var(--warning)]">详情接口不可用；不推断执行状态。</p> : <dl className="grid sm:grid-cols-2 gap-x-6 gap-y-3">
+    {selected && <Drawer open title="阶段证据详情 · 只读" onClose={()=>setSelected(null)} width="min(440px, 100vw)" destroyOnClose className="storyos-authority-inspector"><section aria-label="生产监控阶段详情" className="space-y-4">
+      <div className="min-w-0"><h3 className="text-[14px] font-semibold break-words">{selected.title || selected.episode_ref || selected.episode_id}</h3><p className="mt-1 text-[11px] text-[var(--text-tertiary)]">仅展示当前只读证据 · 未知执行状态不推断</p></div>
+      {detailState === 'loading' && <p role="status" className="text-[var(--text-secondary)]">正在读取扩展详情，下方摘要已可查看…</p>}
+      {detailState === 'unavailable' && <p role="alert" className="text-[var(--warning)]">扩展详情接口不可用，以下保留已读取的阶段证据。</p>}
+      <dl className="space-y-0">
         {[
-          ['生产阶段', stageLabel(detail?.production_stage || selected.production_stage || 'NO_STATE')],
-          ['执行状态', text(detail?.execution_status)],
-          ['当前动作', text(detail?.current_action || detail?.next_step)],
-          ['阻塞原因', text(detail?.blocking_reason)],
-          ['需要人工', text(detail?.needs_user)],
-          ['心跳健康', text(detail?.heartbeat?.health)],
-          ['已接受帧', text(detail?.image_progress?.accepted_frames)],
-          ['总目标帧', text(detail?.image_progress?.expected_frames)]
-        ].map(([key, value]) => <div key={key}><dt className="text-[11px] text-[var(--text-tertiary)]">{key}</dt><dd className="mt-1 break-words text-[12px]">{value}</dd></div>)}
-      </dl>}
-    </div>}
+          ['生产阶段', stageLabel(selected.production_stage || 'NO_STATE')],
+          ['数据来源', selected.state_source === 'local_workspace_episode_state_file' ? '本机状态文件 · 只读' : text(selected.state_source)],
+          ['更新时间', text(selected.updated_at || selected.observed_at)],
+          ...(detailState === 'available' ? [
+            ['执行状态', text(detail?.execution_status)],
+            ['当前动作', text(detail?.current_action || detail?.next_step)],
+            ['阻塞原因', text(detail?.blocking_reason)],
+            ['需要人工', text(detail?.needs_user)],
+            ['心跳健康', text(detail?.heartbeat?.health)],
+            ['已接受帧', text(detail?.image_progress?.accepted_frames)],
+            ['总目标帧', text(detail?.image_progress?.expected_frames)]
+          ] : [])
+        ].map(([key, value]) => <div key={key} className="grid grid-cols-[100px_minmax(0,1fr)] items-start gap-3 border-b border-[var(--border-subtle)] py-3"><dt className="text-[11px] text-[var(--text-tertiary)]">{key}</dt><dd className="break-words text-[12px] text-[var(--text-primary)]">{value}</dd></div>)}
+      </dl>
+    </section></Drawer>}
   </section>;
 };
