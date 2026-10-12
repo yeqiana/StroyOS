@@ -222,8 +222,11 @@ def _reserve_impl(ep: str | Path, logical_asset_key: str, generation_context: di
             # _expire_active() may have just persisted DISPATCH_COMMITTED ->
             # OUTCOME_UNKNOWN; rolling that back would erase the evidence while
             # still returning a blocked dispatch.
-            history_denial = _previous_attempt_denial(connection, episode_id, key, consumed)
+            # Legacy consumed quota may predate individual Attempt history rows.
+            # A hard cap denies without falsely reporting missing history.
             budget_denial = consumed >= MAX_REAL_IMAGE_GENERATION_ATTEMPTS_PER_ASSET
+            history_denial = (None if budget_denial else
+                              _previous_attempt_denial(connection, episode_id, key, consumed))
             if history_denial:
                 lease = None
             elif budget_denial:
