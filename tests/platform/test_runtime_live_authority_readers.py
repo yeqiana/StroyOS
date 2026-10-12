@@ -144,9 +144,11 @@ def test_real_task_binding_redis_pttl_tz_and_no_mutations():
     assert proof["observed_at"]
     assert report["production_authorization"] is False
     assert report["can_start"] is False and report["can_retry"] is False
-    assert len(sql.calls) == 2
+    assert len(sql.calls) == 4  # pre/post MySQL Episode + active Task validation
     assert all(sql.startswith("SELECT ") for sql, _ in sql.calls)
     assert redis.calls == [
+        ("get", f"storyos:worker:{WORKER}:heartbeat"),
+        ("pttl", f"storyos:worker:{WORKER}:heartbeat"),
         ("get", f"storyos:worker:{WORKER}:heartbeat"),
         ("pttl", f"storyos:worker:{WORKER}:heartbeat"),
     ]
@@ -298,6 +300,135 @@ def test_writer_fencing_policy_cannot_use_unbounded_configuration(overrides):
         EpisodeWriterFenceReadOnlyReader(
             lambda _: driver(), lambda _: fence(), **overrides,
         )
+
+
+
+def test_r37_worker_task_reassigned_during_redis_read_fails_closed():
+    class ReassignedSql(Sql):
+        read_count = 0
+
+        def query_all(self, sql, params=None):
+            self.read_count += 1
+            rows = super().query_all(sql, params)
+            if self.read_count == 2:
+                rows[0]["OWNER_ID"] = "replacement-worker"
+            return rows
+
+    reader, db, redis = worker_reader(sql=ReassignedSql())
+    report = projected({"worker": reader})
+    assert report["evidence"]["worker"]["status"] == "UNAVAILABLE"
+    assert report["evidence"]["worker"]["reason"] == "AUTHORITY_READER_FAILED"
+    assert len(db.calls) == 4
+    assert len(redis.calls) == 4
+    assert report["production_authorization"] is False
+
+
+def test_r37_worker_episode_uid_changed_during_redis_read_fails_closed():
+    class ReboundEpisodes(EpisodeRepo):
+        reads = 0
+
+        def unique_owner_by_namespace(self, namespace):
+            self.reads += 1
+            result = super().unique_owner_by_namespace(namespace)
+            if self.reads == 2:
+                result["episode_id"] = "EPU_other"
+            return result
+
+    reader, _, _ = worker_reader(repo=ReboundEpisodes())
+    report = projected({"worker": reader})
+    assert report["evidence"]["worker"]["status"] == "UNAVAILABLE"
+    assert report["can_retry"] is False
+
+
+def test_r37_worker_redis_heartbeat_replaced_mid_read_fails_closed():
+    class ChangingHeartbeat(Redis):
+        n = 0
+
+        def get(self, key):
+            self.n += 1
+            result = super().get(key)
+            if self.n == 2:
+                data = json.loads(result)
+                data["heartbeat_time"] = NOW.isoformat()
+                return json.dumps(data).encode("utf-8")
+            return result
+
+    reader, _, redis = worker_reader(redis=ChangingHeartbeat())
+    report = projected({"worker": reader})
+    assert report["evidence"]["worker"]["status"] == "UNAVAILABLE"
+    assert len(redis.calls) == 4
+
+
+def test_r37_worker_redis_heartbeat_expired_between_reads_fails_closed():
+    class ExpiringHeartbeat(Redis):
+        n = 0
+
+        def pttl(self, key):
+            self.n += 1
+            self.calls.append(("pttl", key))
+            return self.ttl if self.n == 1 else -2
+
+    reader, _, _ = worker_reader(redis=ExpiringHeartbeat())
+    report = projected({"worker": reader})
+    assert report["evidence"]["worker"]["status"] == "UNAVAILABLE"
+    assert report["production_authorization"] is False
+
+
+@pytest.mark.parametrize("changed_field,new_value", [
+    ("fencing_epoch", 10),
+    ("owner_count", 2),
+    ("driver_pid", 9999),
+    ("lease_expires_at", (NOW+timedelta(minutes=10)).isoformat()),
+    ("owner_active", False),
+])
+def test_r37_writer_fencing_changed_between_samples_blocks(changed_field, new_value):
+    snapshots = [fence(), {**fence(), changed_field: new_value}]
+    reader = EpisodeWriterFenceReadOnlyReader(
+        lambda ep: driver(),
+        lambda ep: snapshots.pop(0),
+        clock=lambda: NOW,
+    )
+    report = projected({"writer": reader})
+    assert report["evidence"]["writer"]["status"] == "UNAVAILABLE"
+    assert report["can_start"] is False
+
+
+def test_r37_writer_driver_pid_recycled_between_samples_blocks():
+    seen = [driver(), {**driver(), "pid": 8877}]
+    reader = EpisodeWriterFenceReadOnlyReader(
+        lambda ep: seen.pop(0), lambda ep: fence(), clock=lambda: NOW,
+    )
+    report = projected({"writer": reader})
+    assert report["evidence"]["writer"]["status"] == "UNAVAILABLE"
+
+
+def test_r37_writer_lease_expires_between_samples_blocks():
+    clock_values = iter([NOW, NOW+timedelta(minutes=6)])
+    reader = EpisodeWriterFenceReadOnlyReader(
+        lambda ep: driver(), lambda ep: fence(),
+        clock=lambda: next(clock_values),
+    )
+    report = projected({"writer": reader})
+    assert report["evidence"]["writer"]["status"] == "UNAVAILABLE"
+    assert report["can_retry"] is False
+
+
+def test_r37_writer_beacon_stops_during_fence_read_blocks():
+    seen = [driver(), {**driver(), "beacon_age_seconds": 150}]
+    reader = EpisodeWriterFenceReadOnlyReader(
+        lambda ep: seen.pop(0), lambda ep: fence(), clock=lambda: NOW,
+    )
+    report = projected({"writer": reader})
+    assert report["evidence"]["writer"]["status"] == "UNAVAILABLE"
+
+
+def test_r37_good_two_sample_writer_is_evidence_only():
+    result = projected({"writer": writer_reader()})
+    assert result["evidence"]["writer"]["status"] == "READ_ONLY_VERIFIED"
+    assert result["can_start"] is False
+    assert result["can_retry"] is False
+    assert result["can_publish"] is False
+    assert result["production_authorization"] is False
 
 
 def test_local_file_never_reads_worker_or_fenced_owner():

@@ -55,6 +55,8 @@
     "test:r35": "node scripts/test-r35-authority-browser.mjs",
     "test:r36:guards": "node scripts/test-r36-authority-presentation.mjs",
     "test:r36": "node scripts/test-r36-authority-browser.mjs",
+    "test:r37:guards": "node scripts/test-r37-evidence-expiry.mjs",
+    "test:r37": "node scripts/test-r37-authority-browser.mjs",
     "test:responsive": "node scripts/test-r17-responsive-browser.mjs"
   },
   "dependencies": {

@@ -30,6 +30,7 @@ export function usableRuntimeAuthority(
         && (name === 'capacity' ? evidence.status === 'ADVISORY_ONLY' && evidence.advisory_snapshot_only === true
           : evidence.status === 'READ_ONLY_VERIFIED')
         && typeof evidence.observed_at === 'string'
+        && /(?:Z|[+-]\d{2}:\d{2})$/.test(evidence.observed_at)
         && Number.isFinite(Date.parse(evidence.observed_at))
         && Math.abs(Date.now() - Date.parse(evidence.observed_at)) <= 120_000
         && (name !== 'worker' || evidence.heartbeat_verified === true)

@@ -74,27 +74,31 @@ class EpisodeWorkerHeartbeatReadOnlyReader:
                 or type(self._max_ttl) is not int or not 1 <= self._max_ttl <= 3_600_000):
             raise ValueError("AUTHORITY_WORKER_TTL_POLICY_INVALID")
 
-    def __call__(self, episode_ref: str) -> dict[str, Any]:
-        episode_id = self._mysql._episode_id(episode_ref)
+    def _single_task_owner(self, episode_id: str) -> tuple[str, str]:
         rows = self._mysql.connection.query_all(
             "SELECT TASK_ID, EPISODE_ID, OWNER_ID, STATUS FROM TB_TASK "
             "WHERE EPISODE_ID=%s AND STATUS='RUNNING' AND OWNER_ID IS NOT NULL "
             "ORDER BY START_TIME DESC, TASK_ID ASC LIMIT 2",
             (episode_id,),
-        ) or []
-        if len(rows) != 1 or not isinstance(rows[0], Mapping):
+        )
+        if not isinstance(rows, (list, tuple)) or len(rows) != 1 or not isinstance(rows[0], Mapping):
             raise ValueError("AUTHORITY_WORKER_TASK_OWNER_AMBIGUOUS")
         task = rows[0]
-        if (str(task.get("EPISODE_ID") or "") != episode_id
-                or str(task.get("STATUS") or "") != "RUNNING"
-                or not str(task.get("TASK_ID") or "").strip()):
-            raise ValueError("AUTHORITY_WORKER_TASK_EPISODE_MISMATCH")
+        task_id = task.get("TASK_ID")
         worker_id = task.get("OWNER_ID")
-        if not isinstance(worker_id, str) or _WORKER_ID.fullmatch(worker_id) is None:
-            raise ValueError("AUTHORITY_WORKER_OWNER_ID_INVALID")
+        if (task.get("EPISODE_ID") != episode_id or task.get("STATUS") != "RUNNING"
+                or not isinstance(task_id, str) or not task_id.strip()
+                or not isinstance(worker_id, str) or _WORKER_ID.fullmatch(worker_id) is None):
+            raise ValueError("AUTHORITY_WORKER_TASK_EPISODE_MISMATCH")
+        return task_id, worker_id
+
+    def __call__(self, episode_ref: str) -> dict[str, Any]:
+        episode_id = self._mysql._episode_id(episode_ref)
+        task_identity = self._single_task_owner(episode_id)
+        _, worker_id = task_identity
         key = "storyos:worker:" + worker_id + ":heartbeat"
-        # Redis GET/ PTTL are the only Redis operations. -1 (no expiry) and
-        # -2 (missing) are NOT a valid production heartbeat lease.
+        # Redis GET/PTTL can race with a Worker reboot or Task reassignment.
+        # Re-read BOTH sources and fail closed if either has changed.
         payload = self._redis.get(key)
         ttl = self._redis.pttl(key)
         if type(ttl) is not int or not 0 < ttl <= self._max_ttl:
@@ -110,12 +114,24 @@ class EpisodeWorkerHeartbeatReadOnlyReader:
             raise ValueError("AUTHORITY_WORKER_HEARTBEAT_IDENTITY_MISMATCH")
         now = self._clock().astimezone(timezone.utc)
         _age_seconds(data.get("heartbeat_time"), now, max_age=self._max_age)
+
+        second_payload = self._redis.get(key)
+        second_ttl = self._redis.pttl(key)
+        if (second_payload != payload and
+                (not isinstance(second_payload, bytes) or second_payload.decode("utf-8") != payload)):
+            raise ValueError("AUTHORITY_WORKER_HEARTBEAT_CHANGED_DURING_READ")
+        if type(second_ttl) is not int or not 0 < second_ttl <= self._max_ttl:
+            raise ValueError("AUTHORITY_WORKER_HEARTBEAT_EXPIRED_DURING_READ")
+        if self._mysql._episode_id(episode_ref) != episode_id:
+            raise ValueError("AUTHORITY_WORKER_EPISODE_REASSIGNED_DURING_READ")
+        if self._single_task_owner(episode_id) != task_identity:
+            raise ValueError("AUTHORITY_WORKER_TASK_REASSIGNED_DURING_READ")
         return {
             "episode_ref": episode_ref,
             "source": AUTHORITATIVE_SOURCES["worker"],
             "verified": True,
             "read_only": True,
-            "observed_at": now.isoformat(),
+            "observed_at": self._clock().astimezone(timezone.utc).isoformat(),
             "heartbeat_verified": True,
             "execution_lease_verified": False,
         }
@@ -178,6 +194,33 @@ class EpisodeWriterFenceReadOnlyReader:
         if not 0 < remaining <= self._lease_max:
             raise ValueError("AUTHORITY_WRITER_LEASE_EXPIRED_OR_UNBOUNDED")
         _age_seconds(fence.get("observed_at"), now, max_age=120)
+
+        # A reader-only snapshot is not atomic. Verify that the fenced owner
+        # and Driver did not change WHILE the two sources were inspected.
+        # This is still advisory, not an acquired or renewable lease.
+        second_fence = self._owner_fence(episode_ref)
+        second_driver = self._driver_status(episode_ref)
+        if not isinstance(second_fence, Mapping) or not isinstance(second_driver, Mapping):
+            raise ValueError("AUTHORITY_WRITER_SNAPSHOT_CHANGED")
+        for attribute in ("episode_ref", "authority_source", "owner_active",
+                          "owner_count", "driver_pid", "fencing_epoch", "lease_expires_at"):
+            if second_fence.get(attribute) != fence.get(attribute):
+                raise ValueError("AUTHORITY_WRITER_FENCE_CHANGED_DURING_READ")
+        if (second_driver.get("episode_ref") != episode_ref
+                or second_driver.get("driver_state") != "RUNNING"
+                or second_driver.get("liveness") != "ALIVE"
+                or type(second_driver.get("pid")) is not int
+                or second_driver["pid"] != pid):
+            raise ValueError("AUTHORITY_WRITER_DRIVER_CHANGED_DURING_READ")
+        second_now = self._clock().astimezone(timezone.utc)
+        second_age = second_driver.get("beacon_age_seconds")
+        if (type(second_age) not in (int, float) or not math.isfinite(second_age)
+                or not 0 <= second_age <= self._beacon_max):
+            raise ValueError("AUTHORITY_WRITER_BEACON_STALE_DURING_READ")
+        _age_seconds(second_driver.get("beacon_at"), second_now, max_age=self._beacon_max)
+        if (expires - second_now).total_seconds() <= 0:
+            raise ValueError("AUTHORITY_WRITER_LEASE_EXPIRED_DURING_READ")
+        _age_seconds(second_fence.get("observed_at"), second_now, max_age=120)
         return {
             "episode_ref": episode_ref,
             "source": AUTHORITATIVE_SOURCES["writer"],
