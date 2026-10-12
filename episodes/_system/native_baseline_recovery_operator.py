@@ -19,6 +19,7 @@ import uuid
 import episode_identity
 import generation_attempt_authority as generation
 import logical_asset_identity
+import native_baseline_atomic_ledger as atomic_ledger
 import native_baseline_readonly_preflight as preflight
 import native_baseline_source_freeze as freeze
 import native_baseline_unknown_cas as recovery
@@ -220,7 +221,6 @@ def _committed_sql_pending_queue_resume(
     Generation Key and Fencing, plus a completed SHA-bound Ledger. The canonical
     MySQL transaction rechecks its typed projections before fixing the Queue.
     """
-    import native_baseline_atomic_ledger as atomic
     import production_ledger_persistence as ledger_store
 
     proof = recovery.verify_frame01_sources(ep, allow_generated=True)
@@ -246,7 +246,7 @@ def _committed_sql_pending_queue_resume(
     ledger = ledger_store.load_authority(ep)
     if not isinstance(ledger, dict):
         _deny("NATIVE_FRAME01_RESUME_LEDGER_MISSING")
-    atomic._check_existing(ledger, proof, completed=True)
+    atomic_ledger._check_existing(ledger, proof, completed=True)
 
 
 def _verified_archive(ep: Path, manifest_file: Path, digest: str, fence: int, evidence: str) -> None:
@@ -281,6 +281,7 @@ def _verified_archive(ep: Path, manifest_file: Path, digest: str, fence: int, ev
         current, files = capture(ep)
     except (preflight.NativeFrame01PreflightDenied,
             recovery.NativeReconciliationDenied,
+            atomic_ledger.LedgerRecoveryDenied,
             NativeFrame01OperationDenied):
         _committed_sql_pending_queue_resume(ep, manifest, fence, evidence)
         return

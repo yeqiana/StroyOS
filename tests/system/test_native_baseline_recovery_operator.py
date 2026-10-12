@@ -230,8 +230,8 @@ def committed_resume(fake_archive, monkeypatch, tmp_path):
     import production_ledger_persistence as store
     ep, result, manifest = fake_archive
     def fake_old_preflight(_):
-        raise op.preflight.NativeFrame01PreflightDenied(
-            "NATIVE_PREFLIGHT_GENERATION_AUTHORITY_DRIFT"
+        raise atomic.LedgerRecoveryDenied(
+            "NATIVE_RECONCILIATION_LEDGER_FAILURE_DRIFT"
         )
     monkeypatch.setattr(op, "capture", fake_old_preflight)
     files = {}
