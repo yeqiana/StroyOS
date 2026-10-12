@@ -26,7 +26,9 @@
 
 保留原来 StoryOS 单机 Driver + 本机文件锁、MySQL Attempt、五图 OS Permit、现有 Gateway，不添加 Redis Cluster、跨主机容量、额外 Worker Grant 或 Provider Consumer 服务。
 
-合并后去重回归、Git 提交和遗留阻塞：以本轮单机集成分支最终交付记录为准。
+**最终去重集成回归：241 passed、12 skipped、5 subtests passed，0 failed（23.11 秒）。** 此测试只涵盖经过显式选择的单机 Owner/Attempt、真实本机五图锁、故事分镜/Visual Lock、生产队列、审核/Release 门禁等用例，不代表全仓库完整功能验收。12 skipped 为本轮未启动独立 TEST_ONLY MySQL 写入准入的旧测试；上一轮隔离 MySQL 专项 26/26 成功，不应被当成本轮重新执行。
+
+四槽原始提交：A `7f7c4675`、B `66b75f54`、C `6b0b0440`、D `acb37193`；单机集成提交：A `c2768f56`、B `eef823ee`、C `3157f2d3`、D `bafaa94a`。隔离工作树与正式主分支未混用。
 
 ## 必须保持的阻塞
 
