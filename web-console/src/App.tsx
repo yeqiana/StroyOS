@@ -75,7 +75,23 @@ export default function App() {
   useEffect(() => {
     try { localStorage.setItem('storyos_local_story_drafts_v1', JSON.stringify(episodes.filter(ep => /^ep-(home|proj)-/.test(ep.id)))); } catch { /* restricted local storage */ }
   }, [episodes]);
-  const [activeEpisode, setActiveEpisode] = useState<Episode>(REAL_EPISODES[0]);
+  // Restore only a previously saved local draft. Historical details still load via
+  // the canonical lazy detail loader instead of restoring stale cached evidence.
+  const [activeEpisode, setActiveEpisode] = useState<Episode>(() => {
+    try {
+      const id = localStorage.getItem('storyos_active_local_story_id_v1');
+      return episodes.find(ep => ep.id === id && /^ep-(home|proj)-/.test(ep.id)) || REAL_EPISODES[0];
+    } catch { return REAL_EPISODES[0]; }
+  });
+  useEffect(() => {
+    try {
+      if (/^ep-(home|proj)-/.test(activeEpisode.id)) {
+        localStorage.setItem('storyos_active_local_story_id_v1', activeEpisode.id);
+      } else {
+        localStorage.removeItem('storyos_active_local_story_id_v1');
+      }
+    } catch { /* restricted local storage; draft selection remains in memory */ }
+  }, [activeEpisode.id]);
   const [currentTab, setCurrentTab] = useState<NavigationTab>('overview');
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detailRetry, setDetailRetry] = useState(0);
