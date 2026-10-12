@@ -50,6 +50,7 @@
     "test:r33:safety": "node scripts/test-r33-recovery-safety.mjs",
     "test:r33": "node scripts/test-r33-runtime-inspector-browser.mjs",
     "test:r33:readiness": "node scripts/test-r33-runtime-readiness.mjs",
+    "test:r34": "node scripts/test-r34-evidence-browser.mjs",
     "test:responsive": "node scripts/test-r17-responsive-browser.mjs"
   },
   "dependencies": {

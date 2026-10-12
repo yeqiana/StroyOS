@@ -123,6 +123,130 @@ def test_mysql_error_fails_closed_and_never_leaks_driver_secret():
     assert "private-driver-secret" not in str(result)
 
 
+
+def test_integrity_rejects_foreign_episode_attempt_without_exposing_other_story():
+    episode = "00_demo/05_story"
+    foreign = "other_story/private_frame_key"
+    db = FakeConnection(attempts=[{
+        "LOGICAL_ASSET_KEY": foreign, "ATTEMPT_INDEX": 1, "STATUS": "SUCCEEDED",
+    }])
+    result = audit.inspect_attempt_history(db, episode_id=episode)
+    assert result["status"] == "ATTEMPT_HISTORY_INTEGRITY_BLOCKED"
+    assert result["integrity_issues"] == [{
+        "logical_asset_key": "OUT_OF_SCOPE",
+        "code": "ASSET_EPISODE_IDENTITY_MISMATCH",
+    }]
+    assert foreign not in str(result)
+    assert result["production_authorization"] is False
+    assert all(sql.startswith("SELECT ") for sql, _ in db.queries)
+
+
+def test_integrity_rejects_foreign_episode_asset_state_and_invalid_budget():
+    episode = "ep"
+    foreign = "other/secret"
+    key = "ep/frame-01"
+    db = FakeConnection(states=[
+        {"LOGICAL_ASSET_KEY": foreign, "ATTEMPTS_CONSUMED": 0},
+        {"LOGICAL_ASSET_KEY": key, "ATTEMPTS_CONSUMED": 3},
+    ])
+    result = audit.inspect_attempt_history(db, episode_id=episode)
+    assert result["status"] == "ATTEMPT_HISTORY_INTEGRITY_BLOCKED"
+    assert {i["code"] for i in result["integrity_issues"]} == {
+        "ASSET_EPISODE_IDENTITY_MISMATCH", "ATTEMPT_BUDGET_OUT_OF_RANGE"}
+    assert foreign not in str(result)
+    assert result["production_authorization"] is False
+
+
+def test_integrity_rejects_duplicate_attempt_identity_and_state_rows():
+    key = "ep/frame-01"
+    attempts = [{"LOGICAL_ASSET_KEY": key, "ATTEMPT_INDEX": 1,
+                 "STATUS": "SUCCEEDED"}] * 2
+    states = [{"LOGICAL_ASSET_KEY": key, "ATTEMPTS_CONSUMED": 1}] * 2
+    result = audit.inspect_attempt_history(
+        FakeConnection(attempts=attempts, states=states), episode_id="ep")
+    assert result["status"] == "ATTEMPT_HISTORY_INTEGRITY_BLOCKED"
+    assert {x["code"] for x in result["integrity_issues"]} == {
+        "DUPLICATE_ATTEMPT_INDEX", "DUPLICATE_ASSET_STATE"}
+
+
+def test_integrity_rejects_out_of_range_attempt_and_active_indices():
+    key = "ep/frame-01"
+    db = FakeConnection(
+        attempts=[{"LOGICAL_ASSET_KEY": key, "ATTEMPT_INDEX": 3, "STATUS": "SUCCEEDED"}],
+        states=[{"LOGICAL_ASSET_KEY": key, "ATTEMPTS_CONSUMED": 1,
+                 "ACTIVE_ATTEMPT_INDEX": 0}],
+    )
+    result = audit.inspect_attempt_history(db, episode_id="ep")
+    assert result["status"] == "ATTEMPT_HISTORY_INTEGRITY_BLOCKED"
+    assert {i["code"] for i in result["integrity_issues"]} == {
+        "ATTEMPT_INDEX_OUT_OF_RANGE", "ACTIVE_ATTEMPT_INDEX_OUT_OF_RANGE"}
+
+
+def test_integrity_rejects_boolean_and_non_numeric_mysql_projection():
+    key = "ep/frame-01"
+    db = FakeConnection(
+        attempts=[{"LOGICAL_ASSET_KEY": key, "ATTEMPT_INDEX": True,
+                   "STATUS": "FAILED_AFTER_DISPATCH"}],
+        states=[{"LOGICAL_ASSET_KEY": key, "ATTEMPTS_CONSUMED": "garbled"}],
+    )
+    result = audit.inspect_attempt_history(db, episode_id="ep")
+    assert result["status"] == "ATTEMPT_HISTORY_INTEGRITY_BLOCKED"
+    assert {i["code"] for i in result["integrity_issues"]} == {
+        "ATTEMPT_INDEX_OUT_OF_RANGE", "ATTEMPT_BUDGET_OUT_OF_RANGE"}
+    assert "garbled" not in str(result)
+
+
+
+def test_committed_attempt_must_not_outpace_consumed_budget():
+    key = "ep/frame-03"
+    result = audit.inspect_attempt_history(
+        FakeConnection(
+            attempts=[{"LOGICAL_ASSET_KEY": key, "ATTEMPT_INDEX": 2,
+                       "STATUS": "SUCCEEDED"}],
+            states=[{"LOGICAL_ASSET_KEY": key, "ATTEMPTS_CONSUMED": 1}],
+        ),
+        episode_id="ep",
+    )
+    assert result["status"] == "ATTEMPT_HISTORY_INTEGRITY_BLOCKED"
+    assert result["integrity_issues"] == [{
+        "logical_asset_key": key,
+        "code": "COMMITTED_ATTEMPT_BUDGET_MISMATCH",
+    }]
+    assert result["production_authorization"] is False
+
+
+def test_reserved_attempt_does_not_consume_budget_before_dispatch():
+    key = "ep/frame-02"
+    result = audit.inspect_attempt_history(
+        FakeConnection(
+            attempts=[{"LOGICAL_ASSET_KEY": key, "ATTEMPT_INDEX": 2,
+                       "STATUS": "RESERVED"}],
+            states=[{"LOGICAL_ASSET_KEY": key, "ATTEMPTS_CONSUMED": 1,
+                     "ACTIVE_ATTEMPT_INDEX": 2}],
+        ),
+        episode_id="ep",
+    )
+    assert result["status"] == "ACTIVE_ATTEMPT_BLOCKED"
+    assert "integrity_issues" not in result
+    assert result["production_authorization"] is False
+
+
+def test_two_terminal_attempts_can_be_described_without_authorizing_another():
+    key = "ep/frame-01"
+    db = FakeConnection(
+        attempts=[{"LOGICAL_ASSET_KEY": key, "ATTEMPT_INDEX": 1,
+                   "STATUS": "FAILED_AFTER_DISPATCH"},
+                  {"LOGICAL_ASSET_KEY": key, "ATTEMPT_INDEX": 2,
+                   "STATUS": "SUCCEEDED"}],
+        states=[{"LOGICAL_ASSET_KEY": key, "ATTEMPTS_CONSUMED": 2}],
+    )
+    result = audit.inspect_attempt_history(db, episode_id="ep")
+    assert result["status"] == "ATTEMPT_HISTORY_READ_ONLY"
+    assert result["attempt_status_counts"] == {
+        "FAILED_AFTER_DISPATCH": 1, "SUCCEEDED": 1}
+    assert result["production_authorization"] is False
+
+
 def test_canonical_episode_rejects_path_escape_and_duplicate_root(tmp_path):
     (tmp_path / "episodes" / "demo").mkdir(parents=True)
     folder, identifier = audit.canonical_episode("episodes/demo", root=tmp_path)

@@ -33,6 +33,82 @@ def canonical_episode(raw: str, *, root: Path = ROOT) -> tuple[Path, str]:
     return episode, episode.relative_to(allowed).as_posix()
 
 
+def _history_integrity_issues(episode_id: str, attempts: list[dict],
+                              asset_states: list[dict]) -> list[dict[str, str]]:
+    """Check immutable Attempt/asset identities without modifying the Authority.
+
+    Never echo out-of-scope keys: an unexpected MySQL row must not leak
+    another Episode's asset identity into this Episode's operator receipt.
+    This is diagnostic-only; even a clean result does NOT authorize dispatch.
+    """
+    findings: set[tuple[str, str]] = set()
+    expected_prefix = episode_id + "/"
+    seen_attempts: set[tuple[str, int]] = set()
+    seen_states: set[str] = set()
+    committed_indices: dict[str, int] = {}
+
+    def key_of(row: dict) -> str:
+        key = str(row.get("LOGICAL_ASSET_KEY") or "")
+        if not key.startswith(expected_prefix) or len(key) <= len(expected_prefix):
+            findings.add(("OUT_OF_SCOPE", "ASSET_EPISODE_IDENTITY_MISMATCH"))
+            return ""
+        return key
+
+    def index_of(raw, key: str, code: str) -> int | None:
+        # MySQL BIGINT/INT columns arrive as ints; accept plain digit strings
+        # from protocol adapters, but never floats, booleans or signed values.
+        if isinstance(raw, bool) or (
+            not isinstance(raw, int)
+            and not (isinstance(raw, str) and raw.isdecimal())
+        ):
+            findings.add((key, code))
+            return None
+        value = int(raw)
+        if not 1 <= value <= 2:
+            findings.add((key, code))
+            return None
+        return value
+
+    for row in attempts:
+        key = key_of(row)
+        if not key:
+            continue
+        index = index_of(row.get("ATTEMPT_INDEX"), key, "ATTEMPT_INDEX_OUT_OF_RANGE")
+        if index is not None:
+            identity = (key, index)
+            if identity in seen_attempts:
+                findings.add((key, "DUPLICATE_ATTEMPT_INDEX"))
+            seen_attempts.add(identity)
+            if str(row.get("STATUS") or "") in {
+                "DISPATCH_COMMITTED", "SUCCEEDED", "FAILED_AFTER_DISPATCH", "OUTCOME_UNKNOWN"
+            }:
+                committed_indices[key] = max(index, committed_indices.get(key, 0))
+
+    for row in asset_states:
+        key = key_of(row)
+        if not key:
+            continue
+        if key in seen_states:
+            findings.add((key, "DUPLICATE_ASSET_STATE"))
+        seen_states.add(key)
+        raw_consumed = row.get("ATTEMPTS_CONSUMED")
+        if isinstance(raw_consumed, bool) or (
+            not isinstance(raw_consumed, int)
+            and not (isinstance(raw_consumed, str) and raw_consumed.isdecimal())
+        ) or not 0 <= int(raw_consumed) <= 2:
+            findings.add((key, "ATTEMPT_BUDGET_OUT_OF_RANGE"))
+        elif int(raw_consumed) < committed_indices.get(key, 0):
+            # A paid/committed image dispatch must have consumed its shared
+            # Attempt budget before the Provider was contacted. Never allow
+            # a read-side triage to infer that a second dispatch is safe.
+            findings.add((key, "COMMITTED_ATTEMPT_BUDGET_MISMATCH"))
+        active = row.get("ACTIVE_ATTEMPT_INDEX")
+        if active is not None:
+            index_of(active, key, "ACTIVE_ATTEMPT_INDEX_OUT_OF_RANGE")
+    return [{"logical_asset_key": key, "code": code}
+            for key, code in sorted(findings)]
+
+
 def inspect_attempt_history(connection, *, episode_id: str) -> dict:
     result = {"read_only": True, "sql_writes": 0, "model_calls": 0,
               "status": "BLOCKED", "episode_id": episode_id}
@@ -55,6 +131,19 @@ def inspect_attempt_history(connection, *, episode_id: str) -> dict:
             "FROM TB_GENERATION_ASSET_STATE WHERE EPISODE_ID=%s ORDER BY LOGICAL_ASSET_KEY",
             (episode_id,),
         ) or []
+        integrity_issues = _history_integrity_issues(episode_id, attempts, asset_states)
+        if integrity_issues:
+            # The SELECTs remain read-only. Never interpret inconsistent rows
+            # as a clean history or disclose foreign Episode asset keys.
+            result.update({
+                "status": "ATTEMPT_HISTORY_INTEGRITY_BLOCKED",
+                "reason": "ATTEMPT_READONLY_AUTHORITY_INTEGRITY_MISMATCH",
+                "attempt_rows": len(attempts),
+                "asset_state_rows": len(asset_states),
+                "integrity_issues": integrity_issues,
+                "production_authorization": False,
+            })
+            return result
         counts = dict(sorted(Counter(str(row.get("STATUS") or "UNKNOWN") for row in attempts).items()))
         unknown = sorted({
             str(row.get("LOGICAL_ASSET_KEY") or "") for row in attempts

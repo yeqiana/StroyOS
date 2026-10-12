@@ -45,19 +45,54 @@ def multi_status(episodes: list[Path], *, status_fn=None, snapshot_fn=None) -> d
     status = status_fn if status_fn is not None else runtime_driver.status
     snapshot = snapshot_fn if snapshot_fn is not None else global_image_capacity.snapshot
     rows = []
+    diagnostic_incomplete = False
     for ep in episodes:
-        state = status(ep)
-        rows.append({
-            "episode": ep.relative_to(ROOT).as_posix(),
-            "driver_state": str(state.get("driver_state") or "UNKNOWN"),
-            "liveness": state.get("liveness"),
-            "status_only": True,
-        })
+        try:
+            state = status(ep)
+            if not isinstance(state, dict):
+                raise TypeError("DRIVER_STATUS_INVALID")
+            driver_state = str(state.get("driver_state") or "UNKNOWN")
+            row = {
+                "episode": ep.relative_to(ROOT).as_posix(),
+                "driver_state": driver_state,
+                "liveness": state.get("liveness"),
+                "status_only": True,
+            }
+            if driver_state not in {"RUNNING", "NEVER_STARTED", "EXITED"}:
+                diagnostic_incomplete = True
+                row["diagnostic_error"] = "DRIVER_OWNER_UNVERIFIED"
+        except Exception as exc:
+            # Runtime may require an unavailable canonical MySQL connection.
+            # Never silently fall back to stale episode JSON, or leak a driver
+            # DSN/credential through an uncaught stack trace.
+            diagnostic_incomplete = True
+            row = {
+                "episode": ep.relative_to(ROOT).as_posix(),
+                "driver_state": "UNKNOWN",
+                "liveness": None,
+                "status_only": True,
+                "diagnostic_error": "DRIVER_STATUS_READ_FAILED",
+                "error_type": type(exc).__name__,
+            }
+        rows.append(row)
+    try:
+        capacity = snapshot()
+    except Exception as exc:
+        diagnostic_incomplete = True
+        capacity = {
+            "scope": "LOCAL_GIT_COMMON_DIRECTORY",
+            "advisory_snapshot_only": True,
+            "observation_status": "UNAVAILABLE",
+            "diagnostic_error": "GLOBAL_IMAGE_CAPACITY_SNAPSHOT_FAILED",
+            "error_type": type(exc).__name__,
+        }
     return {
         "scope": "LOCAL_GIT_COMMON_DIRECTORY",
         "episode_count": len(rows),
         "episodes": rows,
-        "global_image_capacity": snapshot(),
+        "global_image_capacity": capacity,
+        "diagnostic_incomplete": diagnostic_incomplete,
+        "production_authorization": False,
         "authority": "DIAGNOSTIC_ONLY",
         "model_calls": 0,
     }
@@ -73,7 +108,25 @@ def start_episodes(episodes: list[Path], *, status_fn=None, start_fn=None) -> di
         raise ValueError("MULTI_EPISODE_NATIVE_CODEX_IMAGE_EXECUTOR_REQUIRED")
     status = status_fn if status_fn is not None else runtime_driver.status
     start = start_fn if start_fn is not None else runtime_driver.launch
-    found = [(ep, str(status(ep).get("driver_state") or "UNKNOWN")) for ep in episodes]
+    found = []
+    for ep in episodes:
+        try:
+            current = status(ep)
+            if not isinstance(current, dict):
+                raise TypeError("DRIVER_STATUS_INVALID")
+            found.append((ep, str(current.get("driver_state") or "UNKNOWN")))
+        except Exception as exc:
+            # Every owner must be known before the FIRST Driver is started.
+            # A database or heartbeat error cannot silently start peers, and
+            # connection details must never appear in the CLI JSON receipt.
+            return {
+                "ok": False,
+                "reason": "MULTI_EPISODE_DRIVER_OWNER_UNVERIFIED",
+                "blocked_episodes": [ep.relative_to(ROOT).as_posix()],
+                "error_type": type(exc).__name__,
+                "starts_attempted": 0,
+                "results": [],
+            }
     ambiguous = [(ep, state) for ep, state in found
                  if state not in {"RUNNING", "NEVER_STARTED", "EXITED"}]
     if ambiguous:
@@ -127,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "plan":
             output["note"] = "No production gate is granted; each Driver still validates its own Episode"
         print(json.dumps(output, ensure_ascii=False, indent=2))
-        return 0
+        return 3 if output.get("diagnostic_incomplete") else 0
     except (ValueError, OSError, global_image_capacity.GlobalImageCapacityError) as exc:
         print(json.dumps({"ok": False, "reason": str(exc)}, ensure_ascii=False))
         return 2

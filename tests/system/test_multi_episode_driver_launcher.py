@@ -56,6 +56,106 @@ def test_status_is_diagnostic_and_never_starts_model(tmp_path):
     snapshot.assert_called_once()
 
 
+
+def test_status_read_failure_is_fail_closed_without_database_secret(tmp_path):
+    a, b = _eps(tmp_path)
+    def status(ep):
+        if ep == b:
+            raise ConnectionError("private-mysql-password")
+        return {"driver_state": "RUNNING", "liveness": "VERIFIED"}
+    with patch.object(multi, "ROOT", tmp_path):
+        output = multi.multi_status(
+            [a, b], status_fn=status,
+            snapshot_fn=lambda: {"global_max_inflight_images": 5,
+                                 "observed_busy": 1, "advisory_snapshot_only": True})
+    assert output["episode_count"] == 2
+    assert output["episodes"][0]["driver_state"] == "RUNNING"
+    assert output["episodes"][1]["driver_state"] == "UNKNOWN"
+    assert output["episodes"][1]["diagnostic_error"] == "DRIVER_STATUS_READ_FAILED"
+    assert output["diagnostic_incomplete"] is True
+    assert output["production_authorization"] is False
+    assert output["model_calls"] == 0
+    assert "private-mysql-password" not in str(output)
+
+
+def test_capacity_snapshot_failure_does_not_claim_free_image_slots(tmp_path):
+    a, b = _eps(tmp_path)
+    with patch.object(multi, "ROOT", tmp_path):
+        output = multi.multi_status(
+            [a, b], status_fn=lambda _: {"driver_state": "NEVER_STARTED"},
+            snapshot_fn=lambda: (_ for _ in ()).throw(
+                OSError("secret-shared-lock-path")))
+    capacity = output["global_image_capacity"]
+    assert output["diagnostic_incomplete"] is True
+    assert output["production_authorization"] is False
+    assert capacity["observation_status"] == "UNAVAILABLE"
+    assert "observed_available" not in capacity
+    assert "secret-shared-lock-path" not in str(output)
+
+
+def test_unknown_driver_owner_never_claims_diagnostic_complete(tmp_path):
+    a, b = _eps(tmp_path)
+    with patch.object(multi, "ROOT", tmp_path):
+        output = multi.multi_status(
+            [a, b], status_fn=lambda _: {"driver_state": "UNKNOWN"},
+            snapshot_fn=lambda: {"observed_available": 5,
+                                 "advisory_snapshot_only": True})
+    assert output["diagnostic_incomplete"] is True
+    assert output["production_authorization"] is False
+    assert all(row["diagnostic_error"] == "DRIVER_OWNER_UNVERIFIED"
+               for row in output["episodes"])
+
+
+def test_plan_and_status_return_nonzero_if_authoritative_owner_is_unavailable(
+        tmp_path, capsys):
+    a, b = _eps(tmp_path)
+    with (patch.object(multi, "ROOT", tmp_path),
+          patch.object(multi, "start_episodes") as starter,
+          patch.object(multi, "multi_status", return_value={
+              "authority": "DIAGNOSTIC_ONLY",
+              "model_calls": 0,
+              "diagnostic_incomplete": True,
+              "production_authorization": False,
+              "episodes": [], "global_image_capacity": {
+                  "advisory_snapshot_only": True,
+                  "observation_status": "UNAVAILABLE"}})):
+        assert multi.main(["status", "--episode", str(a), "--episode", str(b)]) == 3
+        assert multi.main(["plan", "--episode", str(a), "--episode", str(b)]) == 3
+    assert '"diagnostic_incomplete": true' in capsys.readouterr().out
+    starter.assert_not_called()
+
+
+
+def test_owner_read_failure_never_starts_any_episode_or_leaks_credentials(tmp_path):
+    a, b = _eps(tmp_path)
+    start = Mock()
+    def read_owner(ep):
+        if ep == b:
+            raise ConnectionError("mysql-secret-dsn=private")
+        return {"driver_state": "NEVER_STARTED"}
+    with patch.object(multi, "ROOT", tmp_path):
+        output = multi.start_episodes(
+            [a, b], status_fn=read_owner, start_fn=start)
+    assert output["ok"] is False
+    assert output["reason"] == "MULTI_EPISODE_DRIVER_OWNER_UNVERIFIED"
+    assert output["starts_attempted"] == 0
+    assert output["blocked_episodes"] == ["episodes/b"]
+    assert "mysql-secret" not in str(output)
+    start.assert_not_called()
+
+
+def test_owner_invalid_status_shape_never_dispatches(tmp_path):
+    a, b = _eps(tmp_path)
+    start = Mock()
+    with patch.object(multi, "ROOT", tmp_path):
+        output = multi.start_episodes(
+            [a, b], status_fn=lambda _: None, start_fn=start)
+    assert output["ok"] is False
+    assert output["starts_attempted"] == 0
+    assert output["error_type"] == "TypeError"
+    start.assert_not_called()
+
+
 def test_unknown_owner_blocks_all_starts(tmp_path):
     a, b = _eps(tmp_path)
     start = Mock()
