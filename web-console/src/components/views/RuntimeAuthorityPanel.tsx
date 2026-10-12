@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import {Button,Drawer,Input,Select,Table} from 'antd';
 import { platformApi, RuntimeStatusDetail, RuntimeStatusSummary, stageLabel } from '../../api/platformApi';
 import type { RuntimeCoverage } from '../../api/runtimeCoverage';
+import { RuntimeRecoveryInsight } from './RuntimeRecoveryInsight';
+import { runtimeDetailMatchesEpisode } from '../../api/runtimeRecoveryAssessment';
 
 interface Props { items: RuntimeStatusSummary[]; coverage: RuntimeCoverage; hasMore: boolean; loadingMore: boolean; onLoadMore: () => void; dataState: 'loading' | 'ok' | 'partial' | 'offline'; lastSync: string | null; }
 export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMore, loadingMore, onLoadMore, dataState, lastSync }) => {
@@ -27,8 +29,9 @@ export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMor
     setDetail(null);
     platformApi.runtimeStatus(ref).then(response => {
       if (!active) return;
-      setDetail(response);
-      setDetailState(response ? 'available' : 'unavailable');
+      const matched = runtimeDetailMatchesEpisode(ref, response);
+      setDetail(matched ? response : null);
+      setDetailState(matched ? 'available' : 'unavailable');
     }).catch(() => { if (active) setDetailState('unavailable'); });
     return () => { active = false; };
   }, [ref]);
@@ -91,6 +94,7 @@ export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMor
           ] : [])
         ].map(([key, value]) => <div key={key} className="grid grid-cols-[100px_minmax(0,1fr)] items-start gap-3 border-b border-[var(--border-subtle)] py-3"><dt className="text-[11px] text-[var(--text-tertiary)]">{key}</dt><dd className="break-words text-[12px] text-[var(--text-primary)]">{value}</dd></div>)}
       </dl>
+      <RuntimeRecoveryInsight detail={detail} source={selected.state_source} detailLoaded={detailState === 'available'} />
     </section></Drawer>}
   </section>;
 };

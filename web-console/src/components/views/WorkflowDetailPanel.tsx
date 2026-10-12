@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Drawer } from 'antd';
 import { platformApi, RuntimeStatusDetail, RuntimeStatusSummary, stageLabel } from '../../api/platformApi';
+import { RuntimeRecoveryInsight } from './RuntimeRecoveryInsight';
+import { runtimeDetailMatchesEpisode } from '../../api/runtimeRecoveryAssessment';
 
 interface Props { selected: RuntimeStatusSummary; onClose: () => void; }
 export const WorkflowDetailPanel: React.FC<Props> = ({selected, onClose}) => {
@@ -12,8 +14,9 @@ export const WorkflowDetailPanel: React.FC<Props> = ({selected, onClose}) => {
     if (!episode) { setStatus('failed'); return; }
     platformApi.runtimeStatus(episode).then(data => {
       if(!active)return;
-      setDetail(data);
-      setStatus(data?'ready':'failed');
+      const matched = runtimeDetailMatchesEpisode(episode, data);
+      setDetail(matched ? data : null);
+      setStatus(matched ? 'ready' : 'failed');
     }).catch(() => {if(active)setStatus('failed')});
     return () => {active=false};
   },[episode]);
@@ -43,5 +46,6 @@ export const WorkflowDetailPanel: React.FC<Props> = ({selected, onClose}) => {
     <dl className="grid grid-cols-1 gap-0">
       {[...summaryRows,...detailRows].map(([k,v]) => <div key={k} className="grid grid-cols-[100px_minmax(0,1fr)] items-start gap-3 border-b border-[var(--border-subtle)] py-3"><dt className="text-[11px] text-[var(--text-tertiary)]">{k}</dt><dd className="break-words text-[13px] font-medium text-[var(--text-primary)]">{v}</dd></div>)}
     </dl>
+    <RuntimeRecoveryInsight detail={detail} source={selected.state_source} detailLoaded={status === 'ready'} />
   </section></Drawer>;
 };

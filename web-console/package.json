@@ -47,6 +47,9 @@
     "test:r31": "node scripts/test-r31-motion-browser.mjs",
     "test:r32": "node scripts/test-r32-local-draft-browser.mjs",
     "test:r32:boundary": "node scripts/test-r32-readonly-boundary.mjs",
+    "test:r33:safety": "node scripts/test-r33-recovery-safety.mjs",
+    "test:r33": "node scripts/test-r33-runtime-inspector-browser.mjs",
+    "test:r33:readiness": "node scripts/test-r33-runtime-readiness.mjs",
     "test:responsive": "node scripts/test-r17-responsive-browser.mjs"
   },
   "dependencies": {
