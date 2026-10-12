@@ -34,4 +34,20 @@
 
 异常时只回退单机集成分支本轮提交，不删除生产文件锁、生产数据或历史 R38 实验代码。
 
-综合测试：待集成后填入。
+综合测试：见下方正式回归结果。
+
+
+## 首轮实施最终验收记录
+
+- 单机集成分支去重回归：**117 passed、12 skipped**。跳过的为未打开 TEST_ONLY MySQL 准入的既有真实写库用例，不能计作通过。
+- 已经单独在**全新 TEST_ONLY MySQL 容器**执行 `test_generation_attempt_authority.py`、`test_authority_refresh_budget.py`、`test_candidate_budget_lifecycle.py`、`test_phase5a_fake_subpath_e2e.py`：**26 passed、0 skipped**；容器按 `finally` 自动销毁。
+- 四个独立槽位专项首轮：A（Owner 文件锁与 Runtime 桥）**6 passed**；B（Attempt 预算/SQL 准入保护）**5 passed**；C（真实 OS 跨 Worktree 五图回归）**16 passed**；D（单机模块边界/运行时归属）**14 passed**。各槽后来在集成分支扩展回归、按文件去重为 117 项。
+- 曾尝试额外执行 `test_detached_driver_contract.py`，因当前 WebCodex Runner 为**非交互 Windows 环境**，无法提供该用例必须的交互式用户身份，导致其 Setup 报 `TASK_CARRIER_INTERACTIVE_USER_UNAVAILABLE`。没有为了测试变绿而伪造生产身份。**交互桌面下的 Task Scheduler Carrier 启动专项仍未验收**，与本轮真实双进程 OS Owner 抢锁验收分开。
+- 真正改动的 Runtime 文件**仅两份**：`runner_state_store.py` 修复锁文件创建时先写后锁的竞态；`generation_attempt_authority.py` 修复超预算后不应依赖历史明细存在。其他新增仅测试及本说明。
+- 原始开发分支和 R38 实验隔离分支均不受影响，本轮未调用付费 Provider、正式 DB/Redis、实际发布或运行正式生产故事。
+
+## 下一轮单机瘦身重点（不拓展分布式）
+
+1. 在允许的**交互式 Windows 测试桌面**独立验证 Task Scheduler Carrier 重启与抢锁（不可在非交互测试环境绕过）。
+2. 验证完整的真实故事功能链：新建 → 分镜 → Visual Lock → 排队生图 → Review → 作品详情（不真实生图或发布，使用非付费模拟）。
+3. 在确认现有 canonical Driver Owner Lock 已覆盖正式入口后，单独清理已证实无调用的旧锁适配器，始终先补安全回归再删文件。**不必为了代码行数减少而移植任何 R38 分布式模块**。
