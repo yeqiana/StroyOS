@@ -182,3 +182,79 @@ def test_active_canary_queue_items_ignore_superseded_history():
     assert canary._active_canary_queue_items(queue) == [
         {"id": "current", "status": "queued"}
     ]
+
+
+def test_failed_provisional_final_receipt_is_terminalized_and_kept_visible(tmp_path):
+    import json
+
+    directory = tmp_path / "meta/provider-receipts/model-executions"
+    directory.mkdir(parents=True)
+    receipt = {
+        "receipt_schema_version": 1,
+        "episode_id": "_external/test",
+        "run_id": "run-1",
+        "trace_id": "trace-1",
+        "step": "vision.final",
+        "call_id": "failed-call",
+        "model_role": "vision.final",
+        "profile": "vision_final",
+        "requested_model": "gpt-6-luna",
+        "effective_model": "gpt-6-luna",
+        "reasoning_effort": "high",
+        "model_policy_version": "v1",
+        "model_policy_sha256": "p" * 64,
+        "provider": "codex",
+        "runner": "codex_user_runner",
+        "started_at": "2026-10-02T22:00:00+08:00",
+        "finished_at": "2026-10-02T22:01:00+08:00",
+        "duration_ms": 60000,
+        "status": "PENDING_VALIDATION",
+        "returncode": 1,
+        "runner_request_id": "request-failed",
+        "thread_id": "",
+        "model_binding_source": "EPISODE_BOUND_POLICY",
+        "effective_model_source": "EXPLICIT_RUNTIME_BINDING",
+        "durable_result_status": "TURN_NOT_COMPLETED",
+        "logical_asset_key": "asset-01",
+        "generation_key": "generation-01-a1",
+        "attempt_index": 1,
+        "artifact_sha256": "a" * 64,
+    }
+    path = directory / "failed-call.json"
+    path.write_text(json.dumps(receipt), encoding="utf-8")
+
+    changed = canary._reconcile_failed_final_semantic_receipts(
+        tmp_path, generation_key="generation-01-a1", artifact_sha256="a" * 64)
+
+    assert len(changed) == 1
+    stored = json.loads(path.read_text(encoding="utf-8"))
+    assert stored["status"] == "FAILED"
+    assert stored["call_id"] == "failed-call"
+    assert stored["runner_request_id"] == "request-failed"
+    assert stored["status_reconciled_from"] == "PENDING_VALIDATION"
+    assert stored["status_reconciliation_reason"] == "NONZERO_RETURN_CODE_BEFORE_FINAL_VALIDATION"
+
+
+def test_final_receipt_partition_requires_one_validated_success_and_no_unresolved():
+    success = {
+        "call_id": "success-call", "status": "SUCCESS", "returncode": 0,
+        "durable_result_status": "VALIDATED",
+    }
+    failed = {
+        "call_id": "failed-call", "status": "FAILED", "returncode": 1,
+        "durable_result_status": "TURN_NOT_COMPLETED",
+    }
+    parts = canary._partition_final_semantic_receipts(
+        [success, failed], embedded_call_id="success-call")
+    assert parts["embedded"] == [success]
+    assert parts["successful"] == [success]
+    assert parts["failed"] == [failed]
+    assert parts["unresolved"] == []
+
+    pending = {
+        "call_id": "pending-call", "status": "PENDING_VALIDATION", "returncode": 0,
+        "durable_result_status": "VALIDATED",
+    }
+    parts = canary._partition_final_semantic_receipts(
+        [success, pending], embedded_call_id="success-call")
+    assert parts["unresolved"] == [pending]

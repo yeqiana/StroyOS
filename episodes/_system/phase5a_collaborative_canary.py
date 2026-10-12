@@ -978,6 +978,73 @@ def _model_execution_receipts(ep: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def _reconcile_failed_final_semantic_receipts(
+    ep: Path, *, generation_key: str, artifact_sha256: str,
+) -> list[dict[str, Any]]:
+    """Terminalize impossible provisional receipts without deleting evidence.
+
+    A Final Semantic call is provisional only when its process returned 0 and
+    awaits durable/schema validation. Older code incorrectly left rc!=0 calls
+    as PENDING_VALIDATION. Convert only the provably terminal form to FAILED;
+    keep call/request identity and the original durable evidence intact.
+    """
+    import runtime_observability
+
+    reconciled: list[dict[str, Any]] = []
+    for row in _model_execution_receipts(ep):
+        if (row.get("model_role") != "vision.final"
+                or row.get("generation_key") != generation_key
+                or row.get("artifact_sha256") != artifact_sha256
+                or row.get("status") != "PENDING_VALIDATION"):
+            continue
+        try:
+            returncode = int(row.get("returncode"))
+        except (TypeError, ValueError):
+            continue
+        if returncode == 0 or row.get("durable_result_status") != "TURN_NOT_COMPLETED":
+            continue
+        terminal = dict(row)
+        terminal["status"] = "FAILED"
+        terminal["status_reconciled_from"] = "PENDING_VALIDATION"
+        terminal["status_reconciliation_reason"] = "NONZERO_RETURN_CODE_BEFORE_FINAL_VALIDATION"
+        terminal["status_reconciled_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        runtime_observability.write_model_execution_receipt(ep, receipt=terminal)
+        reconciled.append(terminal)
+    return reconciled
+
+
+def _partition_final_semantic_receipts(
+    rows: list[dict[str, Any]], *, embedded_call_id: str,
+) -> dict[str, list[dict[str, Any]]]:
+    """Separate canonical success from visible terminal failures/unresolved calls."""
+    successful = [
+        row for row in rows
+        if row.get("status") == "SUCCESS" and row.get("durable_result_status") == "VALIDATED"
+    ]
+    failed: list[dict[str, Any]] = []
+    unresolved: list[dict[str, Any]] = []
+    for row in rows:
+        if row in successful:
+            continue
+        try:
+            returncode = int(row.get("returncode"))
+        except (TypeError, ValueError):
+            returncode = 0
+        if (row.get("status") == "FAILED" and returncode != 0
+                and row.get("durable_result_status") != "VALIDATED"):
+            failed.append(row)
+        else:
+            unresolved.append(row)
+    embedded = [row for row in successful
+                if embedded_call_id and row.get("call_id") == embedded_call_id]
+    return {
+        "successful": successful,
+        "failed": failed,
+        "unresolved": unresolved,
+        "embedded": embedded,
+    }
+
+
 def _model_execution_receipt_snapshot(ep: Path) -> dict[str, str]:
     """Return a stable id-to-content digest snapshot for resume call counting."""
     directory = ep / "meta/provider-receipts/model-executions"
@@ -1792,13 +1859,22 @@ def run_production_subpath(ep: str | Path, *, canary_id: str, timeout: int | Non
         # On first execution this is the newly written call; after a safe
         # resume it is the same persisted call embedded in the adopted Queue
         # Receipt. In either case validate the exact model execution evidence.
+        reconciled_failed_receipts = _reconcile_failed_final_semantic_receipts(
+            preflight["episode"],
+            generation_key=str(item.get("generation_key") or ""),
+            artifact_sha256=str(semantic_receipt.get("artifact_sha256") or ""),
+        )
         all_final_receipts = [row for row in _model_execution_receipts(preflight["episode"])
                               if row.get("model_role") == "vision.final"
                               and row.get("generation_key") == item.get("generation_key")
                               and row.get("artifact_sha256") == semantic_receipt.get("artifact_sha256")]
         embedded_call_id = str(final_receipt.get("call_id") or "")
-        final_receipts = [row for row in all_final_receipts
-                          if embedded_call_id and row.get("call_id") == embedded_call_id]
+        receipt_partition = _partition_final_semantic_receipts(
+            all_final_receipts, embedded_call_id=embedded_call_id)
+        successful_final_receipts = receipt_partition["successful"]
+        failed_final_receipts = receipt_partition["failed"]
+        unresolved_final_receipts = receipt_partition["unresolved"]
+        final_receipts = receipt_partition["embedded"]
         receipt_contract_pass = (
             int(final_scheduler_rc) == 0
             and review.get("status") == "finalized"
@@ -1817,7 +1893,8 @@ def run_production_subpath(ep: str | Path, *, canary_id: str, timeout: int | Non
             and final_receipt.get("artifact_sha256") == semantic_receipt.get("artifact_sha256")
             and final_receipt.get("effective_model_source") == "EXPLICIT_RUNTIME_BINDING"
             and len(final_receipts) == 1
-            and len(all_final_receipts) == 1
+            and len(successful_final_receipts) == 1
+            and len(unresolved_final_receipts) == 0
         )
         receipt_is_adopted = bool(semantic_receipt.get("reused_official_evidence"))
         review_receipt_pass = (receipt_contract_pass and (
@@ -1838,6 +1915,9 @@ def run_production_subpath(ep: str | Path, *, canary_id: str, timeout: int | Non
             "final_semantic_errors": semantic_errors,
             "final_semantic_status": final_frame.get("status"),
             "final_semantic_model_receipts": final_receipts,
+            "final_semantic_failed_model_receipts": failed_final_receipts,
+            "final_semantic_unresolved_model_receipts": unresolved_final_receipts,
+            "final_semantic_reconciled_failed_receipts": reconciled_failed_receipts,
             "final_semantic_receipt_pass": review_receipt_pass,
             "incremental_review_rc": incremental_rc,
             "incremental_plan": incremental_plan,
