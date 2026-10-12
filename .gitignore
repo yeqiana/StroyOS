@@ -216,5 +216,6 @@ codex-generated-images/
 /.codex_tmp/
 /.storyos/opencodex-maintenance/
 /.storyos/pre-ff-backup/
+/.storyos/native-frame01-recovery-archives/
 /.storyos/p4-capability-router/*-shadow-a1-*.json
 /.storyos/archive/worktree-retirement-*/
