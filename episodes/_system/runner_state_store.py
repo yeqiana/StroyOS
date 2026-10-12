@@ -76,9 +76,8 @@ def acquire_lock(episode: Path, *, lock_rel:Path=LOCK_REL) -> bool:
             return False
         handle = path.open("a+b")
         try:
-            if path.stat().st_size == 0:
-                handle.write(b"0")
-                handle.flush()
+            # Windows byte-range locking works beyond EOF. Never write to an
+            # unlocked empty file: two freshly started local Drivers can race.
             handle.seek(0)
             if os.name == "nt":
                 import msvcrt
