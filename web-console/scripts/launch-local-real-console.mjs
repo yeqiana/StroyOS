@@ -36,16 +36,22 @@ function start(file,args,cwd,env=process.env){
  child.once('exit',code=>{if(!closing){console.error('Local service stopped unexpectedly:',code);shutdown(1);}});
  return child;
 }
+// Cold startup and the first full episode-state scan can take longer when Chrome
+// QA or another isolated worktree is busy. Never report READY from a partial probe.
 async function poll(url,check){
- const deadline=Date.now()+25000;
+ const deadline=Date.now()+60000;
+ let lastResult='no response';
  while(Date.now()<deadline && !closing){
    try {
-     const resp=await fetch(url,{signal:AbortSignal.timeout(1300),cache:'no-store'});
+     const resp=await fetch(url,{signal:AbortSignal.timeout(5000),cache:'no-store'});
      if(resp.ok&&await check(resp))return;
-   }catch{}
-   await new Promise(resolve=>setTimeout(resolve,300));
+     lastResult='HTTP '+resp.status+' or unexpected read-only evidence';
+   }catch(error){
+     lastResult=error?.name==='TimeoutError'?'request timed out':'connection unavailable';
+   }
+   await new Promise(resolve=>setTimeout(resolve,350));
  }
- throw Error('Local endpoint not ready: '+url);
+ throw Error('Local endpoint not ready ('+lastResult+'): '+url);
 }
 async function main(){
  console.log('本机真实状态文件只读：仅 127.0.0.1，读取用户主工作区 episodes；不启动生产 Runtime 或数据库');

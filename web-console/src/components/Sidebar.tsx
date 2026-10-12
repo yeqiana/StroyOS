@@ -46,7 +46,8 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
     onCreateStoryInProject, recentStoryIds = [], onOpenSearch, onOpenNotifications,
     unreadCount = 0, currentTheme = 'dark', onThemeChange } = props;
   const [expandedProject, setExpandedProject] = useState<string | null>(null);
-  const [projectsOpen, setProjectsOpen] = useState(true);
+  // Creator-first navigation: project tree remains available on demand, not permanently expanded.
+  const [projectsOpen, setProjectsOpen] = useState(false);
   const [recentOpen, setRecentOpen] = useState(false);
   const [compactProjectsOpen,setCompactProjectsOpen]=useState(false);
   const [modal, setModal] = useState<'project' | 'story' | 'rename' | null>(null);
@@ -111,7 +112,7 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
         <button type="button" className="storyos-compact-project-trigger" onClick={()=>setCompactProjectsOpen(true)} title="打开项目快捷面板" aria-label="打开项目快捷面板"><Folder size={19} aria-hidden="true"/></button>
         <section aria-label="项目列表" className="storyos-sidebar-projects pt-2 border-t border-[var(--border-subtle)]">
           <div className="flex items-center justify-between px-2 pb-2">
-            <button type="button" onClick={() => setProjectsOpen(!projectsOpen)} className="flex items-center gap-1 text-[11px] font-semibold tracking-wide text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">
+            <button type="button" aria-expanded={projectsOpen} onClick={() => setProjectsOpen(!projectsOpen)} className="flex items-center gap-1 text-[11px] font-semibold tracking-wide text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">
               {projectsOpen ? <ChevronDown size={13}/> : <ChevronRight size={13}/>} 项目空间 <span className="font-normal">{projects.length}</span>
             </button>
             <button type="button" onClick={() => openModal('project')} aria-label="新建项目" title="新建项目" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"><Plus size={15}/></button>

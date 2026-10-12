@@ -591,3 +591,68 @@ html,body {letter-spacing:0; font-size:13px;}
 .os-console-filterbar .ant-select-single .ant-select-selector{min-height:36px!important;display:flex;align-items:center;}
 .os-console-filterbar input:focus-visible{outline:2px solid var(--focus);outline-offset:1px;}
 @media(max-width:760px){.os-console-filterbar{gap:8px;}.os-console-filterbar .ant-select{max-width:100%;}}
+
+/* R31: restrained interaction feedback. Uses Ant Design's @rc-component/motion lifecycle;
+   only the page-scoped properties below are animated. */
+#storyos-home-overview .os-home-entry {
+  transition: background-color 120ms ease-out;
+}
+#storyos-home-overview .os-home-entry:hover,
+#storyos-home-overview .os-home-entry:focus-within {
+  background-color: var(--bg-hover);
+}
+#storyos-home-overview .os-home-entry-icon {
+  transition: color 120ms ease-out, transform 120ms ease-out;
+}
+#storyos-home-overview .os-home-entry:hover .os-home-entry-icon {
+  color: var(--info);
+}
+#storyos-home-overview .os-home-cover-card {
+  transition: border-color 120ms ease-out, transform 120ms ease-out;
+}
+#storyos-home-overview .os-home-cover-card img {
+  transition: transform 180ms cubic-bezier(.2, .8, .2, 1);
+}
+#storyos-home-overview .os-home-compact-row {
+  transition: background-color 120ms ease-out;
+}
+#storyos-home-overview .os-home-compact-row:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  #storyos-home-overview .os-home-entry:hover .os-home-entry-icon {
+    transform: translateY(-1px);
+  }
+  #storyos-home-overview .os-home-cover-card:hover {
+    transform: translateY(-2px);
+  }
+  #storyos-home-overview .os-home-cover-card:hover img {
+    transform: scale(1.018);
+  }
+}
+/* rc-motion's appear phase runs only when switching the Ant Design table/gallery mode. */
+#storyos-home-overview .os-home-view-appear,
+#storyos-home-overview .os-home-view-enter {
+  opacity: 0;
+  transform: translate3d(0, 6px, 0);
+}
+#storyos-home-overview .os-home-view-appear-active,
+#storyos-home-overview .os-home-view-enter-active {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  transition: opacity 160ms cubic-bezier(.2, .8, .2, 1), transform 160ms cubic-bezier(.2, .8, .2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  #storyos-home-overview .os-home-entry,
+  #storyos-home-overview .os-home-entry-icon,
+  #storyos-home-overview .os-home-cover-card,
+  #storyos-home-overview .os-home-cover-card img,
+  #storyos-home-overview .os-home-compact-row,
+  #storyos-home-overview .os-home-mode-content {
+    transition: none !important;
+    animation: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+  }
+}

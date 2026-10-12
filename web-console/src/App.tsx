@@ -24,7 +24,7 @@ import { platformApi } from './api/platformApi';
 import { Episode, NavigationTab, ProductionStage, ThemeMode, ProjectItem } from './types';
 
 const STORY_PLACEHOLDER_IMAGE = 'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20800%201000%22%3E%3Crect%20width%3D%22800%22%20height%3D%221000%22%20fill%3D%22%23e4e4e7%22%2F%3E%3Cpath%20d%3D%22M160%20720%20340%20500l120%20140%2090-110%20110%20190H160Z%22%20fill%3D%22%23a1a1aa%22%2F%3E%3Ccircle%20cx%3D%22300%22%20cy%3D%22330%22%20r%3D%2270%22%20fill%3D%22%23a1a1aa%22%2F%3E%3C%2Fsvg%3E';
-import { Search, X, CheckCircle2, AlertCircle, Bell, Clock } from 'lucide-react';
+import { Search, X, CheckCircle2, AlertCircle, Bell, Clock, ChevronDown } from 'lucide-react';
 
 const DEFAULT_PROJECTS: ProjectItem[] = [
   {
@@ -101,7 +101,8 @@ export default function App() {
   }, [currentTab, activeEpisode.id, activeEpisode.runtimeRequest.sourceBadge, detailRetry]);
   const [isGeneratingBatch] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [contextPanelOpen, setContextPanelOpen] = useState(true);
+  // Prioritise the creator canvas; the evidence rail stays one click away.
+  const [contextPanelOpen, setContextPanelOpen] = useState(false);
 
   // 项目管理状态 (系列即项目，项目下包含具体作品)
   const [projects, setProjects] = useState<ProjectItem[]>(() => {
@@ -180,7 +181,9 @@ export default function App() {
       currentStage: 'IDEA_LOCK',
       stageProgressPercent: 0,
       coverImage: STORY_PLACEHOLDER_IMAGE,
-      updatedAt: '刚刚',
+      // Keep draft timestamps machine-sortable: '刚刚' parses to NaN and sinks to
+      // the end of the home page's recently-updated list after creating a story.
+      updatedAt: new Date().toISOString(),
       runtimeRequest: {
         imageModel: 'gpt-image-2',
         quality: 'high',
@@ -453,29 +456,27 @@ export default function App() {
                 </section>
               ) : <>
               <StoryNextAction episode={activeEpisode} onOpenWorkflow={() => setCurrentTab('pipeline')} />
-              {/* 单行极简流水线微型指示器（支持真实点击切换生产阶段） */}
-              <StatusFlowBanner
-                currentStage={activeEpisode.currentStage}
-                onStageChange={handleStageChange}
-                completedFrames={activeEpisode.completedFrames}
-                totalFrames={activeEpisode.totalFrames}
-                onOpenPipelineView={() => setCurrentTab('pipeline')}
-              />
+              {/* 创作时先展示分镜和素材；完整阶段证据按需展开，不丢失任何门禁数据。 */}
+              <details className="group border-b border-[var(--border-subtle)] pb-3" aria-label="生产阶段与制作指标">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
+                  <span className="flex items-center gap-2"><ChevronDown size={14} className="-rotate-90 transition-transform group-open:rotate-0"/>生产阶段与制作指标 <span className="text-[var(--text-tertiary)] tabular-nums">{activeEpisode.completedFrames}/{activeEpisode.totalFrames} 帧 · 工作区证据</span></span>
+                  <span className="text-[11px] text-[var(--text-tertiary)] group-open:hidden">展开生产证据</span><span className="hidden text-[11px] text-[var(--text-tertiary)] group-open:inline">收起生产证据</span>
+                </summary>
+                <div className="mt-4 space-y-4">
+                  <StatusFlowBanner currentStage={activeEpisode.currentStage} onStageChange={handleStageChange} completedFrames={activeEpisode.completedFrames} totalFrames={activeEpisode.totalFrames} onOpenPipelineView={() => setCurrentTab('pipeline')}/>
+                  <ProductionMetricsPanel activeEpisode={activeEpisode} onShowToast={showToast}/>
+                </div>
+              </details>
 
-              {/* 视觉一致性与批次效率综合监控面板 */}
-              <ProductionMetricsPanel
-                activeEpisode={activeEpisode}
-                onShowToast={showToast}
-              />
-
-              {/* 真正的对话与执行流 */}
-              <ActivityStream
+              {/* 素材 / 分镜主工作区与审核 Inspector */}
+              <AntdSurface><ActivityStream
+                key={activeEpisode.id}
                 activeEpisode={activeEpisode}
                 onGenerateBatch={handleQuickGenerateNextBatch}
                 isGeneratingBatch={isGeneratingBatch}
                 onReviewAction={handleReviewAction}
                 onShowToast={showToast}
-              />
+              /></AntdSurface>
               </>}
             </div>
           )}

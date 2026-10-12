@@ -137,6 +137,7 @@ if str(PROJECT_ROOT / "episodes" / "_system") not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT / "episodes" / "_system"))
 import storage_config  # noqa: E402
 
+from scripts.storyos_runtime_tick_rotation import maybe_rotate_tick_log  # noqa: E402
 from platform.artifact.jsonl_artifact_store import JsonlArtifactStore  # noqa: E402
 from platform.core.clock import utc_now  # noqa: E402
 from platform.event.jsonl_event_store import JsonlEventStore  # noqa: E402
@@ -609,6 +610,7 @@ class RuntimeOperationsWorker:
         metrics_file=None,
         alert_log=None,
         tick_log=None,
+        tick_log_max_mib: float = 64,
         alert_command: str | None = None,
         alert_webhook: str | None = None,
         alert_webhook_format: str = "json",
@@ -648,6 +650,9 @@ class RuntimeOperationsWorker:
         self.metrics_file = Path(metrics_file) if metrics_file else DEFAULT_METRICS_FILE
         self.alert_log = Path(alert_log) if alert_log else DEFAULT_ALERT_LOG
         self.tick_log = Path(tick_log) if tick_log else DEFAULT_TICK_LOG
+        if float(tick_log_max_mib) < 0:
+            raise ValueError("tick_log_max_mib must be non-negative")
+        self.tick_log_max_bytes = int(float(tick_log_max_mib) * 1024 * 1024)
         self.alert_command = alert_command or None
         self.alert_webhook = alert_webhook or None
         self._alert_channel = (
@@ -1083,6 +1088,8 @@ class RuntimeOperationsWorker:
             errors=tuple(errors),
         )
         result = replace(provisional, metrics=self._write_metrics(provisional))
+        # Single-writer tick boundary: rotate only tick telemetry, never alert evidence.
+        maybe_rotate_tick_log(self.tick_log, max_bytes=self.tick_log_max_bytes)
         self._append_jsonl(
             self.tick_log,
             {"worker_id": self.worker_id, "runtime": self.runtime, **asdict(result)},
@@ -1226,6 +1233,7 @@ def build_worker(args) -> RuntimeOperationsWorker:
         metrics_file=args.metrics_file,
         alert_log=args.alert_log,
         tick_log=args.tick_log,
+        tick_log_max_mib=args.tick_log_max_mib,
         alert_command=args.alert_command,
         alert_webhook=args.alert_webhook,
         alert_webhook_format=args.alert_webhook_format,
@@ -1288,6 +1296,8 @@ def _parse_args(argv):
     parser.add_argument("--metrics-file", default=None)
     parser.add_argument("--alert-log", default=None)
     parser.add_argument("--tick-log", default=None)
+    parser.add_argument("--tick-log-max-mib", type=float, default=64,
+                        help="轮转 tick JSONL 的 MiB 阈值；0=关闭，原始日志无损 gzip 归档")
     parser.add_argument(
         "--alert-command",
         default=None,

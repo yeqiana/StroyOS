@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import {Button,Drawer,Select,Table} from 'antd';
+import {Button,Drawer,Input,Select,Table} from 'antd';
 import { platformApi, RuntimeStatusDetail, RuntimeStatusSummary, stageLabel } from '../../api/platformApi';
 import type { RuntimeCoverage } from '../../api/runtimeCoverage';
 
@@ -8,9 +8,14 @@ export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMor
   const [selected, setSelected] = useState<RuntimeStatusSummary | null>(null);
   const [page,setPage]=useState(1);
   const [stageFilter,setStageFilter]=useState('ALL');
+  const [keyword,setKeyword]=useState('');
   const [pageSize,setPageSize]=useState(12);
   const stageChoices=Array.from(new Set(items.map(item=>item.production_stage).filter((stage):stage is string=>Boolean(stage))));
-  const filtered=stageFilter==='ALL'?items:items.filter(item=>item.production_stage===stageFilter);
+  const filtered=items.filter(item=>{
+    if(stageFilter!=='ALL'&&item.production_stage!==stageFilter)return false;
+    const needle=keyword.trim().toLocaleLowerCase();
+    return !needle||[item.title,item.episode_ref,item.episode_id,item.business_episode_id].some(value=>String(value||'').toLocaleLowerCase().includes(needle));
+  });
   const safePage=Math.min(page,Math.max(1,Math.ceil(filtered.length/pageSize)));
   const [detail, setDetail] = useState<RuntimeStatusDetail | null>(null);
   const [detailState, setDetailState] = useState<'loading' | 'available' | 'unavailable'>('loading');
@@ -33,26 +38,33 @@ export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMor
       <div className="flex flex-wrap items-baseline gap-3"><h2 className="os-section-heading">{items.some(item => item.state_source === 'local_workspace_episode_state_file') ? '本机作品状态文件记录' : '平台阶段证据'}</h2><span className="text-[11px] text-[var(--text-tertiary)]">只读 · 非实时 Runtime</span></div>
       <span className="shrink-0 text-[11px] text-[var(--text-tertiary)]">{lastSync ? '读取于 ' + lastSync : '未获取成功'}</span>
     </div>
+    {items.length>0&&<nav aria-label="生产阶段快速筛选" className="flex min-w-0 flex-wrap items-stretch gap-px border-b border-[var(--border-subtle)] bg-[var(--border-subtle)]">
+      {[{value:'ALL',label:'已载入',count:items.length},...stageChoices.map(value=>({value,label:stageLabel(value),count:items.filter(item=>item.production_stage===value).length}))].map(choice=><button key={choice.value} type="button" aria-pressed={stageFilter===choice.value} onClick={()=>{setStageFilter(choice.value);setPage(1);}} className={`flex min-h-12 flex-1 items-center justify-center gap-2 bg-[var(--bg-surface)] px-3 py-2 text-[12px] hover:bg-[var(--bg-hover)] ${stageFilter===choice.value?'shadow-[inset_0_-2px_0_var(--info)] text-[var(--text-primary)]':'text-[var(--text-secondary)]'}`}><span className="truncate">{choice.label}</span><strong className="tabular-nums text-[14px]">{choice.count}</strong></button>)}
+    </nav>}
     {items.some(item => item.state_source === 'local_workspace_episode_state_file') && <p role="status" className="os-source-warning mx-4 my-2 px-3 py-1.5 text-[12px]">本机真实作品状态文件：只读磁盘记录，不是实时调度、Worker 心跳或 MySQL 权威状态。</p>}
     {items.some(item => item.state_source === 'isolated-test') && <p role="status" className="px-4 py-2 text-[var(--warning)] font-medium">本机隔离测试数据：仅用于验证 HTTP 接口与界面，不代表任何正式作品阶段。</p>}
     {dataState === 'loading' ? <p role="status" className="px-4 py-5 text-[var(--text-secondary)]">正在读取平台阶段…</p>
     : dataState === 'offline' ? <p role="alert" className="px-4 py-5 text-[var(--warning)]">无法连接 Platform API；本区不展示历史数据冒充在线状态。</p>
     : <>
       {dataState === 'partial' && <p role="alert" className="px-4 pt-3 text-[var(--warning)]">接口报告部分失败，阶段列表可能不完整。</p>}
-      <div className="os-console-filterbar flex flex-wrap items-center justify-between gap-2 px-4 py-2"><p className="text-[12px] text-[var(--text-secondary)]">已读取 {coverage.loaded}{coverage.total !== null ? ' / ' + coverage.total : ''} 条只读阶段记录 · 匹配 {filtered.length} 条{coverage.incomplete ? '（筛选仅针对已加载数据）' : ''}{items.length > 100 ? ' · 多页浏览时暂停自动刷新' : ''}</p><Select aria-label="筛选权威阶段" size="small" className="!w-[170px]" value={stageFilter} onChange={value=>{setStageFilter(value);setPage(1);}} options={[{value:'ALL',label:'全部阶段'},...stageChoices.map(value=>({value,label:stageLabel(value)}))]}/></div>
+      <div className="os-console-filterbar flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-3 py-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2"><Input.Search aria-label="搜索生产阶段作品" value={keyword} onChange={event=>{setKeyword(event.target.value);setPage(1);}} allowClear placeholder="搜索作品名称 / 编号" className="!w-[300px] max-w-full"/><Select aria-label="筛选权威阶段" className="!w-[176px]" value={stageFilter} onChange={value=>{setStageFilter(value);setPage(1);}} options={[{value:'ALL',label:'全部阶段'},...stageChoices.map(value=>({value,label:stageLabel(value)}))]}/>{(keyword||stageFilter!=='ALL')&&<Button size="small" onClick={()=>{setKeyword('');setStageFilter('ALL');setPage(1);}}>重置</Button>}</div>
+        <span className="text-[11px] text-[var(--text-tertiary)]">匹配 {filtered.length} / 已读 {coverage.loaded}{coverage.total!==null?` / ${coverage.total}`:''}{coverage.incomplete?' · 仅筛选已加载':''}{items.length>100?' · 多页时暂停轮询':''}</span>
+      </div>
       {coverage.warning && <p role="status" className="px-4 pb-3 text-[11px] text-[var(--warning)]">{coverage.warning}</p>}
       <Table<RuntimeStatusSummary>
         size="small"
         rowKey={item=>item.episode_id||item.episode_ref||item.title||'unknown'}
         dataSource={filtered}
         className="storyos-authority-grid"
-        scroll={{x:680}}
+        scroll={{x:820}}
         onRow={item=>({onClick:()=>setSelected(item),className:'cursor-pointer'})}
         locale={{emptyText:'接口已响应，但没有可显示的阶段摘要'}}
         columns={[
-          {title:'作品',key:'title',render:(_,item)=><span title={item.title||item.episode_ref||item.episode_id} className="block max-w-[480px] truncate text-[13px] font-semibold text-[var(--text-primary)]">{item.title||item.episode_ref||item.episode_id||'未知作品'}</span>},
+          {title:'作品',key:'title',render:(_,item)=><div className="min-w-0"><span title={item.title||item.episode_ref||item.episode_id} className="block max-w-[560px] truncate text-[13px] font-semibold text-[var(--text-primary)]">{item.title||item.episode_ref||item.episode_id||'未知作品'}</span><span className="block max-w-[560px] truncate font-mono text-[10px] text-[var(--text-tertiary)]">{item.episode_ref||item.episode_id||'未提供作品标识'}</span></div>},
           {title:'生产阶段',dataIndex:'production_stage',key:'stage',width:160,render:(value:string)=><span className="inline-flex items-center gap-2 text-[12px] text-[var(--text-secondary)]"><span className="h-1.5 w-1.5 rounded-full bg-[var(--text-tertiary)]"/>{stageLabel(value||'NO_STATE')}</span>},
           {title:'数据来源',dataIndex:'state_source',key:'source',width:190,render:(value:string)=><span title={value||'未提供'} className="text-[12px] text-[var(--text-tertiary)]">{value==='local_workspace_episode_state_file'?'本机文件 · 只读':value==='isolated-test'?'隔离测试':value||'未提供'}</span>},
+          {title:'更新时间',key:'updated',width:144,render:(_,item)=><span className="tabular-nums text-[11px] text-[var(--text-tertiary)]">{item.updated_at||item.observed_at?String(item.updated_at||item.observed_at).replace('T',' ').slice(0,16):'未知'}</span>},
           {title:'',key:'action',width:90,align:'right',render:(_,item)=><Button type="link" aria-label={'查看权威阶段：'+(item.title||item.episode_ref||item.episode_id)} size="small" onClick={event=>{event.stopPropagation();setSelected(item);}}>详情</Button>}
         ]}
         pagination={{current:safePage,pageSize,total:filtered.length,showSizeChanger:true,pageSizeOptions:['12','20','50'],showTotal:n=>`本次匹配 ${n} 条`,onChange:(next,size)=>{setPage(next);setPageSize(size);}}}

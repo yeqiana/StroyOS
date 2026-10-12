@@ -71,7 +71,10 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
 
   // 默认打开 Frame 09（方便展示异常排错诊断）或 Frame 08（展示 PASSED 态）
   const [selectedFrame, setSelectedFrame] = useState<FrameDetailItem | null>(null);
-  const [frameLayout,setFrameLayout] = useState<'GRID'|'LIST'>(() => run.frames.some(frame => hasVerifiedPreview(frame.thumbnail) || Boolean(approvedUrl(frame.frameNo))) ? 'GRID' : 'LIST');
+  const [frameLayoutChoice,setFrameLayoutChoice] = useState<'GRID'|'LIST'|null>(null);
+  // Approved images arrive asynchronously. Derive the default from current verified evidence,
+  // while preserving an explicit user switch rather than resetting it on media refresh.
+  const frameLayout=frameLayoutChoice ?? (run.frames.some(frame => hasVerifiedPreview(frame.thumbnail) || Boolean(approvedUrl(frame.frameNo))) ? 'GRID' : 'LIST');
 
   const [selectedStageKey, setSelectedStageKey] = useState<StoryRunStage>(run.currentStage);
   const [promptExpanded, setPromptExpanded] = useState(false);
@@ -441,7 +444,7 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-[11px] text-[var(--text-tertiary)]">{run.frames.length} 帧历史快照 · 未验证的预览不展示图片</span><Segmented size="small" aria-label="分镜展示方式" value={frameLayout} onChange={value=>setFrameLayout(value as 'GRID'|'LIST')} options={[{label:'缩略矩阵',value:'GRID'},{label:'状态列表',value:'LIST'}]}/></div>
+                <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-[11px] text-[var(--text-tertiary)]">{run.frames.length} 帧历史快照 · 未验证的预览不展示图片</span><Segmented size="small" aria-label="分镜展示方式" value={frameLayout} onChange={value=>setFrameLayoutChoice(value as 'GRID'|'LIST')} options={[{label:'缩略矩阵',value:'GRID'},{label:'状态列表',value:'LIST'}]}/></div>
                 {frameLayout==='LIST' ? <Table<FrameDetailItem>
                   aria-label="历史分镜状态列表"
                   size="small" rowKey="frameNo" dataSource={run.frames} scroll={{x:680}}
