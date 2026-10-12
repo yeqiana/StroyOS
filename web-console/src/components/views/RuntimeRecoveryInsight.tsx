@@ -47,6 +47,9 @@ export const RuntimeRecoveryInsight: React.FC<Props> = ({ episodeRef, detail, so
   const currentAuthority = usableRuntimeAuthority(authority, episodeRef, localEvidence);
   const currentState = authorityState === 'ready' && !currentAuthority ? 'unavailable' : authorityState;
   const evidenceRows = runtimeEvidenceRows(currentAuthority, detailLoaded ? detail : null, localEvidence);
+  const verifiedSources = currentAuthority ? Object.values(currentAuthority.evidence).filter(
+    item => item.status === 'READ_ONLY_VERIFIED' || item.status === 'ADVISORY_ONLY',
+  ).length : 0;
   return <section aria-label="生产恢复安全诊断" className="border-t border-[var(--border-subtle)] pt-3">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h4 className="text-[12px] font-semibold text-[var(--text-primary)]">恢复安全诊断</h4>
@@ -57,7 +60,10 @@ export const RuntimeRecoveryInsight: React.FC<Props> = ({ episodeRef, detail, so
     <div className="mt-3 border-t border-[var(--border-subtle)] pt-3" aria-label="Task Attempt Worker 生产证据矩阵">
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
         <h5 className="text-[11px] font-semibold text-[var(--text-secondary)]">生产证据完整度</h5>
-        <span className="text-[11px] text-[var(--text-tertiary)]">R35 · 身份绑定只读</span>
+        <div className="flex items-center gap-2 text-[11px] text-[var(--text-tertiary)]">
+          <span>R36 · TTL / fencing</span>
+          <span data-authority-verified-count={verifiedSources} title="来源核验通过仅代表只读观测，不代表启动、重试或图片名额许可" className="rounded-[4px] border border-[var(--border-normal)] px-1.5 py-0.5 tabular-nums">已核验 {verifiedSources}/5</span>
+        </div>
       </div>
       {currentState === 'ready' && currentAuthority?.scope === 'LOCAL_READ_ONLY_EVIDENCE'
         ? <p data-authority-scope="LOCAL_READ_ONLY_EVIDENCE" role="status" className="mb-2 text-[11px] leading-5 text-[var(--text-tertiary)]">已通过只读接口核对当前 Episode；Task / Attempt / Worker / Writer 在线权威数据未授权接入，容量只显示全仓库五图规则。</p>

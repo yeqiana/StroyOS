@@ -115,6 +115,14 @@ class RuntimeAuthorityEvidenceService:
             except (ValueError, TypeError, OverflowError):
                 return _evidence_unavailable("AUTHORITY_OBSERVATION_TIME_INVALID")
 
+            # A reader returning a valid envelope cannot assert that a Worker
+            # heartbeat or Writer fence was verified unless that exact proof
+            # bit is true. A PID, cached Worker row, or owner record alone
+            # must never be presented as an authoritative live signal.
+            if name == "worker" and observed.get("heartbeat_verified") is not True:
+                return _evidence_unavailable("WORKER_HEARTBEAT_UNVERIFIED")
+            if name == "writer" and observed.get("owner_fence_verified") is not True:
+                return _evidence_unavailable("WRITER_FENCE_UNVERIFIED")
             # Policy-only advisory OS capacity is never a production permit.
             proof_status = "ADVISORY_ONLY" if name == "capacity" else "READ_ONLY_VERIFIED"
             item: dict[str, Any] = {
@@ -133,6 +141,8 @@ class RuntimeAuthorityEvidenceService:
                     item["attempt_count"] = count
                 if observed.get("unresolved") is True:
                     item["unresolved"] = True
+                if observed.get("unknown") is True:
+                    item["unknown"] = True
             elif name == "worker":
                 item["heartbeat_verified"] = observed.get("heartbeat_verified") is True
             elif name == "writer":

@@ -11,9 +11,9 @@ from platform.operations.runtime_authority_readers import (
 
 
 class SelectOnlyConnection:
-    def __init__(self, database="STORY_OS_RUNTIME", case_mode=0, tasks=4, attempts=2, unresolved=1):
+    def __init__(self, database="STORY_OS_RUNTIME", case_mode=0, tasks=4, attempts=2, unresolved=1, unknown=0):
         self.database, self.case_mode = database, case_mode
-        self.tasks, self.attempts, self.unresolved = tasks, attempts, unresolved
+        self.tasks, self.attempts, self.unresolved, self.unknown = tasks, attempts, unresolved, unknown
         self.calls = []
 
     def query_one(self, sql, params=None):
@@ -21,11 +21,13 @@ class SelectOnlyConnection:
         assert sql.startswith("SELECT "), "READ_ONLY_SQL_REQUIRED"
         if sql.startswith("SELECT DATABASE()"):
             return {"selected_database": self.database, "case_mode": self.case_mode}
-        assert params == ("EPU_source",)
         if "FROM TB_TASK " in sql:
+            assert params == ("EPU_source",), "Task uses canonical storage UID"
             return {"task_count": self.tasks}
         if "FROM TB_GENERATION_ATTEMPT " in sql:
-            return {"attempt_count": self.attempts, "unresolved_count": self.unresolved}
+            assert params == ("series/episode",), "Generation Attempt uses stable namespace"
+            return {"attempt_count": self.attempts, "unresolved_count": self.unresolved,
+                    "unknown_count": self.unknown}
         raise AssertionError("UNEXPECTED_SQL")
 
     def execute(self, *_):
@@ -69,7 +71,9 @@ def test_mysql_task_attempt_do_only_episode_bound_selects():
     assert repo.calls == ["series/episode","series/episode"]
     assert len(connection.calls) == 4
     assert all(sql.startswith("SELECT ") for sql, _ in connection.calls)
-    assert all(params == ("EPU_source",) for _, params in connection.calls if params is not None)
+    assert [params for _, params in connection.calls if params is not None] == [
+        ("EPU_source",), ("series/episode",),
+    ]
 
 
 @pytest.mark.parametrize("database,mode", [
@@ -115,6 +119,33 @@ def test_counts_fail_closed_if_out_of_bounds_or_corrupt():
     ).get_episode_authority("series/episode")
     assert report["evidence"]["task"]["status"]=="UNAVAILABLE"
     assert report["evidence"]["attempt"]["status"]=="UNAVAILABLE"
+
+
+def test_unknown_generation_outcome_is_reported_without_authorizing_retry():
+    db = SelectOnlyConnection(attempts=2, unresolved=1, unknown=1)
+    reader = MySqlAuthorityReadOnlyReaders(db, EpisodeRepository())
+    report = RuntimeAuthorityEvidenceService(
+        Status(), permit_authority_reads=True,
+        authorized_readers={"attempt": reader.attempt},
+    ).get_episode_authority("series/episode")
+    row = report["evidence"]["attempt"]
+    assert row["status"] == "READ_ONLY_VERIFIED"
+    assert row["unresolved"] is True
+    assert row["unknown"] is True
+    assert report["can_retry"] is False
+    assert "STATUS='OUTCOME_UNKNOWN'" in db.calls[-1][0]
+    assert db.calls[-1][1] == ("series/episode",)
+
+
+def test_unknown_count_inconsistency_blocks_attempt_evidence():
+    db = SelectOnlyConnection(attempts=2, unresolved=1, unknown=2)
+    reader = MySqlAuthorityReadOnlyReaders(db, EpisodeRepository())
+    report = RuntimeAuthorityEvidenceService(
+        Status(), permit_authority_reads=True,
+        authorized_readers={"attempt": reader.attempt},
+    ).get_episode_authority("series/episode")
+    assert report["evidence"]["attempt"]["status"] == "UNAVAILABLE"
+    assert report["production_authorization"] is False
 
 
 def test_advisory_capacity_snapshot_preserves_five_image_global_limit(tmp_path):

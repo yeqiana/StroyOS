@@ -64,6 +64,7 @@ export interface RuntimeAuthorityEvidenceItem {
   task_count?: number;
   attempt_count?: number;
   unresolved?: boolean;
+  unknown?: boolean;
   heartbeat_verified?: boolean;
   owner_fence_verified?: boolean;
   observed_busy?: number;

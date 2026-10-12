@@ -42,7 +42,7 @@ const authoritative={
     writer:{status:'READ_ONLY_VERIFIED',source:'runtime_driver_owner_fence',
       observed_at:new Date().toISOString(),owner_fence_verified:true,read_only:true},
     capacity:{status:'ADVISORY_ONLY',source:'git_common_directory_os_permits',
-      observed_at:new Date().toISOString(),observed_busy:2,observed_available:3,read_only:true},
+      observed_at:new Date().toISOString(),observed_busy:2,observed_available:3,advisory_snapshot_only:true,read_only:true},
   }
 };
 const valid=usableRuntimeAuthority(authoritative,'ep-one',false);

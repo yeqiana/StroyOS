@@ -77,26 +77,35 @@ class MySqlAuthorityReadOnlyReaders:
         }
 
     def attempt(self, episode_ref: str) -> dict[str, Any]:
-        episode_id = self._episode_id(episode_ref)
+        # The TB_TASK.EPISODE_ID is the storage UID, but the immutable image
+        # Generation Attempt authority is keyed by the *Episode namespace*.
+        # Still verify unique ACTIVE namespace ownership before querying it.
+        self._episode_id(episode_ref)
         row = self.connection.query_one(
             "SELECT COUNT(*) AS attempt_count, "
             "SUM(CASE WHEN STATUS IN ('RESERVED','DISPATCH_COMMITTED','OUTCOME_UNKNOWN') "
-            "THEN 1 ELSE 0 END) AS unresolved_count "
+            "THEN 1 ELSE 0 END) AS unresolved_count, "
+            "SUM(CASE WHEN STATUS='OUTCOME_UNKNOWN' THEN 1 ELSE 0 END) AS unknown_count "
             "FROM TB_GENERATION_ATTEMPT WHERE EPISODE_ID=%s",
-            (episode_id,),
+            (episode_ref,),
         )
         count = _count(row, "attempt_count")
         unresolved_count = _count(
             {**(row or {}), "unresolved_count": (row or {}).get("unresolved_count") or 0},
             "unresolved_count",
         )
-        if unresolved_count > count:
-            raise ValueError("AUTHORITY_UNRESOLVED_COUNT_INCONSISTENT")
+        unknown_count = _count(
+            {**(row or {}), "unknown_count": (row or {}).get("unknown_count") or 0},
+            "unknown_count",
+        )
+        if not 0 <= unknown_count <= unresolved_count <= count:
+            raise ValueError("AUTHORITY_ATTEMPT_STATE_COUNTS_INCONSISTENT")
         return {
             "episode_ref": episode_ref,
             "source": AUTHORITATIVE_SOURCES["attempt"],
             "verified": True, "read_only": True, "observed_at": _now(),
             "attempt_count": count, "unresolved": unresolved_count > 0,
+            "unknown": unknown_count > 0,
         }
 
 

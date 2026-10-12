@@ -162,6 +162,41 @@ def test_invalid_reader_domain_fails_at_composition_time():
         RuntimeAuthorityEvidenceService(StatusReader(), authorized_readers={"provider-write": lambda _: None})
 
 
+
+@pytest.mark.parametrize("domain,flag,reason", [
+    ("worker", "heartbeat_verified", "WORKER_HEARTBEAT_UNVERIFIED"),
+    ("writer", "owner_fence_verified", "WRITER_FENCE_UNVERIFIED"),
+])
+def test_verified_envelope_cannot_invent_missing_ttl_or_fencing_proof(domain, flag, reason):
+    for value in (False, None, 1, "true"):
+        payload = RuntimeAuthorityEvidenceService(
+            StatusReader("runtime_authoritative"),
+            permit_authority_reads=True,
+            authorized_readers={domain: lambda ep, v=value: reader_row(
+                domain, **{flag: v})},
+        ).get_episode_authority(EPISODE)
+        evidence = payload["evidence"][domain]
+        assert evidence["status"] == "UNAVAILABLE"
+        assert evidence["reason"] == reason
+        assert evidence["source"] is None
+        assert payload["production_authorization"] is False
+        assert payload["can_retry"] is False
+
+
+def test_unknown_attempt_is_not_marked_retriable_or_disclosed_as_raw_lease():
+    payload = RuntimeAuthorityEvidenceService(
+        StatusReader("runtime_authoritative"), permit_authority_reads=True,
+        authorized_readers={"attempt": lambda ep: reader_row(
+            "attempt", attempt_count=2, unknown=True, unresolved=True,
+            fencing_secret="hidden-credential")},
+    ).get_episode_authority(EPISODE)
+    attempt = payload["evidence"]["attempt"]
+    assert attempt["unknown"] is True
+    assert attempt["unresolved"] is True
+    assert "fencing_secret" not in str(payload)
+    assert "hidden-credential" not in str(payload)
+    assert payload["can_retry"] is False
+
 def test_capacity_snapshot_is_never_dispatch_authorization():
     reader = lambda ep: reader_row("capacity", observed_busy=3, observed_available=0)
     payload = RuntimeAuthorityEvidenceService(
