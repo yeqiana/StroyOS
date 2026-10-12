@@ -97,6 +97,7 @@ def build_children(
     consistency_every,
     stuck_minutes,
     jsonl_root,
+    tick_log_max_mib=64,
     alert_webhook=None,
     alert_webhook_format="json",
     metrics_host="127.0.0.1",
@@ -121,6 +122,7 @@ def build_children(
         "--metrics-file", str(metrics_file),
         "--alert-log", str(alert_log),
         "--tick-log", str(tick_log),
+        "--tick-log-max-mib", str(tick_log_max_mib),
         "--evidence-file", str(worker_evidence),
     ]
     if alert_webhook:
@@ -234,6 +236,8 @@ def _parse_args(argv):
     parser.add_argument("--consistency-every", type=int, default=10)
     parser.add_argument("--stuck-minutes", type=float, default=30.0)
     parser.add_argument("--jsonl-root", default=".storyos")
+    parser.add_argument("--tick-log-max-mib", type=float, default=64,
+                        help="Tick JSONL 无损轮转阈值 MiB；0=禁用")
     parser.add_argument("--run-root", default=str(PROJECT_ROOT / ".storyos" / "runtime-launcher"))
     parser.add_argument("--alert-webhook", default=None)
     parser.add_argument("--alert-webhook-format", default="json", choices=("json", "dingtalk"))
@@ -265,6 +269,7 @@ def main(argv=None) -> int:
         consistency_every=args.consistency_every,
         stuck_minutes=args.stuck_minutes,
         jsonl_root=args.jsonl_root,
+        tick_log_max_mib=args.tick_log_max_mib,
         alert_webhook=args.alert_webhook,
         alert_webhook_format=args.alert_webhook_format,
         metrics_port=args.metrics_port,
@@ -292,6 +297,7 @@ def main(argv=None) -> int:
             "consistency_every": args.consistency_every,
             "stuck_minutes": args.stuck_minutes,
             "jsonl_root": args.jsonl_root,
+            "tick_log_max_mib": args.tick_log_max_mib,
             "metrics_port": args.metrics_port,
             "alert_webhook_configured": bool(args.alert_webhook),
             "runtime_env_file": str(runtime_env_path) if runtime_env_path.is_file() else None,
