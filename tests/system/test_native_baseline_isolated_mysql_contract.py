@@ -30,6 +30,26 @@ from platform.repository.mysql.mysql_production_attempt_repository import MySqlP
 from platform.repository.mysql.mysql_production_frame_repository import MySqlProductionFrameRepository
 
 
+def _prepare_test_only_freeze_sources(ep: Path, source: dict) -> None:
+    """Create synthetic OS-lock inputs; never production pixels or receipts."""
+    for key in reconciliation.source_freeze.SOURCE_KEYS:
+        path = source.get(key)
+        if not isinstance(path, Path):
+            path = ep / f"test-only-{key}.bin"
+        path.write_bytes(f"isolated-test-only:{key}".encode("ascii"))
+        source[key] = path
+
+
+def test_synthetic_source_freeze_fixture_is_complete_without_mysql(tmp_path):
+    ep = tmp_path / "synthetic-only"
+    ep.mkdir()
+    source = {"candidate": ep / "test-only-candidate.png"}
+    _prepare_test_only_freeze_sources(ep, source)
+    paths = reconciliation.source_freeze.source_paths(source)
+    assert len(paths) == len(reconciliation.source_freeze.SOURCE_KEYS) == 6
+    assert all(path.is_file() and path.parent == ep for path in paths)
+
+
 @pytest.fixture
 def admitted_db(request, monkeypatch, tmp_path):
     if not request.config.getoption("--storyos-isolated-mysql"):
@@ -88,6 +108,8 @@ def admitted_db(request, monkeypatch, tmp_path):
         source["logical_episode_id"] = logical_id
         source["generation_key"] = generation.stable_generation_key(logical_id, asset_key, 1)
         source["candidate"] = ep / "synthetic-image-isolation-only.png"
+        # TEST_ONLY synthetic files satisfy the six Windows OS-lock inputs.
+        _prepare_test_only_freeze_sources(ep, source)
         monkeypatch.setattr(reconciliation.logical_asset_identity, "episode_id", lambda _: logical_id)
         monkeypatch.setattr(generation, "frame_key", lambda _ep, _frame: asset_key)
         monkeypatch.setattr(reconciliation, "verify_frame01_sources",
