@@ -34,6 +34,8 @@ export const StoryNextAction: React.FC<Props> = ({ episode, onOpenWorkflow }) =>
     title = '尚无可见的逐帧审核记录';
     detail = '可以查看当前分镜与批次记录，但不能把无审核记录视为已通过。';
   }
+  // The CTA navigates to read-only workflow evidence; it never starts recovery.
+  const actionLabel = kind === 'blocking' ? '查看阻塞阶段' : kind === 'warning' ? '查看待确认阶段' : kind === 'draft' ? '查看制作流程' : '查看阶段';
   const Icon = kind === 'blocking' ? ShieldAlert : kind === 'warning' ? AlertTriangle : kind === 'draft' ? FilePenLine : CircleDot;
   return <section aria-labelledby="story-next-action-title" className="flex flex-wrap items-start justify-between gap-3 border-l-2 border-[var(--border-strong)] bg-[var(--bg-surface)] px-4 py-2.5 text-[var(--text-primary)]">
     <div className="flex items-start gap-3 min-w-0 flex-1">
@@ -44,6 +46,6 @@ export const StoryNextAction: React.FC<Props> = ({ episode, onOpenWorkflow }) =>
 
       </div>
     </div>
-    <button type="button" onClick={onOpenWorkflow} className="flex shrink-0 items-center gap-1.5 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]">查看阶段 <ArrowRight size={14}/></button>
+    <button type="button" onClick={onOpenWorkflow} title="仅查看流程，不执行重试或修改审核状态" aria-label={actionLabel} className="flex shrink-0 items-center gap-1.5 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]">{actionLabel} <ArrowRight size={14}/></button>
   </section>;
 };
