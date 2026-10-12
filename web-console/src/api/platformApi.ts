@@ -51,6 +51,40 @@ export interface RuntimeStatusDetail {
   episode_ref?: string | null;
 }
 
+// R35: GET /api/v1/runtime/authority?episode=... — explicitly read-only.
+// Verified evidence may be supplied only by an authorized backend reader;
+// in local file mode every runtime domain is UNAVAILABLE.
+export type RuntimeAuthorityDomain = 'task' | 'attempt' | 'worker' | 'writer' | 'capacity';
+export interface RuntimeAuthorityEvidenceItem {
+  status: 'UNAVAILABLE' | 'READ_ONLY_VERIFIED' | 'ADVISORY_ONLY';
+  reason?: string;
+  source?: string | null;
+  observed_at?: string | null;
+  read_only: boolean;
+  task_count?: number;
+  attempt_count?: number;
+  unresolved?: boolean;
+  heartbeat_verified?: boolean;
+  owner_fence_verified?: boolean;
+  observed_busy?: number;
+  observed_available?: number;
+  advisory_snapshot_only?: boolean;
+}
+export interface RuntimeAuthorityReport {
+  schema_version: number;
+  episode_ref: string;
+  scope: 'LOCAL_READ_ONLY_EVIDENCE' | 'AUTHORIZED_READ_ONLY' | 'AUTHORITY_NOT_CONFIGURED';
+  stage_source?: string | null;
+  read_only: boolean;
+  production_authorization: false;
+  can_start: false;
+  can_retry: false;
+  can_publish: false;
+  model_calls: 0;
+  global_image_capacity_policy: 5;
+  evidence: Record<RuntimeAuthorityDomain, RuntimeAuthorityEvidenceItem>;
+}
+
 export interface ImageProgress {
   expected_frames?: number;
   generated_frames?: number;
@@ -282,6 +316,11 @@ export const platformApi = {
   // GET /api/v1/runtime/status?episode=...
   async runtimeStatus(episodeRef: string): Promise<RuntimeStatusDetail | null> {
     return platformRequest<RuntimeStatusDetail | null>('/api/v1/runtime/status?episode=' + encodeURIComponent(episodeRef));
+  },
+
+  // R35: opt-in read-only authority evidence; unavailable is a safe outcome.
+  async runtimeAuthority(episodeRef: string, signal?: AbortSignal): Promise<RuntimeAuthorityReport> {
+    return platformRequest<RuntimeAuthorityReport>('/api/v1/runtime/authority?episode=' + encodeURIComponent(episodeRef), { signal });
   },
 
   // GET /api/v1/runtime/events?limit&offset&episode_id

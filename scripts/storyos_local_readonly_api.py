@@ -19,7 +19,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
-from platform.api.controllers import RuntimeStatusApiController
+from platform.api.controllers import RuntimeStatusApiController, RuntimeAuthorityApiController
+from platform.operations.runtime_authority_evidence import RuntimeAuthorityEvidenceService
 from platform.api.http_server import PlatformApiDispatcher, PlatformApiRequestHandler, build_http_server
 
 SOURCE = "local_workspace_episode_state_file"
@@ -213,6 +214,7 @@ class ReadOnlyLocalDispatcher(PlatformApiDispatcher):
         clean = urlsplit(path).path
         if method.upper() != "GET" or clean not in {
             "/healthz", "/api/v1/runtime/statuses", "/api/v1/runtime/status",
+            "/api/v1/runtime/authority",
         }:
             return 403, {"code": "READ_ONLY_LOCAL_EVIDENCE", "message": "local evidence API supports only registered read-only GET endpoints", "data": None}
         return super().dispatch(method, path, body)
@@ -273,15 +275,16 @@ def main() -> None:
     if not 1024 <= args.port <= 65535:
         parser.error("port must be in 1024..65535")
     service = LocalEpisodeFileStatuses(args.workspace_root)
-    # 仅注册 RuntimeStatus 读端。禁止 build_default_controllers。
-    server = build_http_server(
-        {"RuntimeStatusApiController": RuntimeStatusApiController(service)},
-        host="127.0.0.1", port=args.port,
-    )
+    # Only local-stage evidence. All five Runtime authorities explicitly
+    # remain unavailable; no MySQL/Redis/Worker readers are connected.
+    controllers = {
+        "RuntimeStatusApiController": RuntimeStatusApiController(service),
+        "RuntimeAuthorityApiController": RuntimeAuthorityApiController(
+            RuntimeAuthorityEvidenceService(service)),
+    }
+    server = build_http_server(controllers, host="127.0.0.1", port=args.port)
     server.approved_media = LocalApprovedMedia(service)
-    server.dispatcher = ReadOnlyLocalDispatcher(
-        {"RuntimeStatusApiController": RuntimeStatusApiController(service)}
-    )
+    server.dispatcher = ReadOnlyLocalDispatcher(controllers)
     server.RequestHandlerClass = LocalReadOnlyHandler
     print("READY LOCAL_WORKSPACE_READONLY", server.server_address[1], flush=True)
     try:

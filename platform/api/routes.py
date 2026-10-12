@@ -19,6 +19,7 @@ PLATFORM_API_ROUTES: tuple[RouteDefinition, ...] = (
     RouteDefinition("GET", "/api/v1/executions/{id}", "ExecutionApiController.get_execution"),
     RouteDefinition("GET", "/api/v1/runtime/status", "RuntimeStatusApiController.get_episode_status"),
     RouteDefinition("GET", "/api/v1/runtime/statuses", "RuntimeStatusApiController.list_episode_statuses"),
+    RouteDefinition("GET", "/api/v1/runtime/authority", "RuntimeAuthorityApiController.get_episode_authority"),
     RouteDefinition("GET", "/api/v1/runtime/events", "RuntimeEventApiController.list_events"),
     RouteDefinition("POST", "/api/v1/memory/search", "MemoryApiController.search"),
     RouteDefinition("GET", "/api/v1/memory/{id}", "MemoryApiController.get_memory"),

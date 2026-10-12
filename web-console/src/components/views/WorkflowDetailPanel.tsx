@@ -46,6 +46,6 @@ export const WorkflowDetailPanel: React.FC<Props> = ({selected, onClose}) => {
     <dl className="grid grid-cols-1 gap-0">
       {[...summaryRows,...detailRows].map(([k,v]) => <div key={k} className="grid grid-cols-[100px_minmax(0,1fr)] items-start gap-3 border-b border-[var(--border-subtle)] py-3"><dt className="text-[11px] text-[var(--text-tertiary)]">{k}</dt><dd className="break-words text-[13px] font-medium text-[var(--text-primary)]">{v}</dd></div>)}
     </dl>
-    <RuntimeRecoveryInsight detail={detail} source={selected.state_source} detailLoaded={status === 'ready'} />
+    <RuntimeRecoveryInsight episodeRef={episode || ""} detail={detail} source={selected.state_source} detailLoaded={status === 'ready'} />
   </section></Drawer>;
 };

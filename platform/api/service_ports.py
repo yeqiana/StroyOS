@@ -54,6 +54,10 @@ class RuntimeStatusServicePort(Protocol):
     def list_episode_statuses(self, *, limit: int | str = 50, offset: int | str = 0) -> dict[str, Any]: ...
 
 
+class RuntimeAuthorityEvidenceServicePort(Protocol):
+    def get_episode_authority(self, episode: str) -> dict[str, Any] | None: ...
+
+
 class RuntimeEventServicePort(Protocol):
     def list_events(
         self,

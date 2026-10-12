@@ -1,28 +1,52 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Descriptions } from 'antd';
-import type { RuntimeStatusDetail } from '../../api/platformApi';
+import type { RuntimeAuthorityReport, RuntimeStatusDetail } from '../../api/platformApi';
+import { platformApi } from '../../api/platformApi';
 import { assessRuntimeRecovery } from '../../api/runtimeRecoveryAssessment';
+import { runtimeEvidenceRows, usableRuntimeAuthority } from '../../api/runtimeAuthorityPresentation';
 
 interface Props {
+  episodeRef: string;
   detail: RuntimeStatusDetail | null;
   source: string | null | undefined;
   detailLoaded: boolean;
 }
 
-/** Read-only, fail-closed production recovery triage shared by monitor and workflow inspectors. */
-export const RuntimeRecoveryInsight: React.FC<Props> = ({ detail, source, detailLoaded }) => {
+/** Two inspect-only drawers share the identity-validated, fail-closed R35 evidence. */
+export const RuntimeRecoveryInsight: React.FC<Props> = ({ episodeRef, detail, source, detailLoaded }) => {
   const diagnosis = assessRuntimeRecovery(detailLoaded ? detail : null, source);
   const localEvidence = source === 'local_workspace_episode_state_file' || source === 'isolated-test';
-  const executionStatus = !localEvidence && detailLoaded ? String(detail?.execution_status || '').trim().toUpperCase() : '';
-  const reportedExecution = executionStatus && !['UNKNOWN', '-', 'NO_STATE'].includes(executionStatus);
-  const reportedHeartbeat = !localEvidence && detailLoaded ? String(detail?.heartbeat?.health || '').trim() : '';
-  const evidenceRows = [
-    { key: 'task', label: 'Task', children: reportedExecution ? `仅报告状态 ${executionStatus} · Task ID 与执行租约未验证` : '权威 Task ID / 执行租约未接入' },
-    { key: 'attempt', label: 'Attempt', children: 'MySQL Generation Attempt、预算和当前 fencing 未接入此只读详情' },
-    { key: 'worker', label: 'Worker', children: reportedHeartbeat && reportedHeartbeat.toLowerCase() !== 'unknown' ? `接口报告 ${reportedHeartbeat} · Worker 身份/租约未核验` : 'Worker 身份与权威心跳未验证' },
-    { key: 'owner', label: 'Writer', children: 'Episode Driver Owner / fencing 尚未核验' },
-    { key: 'capacity', label: '图片名额', children: '同一仓库全局最多 5 张；当前持锁数未接入，不能由此推断剩余名额' },
-  ];
+  const [authority, setAuthority] = useState<RuntimeAuthorityReport | null>(null);
+  const [authorityState, setAuthorityState] = useState<'loading' | 'ready' | 'unavailable'>('loading');
+
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    setAuthority(null);
+    setAuthorityState('loading');
+    if (!episodeRef) {
+      setAuthorityState('unavailable');
+      return () => { active = false; controller.abort(); };
+    }
+    platformApi.runtimeAuthority(episodeRef, controller.signal).then(data => {
+      if (!active) return;
+      const checked = usableRuntimeAuthority(data, episodeRef, localEvidence);
+      setAuthority(checked);
+      setAuthorityState(checked ? 'ready' : 'unavailable');
+    }).catch(() => {
+      if (active) {
+        setAuthority(null);
+        setAuthorityState('unavailable');
+      }
+    });
+    return () => { active = false; controller.abort(); };
+  }, [episodeRef, localEvidence]);
+
+  // Effects run after paint; never render a previously selected Episode's
+  // authority report even for one frame during a Drawer selection change.
+  const currentAuthority = usableRuntimeAuthority(authority, episodeRef, localEvidence);
+  const currentState = authorityState === 'ready' && !currentAuthority ? 'unavailable' : authorityState;
+  const evidenceRows = runtimeEvidenceRows(currentAuthority, detailLoaded ? detail : null, localEvidence);
   return <section aria-label="生产恢复安全诊断" className="border-t border-[var(--border-subtle)] pt-3">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h4 className="text-[12px] font-semibold text-[var(--text-primary)]">恢复安全诊断</h4>
@@ -31,7 +55,17 @@ export const RuntimeRecoveryInsight: React.FC<Props> = ({ detail, source, detail
     <p data-recovery-code={diagnosis.code} className="mt-2 text-[12px] font-medium text-[var(--text-primary)]" role="status">{diagnosis.title}</p>
     <p className="mt-1 text-[11px] leading-5 text-[var(--text-secondary)]">{diagnosis.explanation}</p>
     <div className="mt-3 border-t border-[var(--border-subtle)] pt-3" aria-label="Task Attempt Worker 生产证据矩阵">
-      <h5 className="mb-2 text-[11px] font-semibold text-[var(--text-secondary)]">生产证据完整度</h5>
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+        <h5 className="text-[11px] font-semibold text-[var(--text-secondary)]">生产证据完整度</h5>
+        <span className="text-[11px] text-[var(--text-tertiary)]">R35 · 身份绑定只读</span>
+      </div>
+      {currentState === 'ready' && currentAuthority?.scope === 'LOCAL_READ_ONLY_EVIDENCE'
+        ? <p data-authority-scope="LOCAL_READ_ONLY_EVIDENCE" role="status" className="mb-2 text-[11px] leading-5 text-[var(--text-tertiary)]">已通过只读接口核对当前 Episode；Task / Attempt / Worker / Writer 在线权威数据未授权接入，容量只显示全仓库五图规则。</p>
+        : currentState === 'ready'
+        ? <p data-authority-scope={currentAuthority?.scope} role="status" className="mb-2 text-[11px] leading-5 text-[var(--text-tertiary)]">权威证据接口已响应；仅显示当前 Episode 经来源与时间验证的只读结果，不能作为执行许可。</p>
+        : currentState === 'unavailable'
+        ? <p role="status" className="mb-2 text-[11px] text-[var(--text-tertiary)]">权威证据接口不可读取；保留未核验证据提示，不推断在线或可恢复。</p>
+        : <p role="status" className="mb-2 text-[11px] text-[var(--text-tertiary)]">正在核查本 Episode 的只读权威证据…</p>}
       <Descriptions size="small" column={1} colon={false} items={evidenceRows} />
     </div>
     <p className="mt-2 border-t border-[var(--border-subtle)] pt-2 text-[11px] text-[var(--text-tertiary)]">此处不提供启动、重试、跳过门禁或发布操作；正式恢复须由已授权 Runtime 重新确认权威状态与资源配额。</p>

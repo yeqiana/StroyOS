@@ -8,6 +8,7 @@ from platform.api.service_ports import (
     RegistryServicePort,
     RuntimeEventServicePort,
     RuntimeStatusServicePort,
+    RuntimeAuthorityEvidenceServicePort,
     TraceServicePort,
     WorkflowServicePort,
 )
@@ -73,6 +74,25 @@ class RuntimeStatusApiController:
             return ApiResponse.ok(self._service.list_episode_statuses(limit=limit, offset=offset))
         except ValueError as exc:
             return ApiResponse.error("INVALID_REQUEST", str(exc))
+
+
+class RuntimeAuthorityApiController:
+    """Read-only authority evidence. This endpoint never starts or retries tasks."""
+
+    def __init__(self, service: RuntimeAuthorityEvidenceServicePort) -> None:
+        self._service = service
+
+    def get_episode_authority(self, episode: str) -> ApiResponse[dict]:
+        try:
+            evidence = self._service.get_episode_authority(episode)
+        except ValueError:
+            return ApiResponse.error("INVALID_REQUEST", "invalid Episode authority identity")
+        except Exception:
+            # Read-only source errors may contain credentials and host paths.
+            return ApiResponse.error("AUTHORITY_STATUS_UNAVAILABLE", "Runtime authority source unavailable")
+        if evidence is None:
+            return ApiResponse.error("EPISODE_NOT_FOUND", "Episode authority evidence not found")
+        return ApiResponse.ok(evidence)
 
 
 class RuntimeEventApiController:

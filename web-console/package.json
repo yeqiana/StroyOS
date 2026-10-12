@@ -51,6 +51,8 @@
     "test:r33": "node scripts/test-r33-runtime-inspector-browser.mjs",
     "test:r33:readiness": "node scripts/test-r33-runtime-readiness.mjs",
     "test:r34": "node scripts/test-r34-evidence-browser.mjs",
+    "test:r35:guards": "node scripts/test-r35-authority-presentation.mjs",
+    "test:r35": "node scripts/test-r35-authority-browser.mjs",
     "test:responsive": "node scripts/test-r17-responsive-browser.mjs"
   },
   "dependencies": {

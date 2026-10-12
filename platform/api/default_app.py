@@ -12,12 +12,14 @@ from platform.api.controllers import (
     MemoryApiController,
     RuntimeEventApiController,
     RuntimeStatusApiController,
+    RuntimeAuthorityApiController,
     TraceApiController,
 )
 from platform.api.contracts import MemorySearchRequest
 from platform.operations.experience_store import ExperienceStore, RuntimeExperience
 from platform.operations.runtime_event_service import RuntimeEventApiService
 from platform.operations.runtime_status_service import RuntimeStatusApiService
+from platform.operations.runtime_authority_evidence import RuntimeAuthorityEvidenceService
 from platform.repository.mysql.mysql_connection import MySqlConnection
 from platform.repository.mysql.mysql_episode_repository import MySqlEpisodeRepository
 from platform.repository.mysql.mysql_event_repository import MySqlEventRepository
@@ -78,6 +80,7 @@ def build_default_controllers(
     experience_store: ExperienceStore | None = None,
     runtime_event_service: RuntimeEventApiService | None = None,
     runtime_status_service: RuntimeStatusApiService | None = None,
+    runtime_authority_service: RuntimeAuthorityEvidenceService | None = None,
     platform_state_root: str | Path | None = None,
     record_stores: PlatformRecordStores | None = None,
 ) -> dict[str, object]:
@@ -108,7 +111,7 @@ def build_default_controllers(
     runtime_event_service = runtime_event_service or RuntimeEventApiService(
         MySqlEventRepository(MySqlConnection())
     )
-    return {
+    controllers: dict[str, object] = {
         "AgentApiController": AgentApiController(agent_service),
         "ExecutionApiController": ExecutionApiController(agent_service),
         "TraceApiController": TraceApiController(agent_service),
@@ -116,3 +119,9 @@ def build_default_controllers(
         "RuntimeEventApiController": RuntimeEventApiController(runtime_event_service),
         "RuntimeStatusApiController": RuntimeStatusApiController(runtime_status_service),
     }
+    # Production authority readers must be explicitly injected by a trusted
+    # bootstrap. Do NOT create MySQL/Redis/Driver readers from a UI request.
+    # Without authorization the route remains a truthful 503 capability gap.
+    if runtime_authority_service is not None:
+        controllers["RuntimeAuthorityApiController"] = RuntimeAuthorityApiController(runtime_authority_service)
+    return controllers

@@ -94,7 +94,7 @@ export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMor
           ] : [])
         ].map(([key, value]) => <div key={key} className="grid grid-cols-[100px_minmax(0,1fr)] items-start gap-3 border-b border-[var(--border-subtle)] py-3"><dt className="text-[11px] text-[var(--text-tertiary)]">{key}</dt><dd className="break-words text-[12px] text-[var(--text-primary)]">{value}</dd></div>)}
       </dl>
-      <RuntimeRecoveryInsight detail={detail} source={selected.state_source} detailLoaded={detailState === 'available'} />
+      <RuntimeRecoveryInsight episodeRef={ref || ""} detail={detail} source={selected.state_source} detailLoaded={detailState === 'available'} />
     </section></Drawer>}
   </section>;
 };
