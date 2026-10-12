@@ -92,7 +92,7 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
   } | null>(null);
 
   // Historic saved Frame records are evidence, not proof of live recovery.
-  const recordedBlockedFrames = run.frames.filter(f => f.status === 'BLOCKED' || f.status === 'FAILED');
+  const recordedBlockedFrames = run.frames.filter(f => f.status === 'BLOCKED');
   const recordedRetryFrames = run.frames.filter(f => f.status === 'RETRYING');
   const firstRecordedRetry = recordedRetryFrames[0];
 
