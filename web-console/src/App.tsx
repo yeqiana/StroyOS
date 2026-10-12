@@ -181,7 +181,9 @@ export default function App() {
       currentStage: 'IDEA_LOCK',
       stageProgressPercent: 0,
       coverImage: STORY_PLACEHOLDER_IMAGE,
-      updatedAt: '刚刚',
+      // Keep draft timestamps machine-sortable: '刚刚' parses to NaN and sinks to
+      // the end of the home page's recently-updated list after creating a story.
+      updatedAt: new Date().toISOString(),
       runtimeRequest: {
         imageModel: 'gpt-image-2',
         quality: 'high',
