@@ -46,6 +46,7 @@ def validate(ep, require_locked=True):
     ep=Path(ep).resolve();p=ep/REL
     if not p.is_file():return ["meta/storyboard-density-review.json missing"]
     d=read_json(p);e=[];total=frame_count(ep)
+    if total<=0:e.append("release.body_frame_count missing or invalid")
     if d.get("schema_version")!=1:e.append("density schema_version must be 1")
     if require_locked and d.get("status")!="LOCKED":e.append("storyboard density review must be LOCKED")
     rows=d.get("frames") or []
