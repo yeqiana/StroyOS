@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import unittest
 
-from scripts.storyos_worktree_audit_readonly import classify, parse_worktrees
+from scripts.storyos_worktree_audit_readonly import (classify, git_patch_equivalent, ignored_junctions, parse_worktrees)
 
 
 class WorktreeAuditContractTests(unittest.TestCase):
@@ -21,6 +21,8 @@ class WorktreeAuditContractTests(unittest.TestCase):
             tracked_or_untracked=overrides.pop("status", []),
             ignored=overrides.pop("ignored", []),
             merged=overrides.pop("merged", True),
+            patch_equivalent=overrides.pop("patch_equivalent", None),
+            junctions=overrides.pop("junctions", None),
         )
 
     def test_parse_preserves_detached_locked_and_branch(self):
@@ -61,6 +63,35 @@ class WorktreeAuditContractTests(unittest.TestCase):
         record = self.classify(ignored=[".storyos/runtime/", "episodes/_canary/"])
         self.assertEqual(record["classification"], "PROTECTED")
         self.assertIn("ignored_files_may_contain_production_data", record["reasons"])
+
+
+    def test_patch_equivalent_unmerged_is_still_protected(self):
+        record = self.classify(merged=False, patch_equivalent=True)
+        self.assertEqual(record["classification"], "PROTECTED")
+        self.assertFalse(record["safe_to_delete"])
+        self.assertIn("patch_equivalent_not_a_merge_or_retirement_authority", record["reasons"])
+
+    def test_junction_blocks_even_clean_merged_tree(self):
+        record = self.classify(junctions=["web-console/node_modules/"])
+        self.assertEqual(record["classification"], "PROTECTED")
+        self.assertIn("junction_or_symlink_requires_target_protection", record["reasons"])
+
+    def test_patch_equivalent_requires_only_minus_lines(self):
+        from unittest.mock import patch
+        target = "scripts.storyos_worktree_audit_readonly.git"
+        with patch(target, return_value="- a\n- b"):
+            self.assertTrue(git_patch_equivalent(None, "main", "feature"))
+        with patch(target, return_value="- a\n+ b"):
+            self.assertFalse(git_patch_equivalent(None, "main", "feature"))
+        with patch(target, return_value=""):
+            self.assertIsNone(git_patch_equivalent(None, "main", "feature"))
+
+    def test_ignored_junction_probe_ignores_path_traversal(self):
+        from tempfile import TemporaryDirectory
+        from pathlib import Path
+        with TemporaryDirectory() as temp:
+            (Path(temp) / "web-console" / "dist").mkdir(parents=True)
+            self.assertEqual(ignored_junctions(Path(temp), ["web-console/dist/", "../unsafe/", "./invalid/"]), [])
 
     def test_any_untracked_or_tracked_changes_block_removal(self):
         self.assertEqual(self.classify(status=["?? episodes/new-image.png"])["classification"], "PROTECTED")

@@ -43,6 +43,8 @@ def classify(
     tracked_or_untracked: list[str] | None,
     ignored: list[str] | None,
     merged: bool | None,
+    patch_equivalent: bool | None = None,
+    junctions: list[str] | None = None,
 ) -> dict:
     """No outcome here authorizes deletion: process ownership is not knowable from Git."""
     reasons: list[str] = []
@@ -60,6 +62,8 @@ def classify(
     if merged is not True:
         reasons.append("unmerged_or_unverified_head")
         candidate = False
+        if patch_equivalent is True:
+            reasons.append("patch_equivalent_not_a_merge_or_retirement_authority")
     if tracked_or_untracked is None or ignored is None:
         reasons.append("git_status_probe_unavailable")
         candidate = False
@@ -70,6 +74,9 @@ def classify(
         if ignored:
             reasons.append("ignored_files_may_contain_production_data")
             candidate = False
+    if junctions:
+        reasons.append("junction_or_symlink_requires_target_protection")
+        candidate = False
     if candidate:
         reasons.append("manual_process_ownership_check_required")
     return {
@@ -81,6 +88,8 @@ def classify(
         "reasons": reasons,
         "dirty_entry_count": len(tracked_or_untracked) if tracked_or_untracked is not None else None,
         "ignored_entry_count": len(ignored) if ignored is not None else None,
+        "patch_equivalent": patch_equivalent,
+        "junctions": junctions,
     }
 
 
@@ -94,6 +103,33 @@ def git(cwd: Path, *args: str, timeout: float = 12) -> str:
         raise RuntimeError("git " + " ".join(args[:2]) + " failed")
     return completed.stdout
 
+def git_patch_equivalent(repo: Path, main_ref: str, branch: str) -> bool | None:
+    """Read-only Patch-ID evidence; never permission to delete a worktree."""
+    try:
+        lines = git(repo, "cherry", main_ref, branch).splitlines()
+    except (OSError, RuntimeError, subprocess.TimeoutExpired):
+        return None
+    if not lines or any(line[:2] not in ("+ ", "- ") for line in lines):
+        return None
+    return all(line.startswith("- ") for line in lines)
+
+
+def ignored_junctions(worktree: Path, ignored: list[str]) -> list[str]:
+    """Probe named ignored paths only, never follow or scan shared targets."""
+    matches: list[str] = []
+    for entry in ignored:
+        normalized = entry.replace("\\", "/").rstrip("/")
+        if not normalized or any(part in ("", ".", "..") for part in normalized.split("/")):
+            continue
+        path = worktree.joinpath(*normalized.split("/"))
+        try:
+            is_junction = getattr(path, "is_junction", lambda: False)
+            if path.is_symlink() or is_junction():
+                matches.append(entry)
+        except OSError:
+            matches.append(entry + " (probe unavailable)")
+    return matches
+
 
 def audit(repo: Path, *, main_ref: str, offset: int, limit: int) -> dict:
     root = Path(git(repo, "rev-parse", "--show-toplevel").strip()).resolve()
@@ -104,6 +140,8 @@ def audit(repo: Path, *, main_ref: str, offset: int, limit: int) -> dict:
         status = None
         ignored = None
         merged = None
+        patch_equivalent = None
+        junctions = None
         if path.is_dir():
             try:
                 status = git(path, "status", "--porcelain=v1", "--untracked-files=all").splitlines()
@@ -115,11 +153,15 @@ def audit(repo: Path, *, main_ref: str, offset: int, limit: int) -> dict:
                         timeout=12, check=False,
                     )
                     merged = process.returncode == 0
+                    if not merged:
+                        patch_equivalent = git_patch_equivalent(root, main_ref, item["branch"])
+                junctions = ignored_junctions(path, ignored)
             except (OSError, RuntimeError, subprocess.TimeoutExpired):
                 pass  # fail closed if *any* probe fails
         records.append(classify(
             item, primary_path=str(root),
             tracked_or_untracked=status, ignored=ignored, merged=merged,
+            patch_equivalent=patch_equivalent, junctions=junctions,
         ))
     return {
         "mode": "READ_ONLY",
@@ -130,6 +172,11 @@ def audit(repo: Path, *, main_ref: str, offset: int, limit: int) -> dict:
         "offset": offset,
         "limit": limit,
         "records": records,
+        "patch_equivalent_non_ancestor": sum(
+            record["patch_equivalent"] is True and record["classification"] == "PROTECTED"
+            for record in records
+        ),
+        "junctions_detected": sum(len(record["junctions"] or []) for record in records),
     }
 
 
