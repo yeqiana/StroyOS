@@ -91,6 +91,11 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
     frame: FrameDetailItem;
   } | null>(null);
 
+  // Historic saved Frame records are evidence, not proof of live recovery.
+  const recordedBlockedFrames = run.frames.filter(f => f.status === 'BLOCKED' || f.status === 'FAILED');
+  const recordedRetryFrames = run.frames.filter(f => f.status === 'RETRYING');
+  const firstRecordedRetry = recordedRetryFrames[0];
+
   // 历史 Run 快照不包含经过验证的在线 Worker 心跳。
   const hb = {color:'text-[var(--text-tertiary)]',dot:'bg-[var(--text-tertiary)]',label:'心跳未验证'};
 
@@ -538,58 +543,35 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {/* 需人工处理卡片 */}
                 <div className="p-3.5 rounded-[6px] bg-[#13161B] border border-[#232830] space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold font-mono text-[#F1F3F5] flex items-center gap-1.5">
-                      <AlertCircle className="w-3.5 h-3.5 text-[#3FB950]" />
-                      <span>需人工介入处理 (0 项阻塞)</span>
-                    </span>
-                    <span className="text-[10px] font-mono text-[#3FB950] bg-[#3FB950]/15 border border-[#3FB950]/30 px-1.5 py-0.5 rounded-[3px]">
-                      HEALTHY
-                    </span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold font-mono text-[#F1F3F5]">已记录阻塞：{recordedBlockedFrames.length} 帧</span>
+                    <span className="text-[10px] text-[#A7AFBA]">历史快照 · 未验证在线状态</span>
                   </div>
-                  <p className="text-xs text-[#737D8A]">
-                    当前 Run 无任何阻塞死锁异常，所有核心资产契约（Character Contract、Visual Lock）已按时交付。
+                  <p className="text-xs text-[#A7AFBA]">
+                    {recordedBlockedFrames.length ? recordedBlockedFrames.map(f => f.frameCode).join('、') + ' 需要核对失败证据，不得直接强制通过。' : '快照中未记录阻塞帧；不代表当前 Runtime 健康或已完成交付。'}
                   </p>
                 </div>
 
-                {/* 自动恢复中卡片 */}
+                {/* Saved retry records are not an active countdown or an execution grant. */}
                 <div className="p-3.5 rounded-[6px] bg-[#13161B] border border-[#232830] space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold font-mono text-[#D28B26] flex items-center gap-1.5">
-                      <RotateCcw className="w-3.5 h-3.5 text-[#D28B26]" />
-                      <span>系统自愈中 (1 项生效中)</span>
-                    </span>
-                    <span className="text-[10px] font-mono text-[#D28B26] bg-[#D28B26]/15 border border-[#D28B26]/30 px-1.5 py-0.5 rounded-[3px]">
-                      AUTO-RETRY
-                    </span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold font-mono text-[#D28B26]">重试记录：{recordedRetryFrames.length} 帧</span>
+                    <span className="text-[10px] text-[#A7AFBA]">仅历史记录</span>
                   </div>
-                  <div className="p-2.5 rounded-[4px] bg-[#0F1115] border border-[#232830] text-xs font-mono space-y-1">
-                    <div className="flex justify-between">
-                      <span className="text-[#737D8A]">目标分镜:</span>
-                      <span className="text-[#F1F3F5] font-semibold">Frame 09</span>
+                  {firstRecordedRetry ? (
+                    <div className="p-2.5 rounded-[4px] bg-[#0F1115] border border-[#232830] text-xs font-mono space-y-1">
+                      <p>目标：{firstRecordedRetry.frameCode}</p>
+                      <p>保存时 Attempt：{firstRecordedRetry.attempt || '未记录'}</p>
+                      <p>最后异常：{firstRecordedRetry.lastError || '未记录'}</p>
+                      <p className="text-[#A7AFBA]">没有经过在线授权验证的下一次重试时间。</p>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-[#737D8A]">异常代码:</span>
-                      <span className="text-[#D28B26] font-semibold">NETWORK_ERROR (Socket Timeout)</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-[#737D8A]">退避重试:</span>
-                      <span className="text-[#A7AFBA] tabular-nums">Attempt 2 / 3 (17s 后自动触发)</span>
-                    </div>
-                  </div>
+                  ) : <p className="text-xs text-[#A7AFBA]">历史快照中没有重试帧，不能推断自动重试正在运行。</p>}
                   <button
                     type="button"
-                    onClick={() => {
-                      const f09 = run.frames.find(f => f.frameNo === 9);
-                      if (f09) {
-                        setSelectedFrame(f09);
-                        handleImmediateRetry(f09);
-                      }
-                    }}
-                    className="w-full h-[30px] rounded-[4px] bg-[#D28B26] text-black font-semibold text-xs font-mono hover:bg-[#D28B26]/90 transition-colors cursor-pointer"
-                  >
-                    立即手动触发 Attempt 2/3
-                  </button>
+                    disabled={!firstRecordedRetry}
+                    onClick={() => firstRecordedRetry && setSelectedFrame(firstRecordedRetry)}
+                    className="w-full h-[30px] rounded-[4px] border border-[#2D333D] text-[#F1F3F5] text-xs font-mono hover:bg-[#20262E] disabled:opacity-40"
+                  >查看记录，不执行重试</button>
                 </div>
               </div>
             </div>
