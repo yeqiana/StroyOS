@@ -221,6 +221,115 @@ def test_capture_refuses_authority_change_during_read_only_snapshot(tmp_path, mo
     with pytest.raises(op.NativeFrame01OperationDenied, match="AUTHORITY_MOVED"):
         op.capture(ep)
 
+
+
+@pytest.fixture
+def committed_resume(fake_archive, monkeypatch, tmp_path):
+    """An interrupted SQL COMMIT + missing Queue save, with synthetic files."""
+    import native_baseline_atomic_ledger as atomic
+    import production_ledger_persistence as store
+    ep, result, manifest = fake_archive
+    def fake_old_preflight(_):
+        raise op.preflight.NativeFrame01PreflightDenied(
+            "NATIVE_PREFLIGHT_GENERATION_AUTHORITY_DRIFT"
+        )
+    monkeypatch.setattr(op, "capture", fake_old_preflight)
+    files = {}
+    for key in op.freeze.SOURCE_KEYS:
+        source = tmp_path / "live_source" / (key + ".bin")
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_bytes((manifest.parent / "sources" / (key + ".bin")).read_bytes())
+        files[key] = source.resolve()
+    candidate = files["candidate"]
+    proof = {
+        **files,
+        "evidence_sha256": result["evidence_sha256"],
+        "generation_key": "ga1-synthetic-single-attempt",
+        "candidate": candidate,
+    }
+    state = {
+        "attempts_consumed": 1,
+        "active_attempt_index": None,
+        "fencing_counter": 5,
+    }
+    generation_row = {
+        "status": "SUCCEEDED",
+        "generation_key": proof["generation_key"],
+        "result_ref": str(candidate),
+    }
+    ledger_calls = []
+    monkeypatch.setattr(op.recovery, "verify_frame01_sources",
+                        lambda _ep, allow_generated=False: proof)
+    monkeypatch.setattr(op.generation, "frame_key", lambda *_: "synthetic-frame-01")
+    monkeypatch.setattr(op.generation, "load_asset_state", lambda *_: state)
+    monkeypatch.setattr(op.generation, "load_attempt", lambda *_: generation_row)
+    monkeypatch.setattr(store, "load_authority",
+                        lambda *_: {"frames": {"01": {"status": "ORIGINAL_READY"}}})
+    monkeypatch.setattr(atomic, "_check_existing",
+                        lambda doc, source, *, completed: ledger_calls.append(completed))
+    return ep, result, manifest, proof, state, generation_row, ledger_calls
+
+
+def test_already_committed_original_attempt_resumes_missing_queue_only(
+        committed_resume, monkeypatch):
+    ep, result, manifest, _proof, _state, _row, ledger_calls = committed_resume
+    invocations = []
+    monkeypatch.setattr(op.recovery, "reconcile_frame01_and_queue",
+                        lambda target, **args: (invocations.append((target, args)) or
+                                                {"queue_reconciled": True}))
+    output = op.execute(
+        ep, fencing_token=5,
+        evidence_sha256=result["evidence_sha256"],
+        manifest=manifest,
+        manifest_sha256=result["manifest_sha256"],
+        approval_ticket="FRAME01-20261012-RESUME-APPROVED",
+        production_approval=op.PRODUCTION_APPROVAL_VALUE,
+    )
+    assert output["visual_review_pass"] is False
+    assert output["new_generation_attempts"] == 0
+    assert ledger_calls == [True]
+    assert invocations == [(ep.resolve(), {
+        "expected_fencing_token": 5,
+        "expected_evidence_sha256": result["evidence_sha256"],
+    })]
+
+
+@pytest.mark.parametrize("drift", [
+    "source", "fencing", "spent_twice", "not_succeeded",
+    "generation_key", "result_ref", "evidence_sha",
+])
+def test_committed_resume_rejects_provenance_or_attempt_drift(
+        committed_resume, monkeypatch, drift):
+    ep, result, manifest, proof, state, generation_row, ledger_calls = committed_resume
+    invoked = []
+    monkeypatch.setattr(op.recovery, "reconcile_frame01_and_queue",
+                        lambda *a, **kw: invoked.append(1))
+    if drift == "source":
+        proof["raw"].write_bytes(b"after-cas-replaced")
+    elif drift == "fencing":
+        state["fencing_counter"] = 6
+    elif drift == "spent_twice":
+        state["attempts_consumed"] = 2
+    elif drift == "not_succeeded":
+        generation_row["status"] = "DISPATCH_COMMITTED"
+    elif drift == "generation_key":
+        generation_row["generation_key"] = "forged"
+    elif drift == "result_ref":
+        generation_row["result_ref"] = "forged.png"
+    elif drift == "evidence_sha":
+        proof["evidence_sha256"] = "0" * 64
+    with pytest.raises(op.NativeFrame01OperationDenied):
+        op.execute(
+            ep, fencing_token=5,
+            evidence_sha256=result["evidence_sha256"],
+            manifest=manifest,
+            manifest_sha256=result["manifest_sha256"],
+            approval_ticket="FRAME01-20261012-RESUME-APPROVED",
+            production_approval=op.PRODUCTION_APPROVAL_VALUE,
+        )
+    assert invoked == []
+    assert ledger_calls == []
+
 @pytest.fixture
 def wrapper(monkeypatch, capsys):
     calls = []

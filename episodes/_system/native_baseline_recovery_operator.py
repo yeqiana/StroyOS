@@ -211,6 +211,44 @@ def backup(ep: Path) -> dict:
     }
 
 
+def _committed_sql_pending_queue_resume(
+        ep: Path, manifest: dict, fence: int, evidence: str) -> None:
+    """Proof-bound reentry after SQL COMMIT but before Queue persistence.
+
+    Original authority backup necessarily differs after an atomic SQL commit.
+    Do not allow arbitrary drift: require the same six source bytes, original
+    Generation Key and Fencing, plus a completed SHA-bound Ledger. The canonical
+    MySQL transaction rechecks its typed projections before fixing the Queue.
+    """
+    import native_baseline_atomic_ledger as atomic
+    import production_ledger_persistence as ledger_store
+
+    proof = recovery.verify_frame01_sources(ep, allow_generated=True)
+    if proof["evidence_sha256"] != evidence:
+        _deny("NATIVE_FRAME01_RESUME_EVIDENCE_CHANGED")
+    for key in freeze.SOURCE_KEYS:
+        path = proof.get(key)
+        if (not isinstance(path, Path) or not path.is_file()
+                or _digest(path.read_bytes())
+                != manifest["files"]["sources/" + key + ".bin"]):
+            _deny("NATIVE_FRAME01_RESUME_SOURCE_CHANGED")
+    key = generation.frame_key(ep, 1)
+    state = generation.load_asset_state(ep, key)
+    row = generation.load_attempt(ep, key, 1)
+    if (not isinstance(row, dict)
+            or row.get("status") != "SUCCEEDED"
+            or row.get("generation_key") != proof["generation_key"]
+            or row.get("result_ref") != str(proof["candidate"])
+            or state.get("attempts_consumed") != 1
+            or state.get("active_attempt_index") is not None
+            or state.get("fencing_counter") != fence):
+        _deny("NATIVE_FRAME01_RESUME_GENERATION_AUTHORITY_DRIFT")
+    ledger = ledger_store.load_authority(ep)
+    if not isinstance(ledger, dict):
+        _deny("NATIVE_FRAME01_RESUME_LEDGER_MISSING")
+    atomic._check_existing(ledger, proof, completed=True)
+
+
 def _verified_archive(ep: Path, manifest_file: Path, digest: str, fence: int, evidence: str) -> None:
     original_manifest = Path(manifest_file)
     if (original_manifest.is_symlink() or original_manifest.parent.is_symlink()):
@@ -235,8 +273,17 @@ def _verified_archive(ep: Path, manifest_file: Path, digest: str, fence: int, ev
         source = manifest_file.parent / name
         if not source.is_file() or source.is_symlink() or _digest(source.read_bytes()) != sha:
             _deny("NATIVE_FRAME01_BACKUP_CONTENT_CHANGED")
-    # Prove the whole live authority is still the authority that was backed up.
-    current, files = capture(ep)
+    # Before SQL COMMIT, every row must exactly match the original snapshot.
+    # After an interrupted COMMIT, the BLOB/typed/Generation Attempt has
+    # legitimately changed; recover ONLY that one proven transition, never
+    # accept arbitrary mismatches or make another image Attempt.
+    try:
+        current, files = capture(ep)
+    except (preflight.NativeFrame01PreflightDenied,
+            recovery.NativeReconciliationDenied,
+            NativeFrame01OperationDenied):
+        _committed_sql_pending_queue_resume(ep, manifest, fence, evidence)
+        return
     if current["fencing_token"] != fence or current["source_evidence_sha256"] != evidence:
         _deny("NATIVE_FRAME01_LIVE_AUTHORITY_MOVED")
     if {name: _digest(data) for name, data in files.items()} != manifest["files"]:
