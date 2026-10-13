@@ -1,6 +1,7 @@
 import React, {useRef, useState} from 'react';
 import {Button, Modal, Input, Select} from 'antd';
-import {saveTestBackup,listTestBackups,getTestBackup} from '../../api/isolatedDraftVault';
+import {saveTestBackup,listTestBackups,getTestBackup,saveWorkspace,listWorkspaces,getWorkspace} from '../../api/isolatedDraftVault';
+import type {SavedWorkspaceItem} from '../../api/isolatedDraftVault';
 import type {Episode,ProjectItem} from '../../types';
 import {createDraftBackup,MAX_BACKUP_CHARS,reviewDraftRestore} from '../../api/localDraftBackup';
 
@@ -15,6 +16,13 @@ export const LocalDraftSafetyPanel:React.FC<Props>=({episodes,projects,onRestore
   const [testBusy,setTestBusy]=useState(false);
   const [vaultItems,setVaultItems]=useState<Array<{bundle_id:string;created_at:string}>>([]);
   const [selectedVaultId,setSelectedVaultId]=useState<string|undefined>();
+  const [savedWorkspace,setSavedWorkspace]=useState<{workspace_id:string;version:number}|undefined>(()=>{
+    try {const raw=localStorage.getItem('storyos_r17_last_test_workspace');if(raw){const value=JSON.parse(raw);
+      if(typeof value.workspace_id==='string'&&/^TEST_WORKSPACE_[a-f0-9-]{36}$/.test(value.workspace_id)
+        &&Number.isSafeInteger(value.version)&&value.version>0)return value;}}catch{}return undefined;
+  });
+  const [workspaceItems,setWorkspaceItems]=useState<SavedWorkspaceItem[]>([]);
+  const [selectedWorkspaceId,setSelectedWorkspaceId]=useState<string|undefined>();
   const drafts=episodes.filter(x=>/^ep-(home|proj)-/.test(x.id));
 
   // Isolated SQLite test vault only; never creates a canonical Project/Episode.
@@ -59,6 +67,63 @@ export const LocalDraftSafetyPanel:React.FC<Props>=({episodes,projects,onRestore
       });
     }catch(e){setStatus('无法读取隔离存档：'+(e instanceof Error?e.message:'未知错误'));}
     finally{setTestBusy(false);}
+  };
+
+
+  // Server stores a versioned snapshot of browser drafts, not a Runtime Episode.
+  const saveWorkspaceNow=()=>{
+    Modal.confirm({
+      title:'保存到隔离 MySQL 草稿工作区？',
+      content:'保存现有自建项目和草稿的快照，不创建正式 Episode，也不会触发生产。',
+      okText:'确认保存草稿',cancelText:'取消',
+      onOk:async()=>{
+        setTestBusy(true);
+        try{
+          const result=await saveWorkspace(operatorToken,createDraftBackup(episodes,projects),savedWorkspace);
+          const current={workspace_id:result.workspace_id,version:result.version};
+          setSavedWorkspace(current);
+          localStorage.setItem('storyos_r17_last_test_workspace',JSON.stringify(current));
+          setStatus('已保存隔离 MySQL 草稿 · 版本 '+result.version+'；正式 Runtime 未变化');
+        }catch(error){
+          setStatus('保存失败（可能版本冲突）：'+(error instanceof Error?error.message:'未知错误'));
+        }finally{setTestBusy(false);}
+      }
+    });
+  };
+  const refreshWorkspaces=async()=>{
+    setTestBusy(true);
+    try{
+      const result=await listWorkspaces(operatorToken);
+      setWorkspaceItems(result.items);
+      setSelectedWorkspaceId(result.items[0]?.workspace_id);
+      setStatus('已从隔离 MySQL 读取 '+result.items.length+' 份草稿工作区');
+    }catch(error){
+      setStatus('查询工作区失败：'+(error instanceof Error?error.message:'未知错误'));
+    }finally{setTestBusy(false);}
+  };
+  const restoreWorkspace=async()=>{
+    if(!selectedWorkspaceId)return;
+    setTestBusy(true);
+    try{
+      const result=await getWorkspace(operatorToken,selectedWorkspaceId);
+      const json=JSON.stringify(result.backup);
+      const reviewed=reviewDraftRestore(json,episodes,projects);
+      if(!reviewed.ok){setStatus(reviewed.reason);return;}
+      Modal.confirm({
+        title:'恢复隔离 MySQL 工作区到本浏览器？',
+        content:'新增 '+reviewed.projectCount+' 个本地项目、'+reviewed.draftCount+' 部本地草稿。冲突 ID 一律不覆盖。',
+        okText:'确认恢复',cancelText:'取消',
+        onOk:()=>{
+          onRestore(json);
+          const current={workspace_id:selectedWorkspaceId,version:result.version};
+          setSavedWorkspace(current);
+          localStorage.setItem('storyos_r17_last_test_workspace',JSON.stringify(current));
+          setStatus('草稿已恢复到浏览器；未创建正式 Runtime 作品');
+        }
+      });
+    }catch(error){
+      setStatus('读取工作区失败：'+(error instanceof Error?error.message:'未知错误'));
+    }finally{setTestBusy(false);}
   };
 
   const exportNow=()=>{
@@ -114,6 +179,20 @@ export const LocalDraftSafetyPanel:React.FC<Props>=({episodes,projects,onRestore
       {vaultItems.length>0&&<Select size="small" aria-label="选择隔离草稿存档" className="!w-[220px]" value={selectedVaultId} onChange={setSelectedVaultId}
         options={vaultItems.map(item=>({value:item.bundle_id,label:item.bundle_id.slice(0,24)}))}/>}
       <Button size="small" disabled={testBusy||operatorToken.trim().length<32} onClick={()=>void retrieveTestOnly()}>读取选中测试存档</Button>
+    </div>
+
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      <span className="text-[11px] text-[var(--text-tertiary)]">隔离 MySQL 草稿工作区 · 保存后可继续编辑</span>
+      <Button size="small" disabled={testBusy||operatorToken.trim().length<32}
+        onClick={saveWorkspaceNow}>保存当前项目和草稿</Button>
+      <Button size="small" disabled={testBusy||operatorToken.trim().length<32}
+        onClick={()=>void refreshWorkspaces()}>刷新服务端草稿列表</Button>
+      {workspaceItems.length>0&&<Select size="small" aria-label="选择服务端草稿工作区"
+        className="!w-[215px]" value={selectedWorkspaceId} onChange={setSelectedWorkspaceId}
+        options={workspaceItems.map(item=>({value:item.workspace_id,label:item.workspace_id.slice(0,23)+' · v'+item.version}))}/>}
+      <Button size="small" disabled={testBusy||!selectedWorkspaceId||operatorToken.trim().length<32}
+        onClick={()=>void restoreWorkspace()}>恢复选中工作区</Button>
+      {savedWorkspace&&<span className="text-[11px] text-[var(--text-tertiary)]">本机正在编辑 v{savedWorkspace.version}</span>}
     </div>
     {status&&<p role="status" className="mt-2 text-[11px] text-[var(--text-secondary)]">{status}</p>}
     <p className="mt-2 text-[11px] text-[var(--text-tertiary)]">

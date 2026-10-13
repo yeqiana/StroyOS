@@ -13,6 +13,7 @@ from pathlib import Path
 from platform.repository.mysql.r17_isolated_draft_repo import R17IsolatedMysqlStore, R17VaultError
 
 MAX_BYTES = 2_100_000
+WORKSPACE_ROUTE = re.compile(r"^/api/v1/draft-vault/workspaces/(TEST_WORKSPACE_[a-f0-9-]{36})$")
 BASE = "/api/v1/draft-vault"
 BUNDLE_ROUTE = re.compile(r"^/api/v1/draft-vault/(TEST_BUNDLE_[a-f0-9-]{36})$")
 RENAME_ROUTE = re.compile(r"^/api/v1/draft-vault/drafts/(TEST_DRAFT_[a-f0-9-]{36})$")
@@ -41,6 +42,22 @@ def handle(command: dict) -> dict:
     cfg = check_auth_file()
     store = R17IsolatedMysqlStore(cfg, test_only=True)
     try:
+        if path == BASE + "/workspaces" and method == "GET":
+            rows = store.list_workspaces()
+            return {"status":200,"data":{"items":[
+                {"workspace_id":v["workspace_id"],"version":v["version"],
+                 "updated_at":v["updated_at"].isoformat()} for v in rows],
+                "test_only":True,"production_created":False}}
+        if path == BASE + "/workspaces" and method == "POST":
+            return {"status":201,"data":store.save_workspace(
+                body.get("request_id"),body.get("backup"))}
+        workspace_match = WORKSPACE_ROUTE.fullmatch(path)
+        if workspace_match and method == "GET":
+            return {"status":200,"data":store.read_workspace(workspace_match.group(1))}
+        if workspace_match and method == "PUT":
+            return {"status":200,"data":store.save_workspace(
+                body.get("request_id"),body.get("backup"),
+                workspace_match.group(1),body.get("expected_version"))}
         if method == "GET" and path == BASE:
             rows = store.list_bundles()
             return {"status": 200, "data": {"items": [
