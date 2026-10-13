@@ -169,10 +169,10 @@ def _copy_real_image(source: Path, destination: Path) -> list[int]:
     return dims
 
 
-def execute(case_id: str, *, timeout: int = 360) -> dict:
+def execute_bundle(bundle: dict, *, timeout: int = 360) -> dict:
+    """Execute one verified Test-only bundle; same native Bridge and OS permits."""
     if not 60 <= timeout <= 900:
         raise ValueError("M00_TESTONLY_TIMEOUT_INVALID")
-    bundle = make_bundle(case_id)
     folder = bundle["out"]
     folder.mkdir(parents=True, exist_ok=True)
     receipt_path = folder / "test-only-record.json"
@@ -241,6 +241,10 @@ def execute(case_id: str, *, timeout: int = 360) -> dict:
             evidence["finish_time"] = time.time()
             _atomic_update(receipt_path, evidence)
         return evidence
+
+
+def execute(case_id: str, *, timeout: int = 360) -> dict:
+    return execute_bundle(make_bundle(case_id), timeout=timeout)
 
 
 def recover(case_id: str, *, generated_images_root: Path | None = None) -> dict:
