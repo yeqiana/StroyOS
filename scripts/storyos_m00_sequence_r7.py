@@ -58,7 +58,8 @@ def _anchor_image(repo: Path, name: str) -> tuple[Path, dict]:
 
 
 def build_bundle(frame: str, *, repo: Path = ROOT,
-                 base_visual: str | None = None) -> dict:
+                 base_visual: str | None = None,
+                 require_predecessor_pass: bool = True) -> dict:
     root = repo.resolve()
     config_path = root / "standards/m00_sequence_canary_r7.json"
     cfg = _read(config_path)
@@ -78,7 +79,7 @@ def build_bundle(frame: str, *, repo: Path = ROOT,
         raise ValueError("M00_R7_SEQUENCE_DEPENDENCY_INVALID")
     anchor, previous = _anchor_image(root, prior)
     predecessor_review_sha = None
-    if slot == 1:
+    if slot == 1 and require_predecessor_pass:
         # An artifact/returncode only proves that pixels exist. A bad preceding
         # visual pair must not automatically unlock further costly generation.
         prior_review = (root / ".storyos/user-visual-references/test-only-calibration"
@@ -170,7 +171,9 @@ def build_bundle(frame: str, *, repo: Path = ROOT,
 
 
 def review_pair(frame: str, *, repo: Path = ROOT, review: dict | None = None) -> dict:
-    bundle = build_bundle(frame, repo=repo)
+    # Historic full-image reviews remain read-only and must be recoverable
+    # even when subsequent paid dispatch is blocked by a failed predecessor.
+    bundle = build_bundle(frame, repo=repo, require_predecessor_pass=False)
     root = repo.resolve()
     current = bundle["case"]["new_frame_id"]
     previous = bundle["identity"]["previous_frame_id"]
@@ -189,9 +192,18 @@ def review_pair(frame: str, *, repo: Path = ROOT, review: dict | None = None) ->
     if not (prior["verified"] and after["verified"]):
         return result
     receipt = _read(bundle["out"] / "test-only-record.json")
-    if (receipt.get("request_fingerprint") != bundle["fingerprint"]
-            or receipt.get("request_identity", {}).get("previous_image_sha256") != prior.get("image_sha256")):
+    # A subsequent commit may change the *current* Visual Contract hash;
+    # check the persisted immutable request fingerprint and both actual PNG
+    # SHA values, never substitute a newly compiled prompt for past authority.
+    original_identity = receipt.get("request_identity")
+    if (not isinstance(original_identity, dict)
+            or receipt.get("request_fingerprint") != r2.stable_hash(original_identity)
+            or original_identity.get("frame_id") != current
+            or original_identity.get("sequence_id") != "m00-bicycle-20261013-r7"
+            or original_identity.get("previous_frame_id") != previous
+            or original_identity.get("previous_image_sha256") != prior.get("image_sha256")):
         return {**result, "pixel_review_status": "RECEIPT_OR_PARENT_SHA_DRIFT"}
+    result["request_fingerprint"] = receipt["request_fingerprint"]
     if review is None:
         return result
     if (review.get("anchor_sha256") != prior.get("image_sha256")

@@ -198,3 +198,57 @@ def test_r7_not_prod_owner_or_runtime_driver():
     assert 'choices=("plan", "run", "pair-review")' in source
     assert "mysql_attempt" not in source.lower()
     assert "r2.execute_bundle" in source
+
+
+def _record_bundle(workspace, frame, bundle):
+    folder = workspace / ".storyos/user-visual-references/test-only-calibration" / ("C02-" + frame)
+    record_path = folder / "test-only-record.json"
+    data = json.loads(record_path.read_text("utf-8"))
+    data["request_fingerprint"] = bundle["fingerprint"]
+    data["request_identity"] = bundle["identity"]
+    record_path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def test_historical_image_review_survives_new_visual_contract_version(workspace):
+    _make_anchor(workspace, "C02-S01")
+    _pass_first_pair_review(workspace)
+    old = _bundle(workspace, "S02")
+    _make_anchor(workspace, "C02-S02")
+    _record_bundle(workspace, "S02", old)
+    config_path = workspace / "standards/m00_sequence_canary_r7.json"
+    cfg = json.loads(config_path.read_text("utf-8"))
+    cfg["frames"][1]["scene"] += " 故事画面中的远处屋檐应连续。"
+    config_path.write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+    assert _bundle(workspace, "S02")["fingerprint"] != old["fingerprint"]
+    recovered = seq.review_pair("S02", repo=workspace)
+    assert recovered["both_real_images_verified"]
+    assert recovered["request_fingerprint"] == old["fingerprint"]
+    assert recovered["pixel_review_status"] == "PENDING_ACTUAL_PAIR_REVIEW"
+    assert not recovered["production_approved"]
+
+
+def test_historical_second_frame_remains_reviewable_after_prior_failure(workspace):
+    _make_anchor(workspace, "C02-S01")
+    review_path = _pass_first_pair_review(workspace)
+    old = _bundle(workspace, "S02")
+    _make_anchor(workspace, "C02-S02")
+    _record_bundle(workspace, "S02", old)
+    review = json.loads(review_path.read_text("utf-8"))
+    review["checks"]["contact_balance_and_motion_progression"] = "FAIL"
+    review_path.write_text(json.dumps(review), encoding="utf-8")
+    with pytest.raises(ValueError, match="REVIEW_NOT_PASSED"):
+        _bundle(workspace, "S02")
+    historic = seq.review_pair("S02", repo=workspace)
+    assert historic["both_real_images_verified"]
+    assert historic["pixel_review_status"] == "PENDING_ACTUAL_PAIR_REVIEW"
+
+
+def test_forged_historic_fingerprint_is_rejected(workspace):
+    _make_anchor(workspace, "C02-S01")
+    _pass_first_pair_review(workspace)
+    receipt_path = workspace / ".storyos/user-visual-references/test-only-calibration/C02-S01/test-only-record.json"
+    doc = json.loads(receipt_path.read_text("utf-8"))
+    doc["request_identity"]["previous_image_sha256"] = "b" * 64
+    receipt_path.write_text(json.dumps(doc), encoding="utf-8")
+    audit = seq.review_pair("S01", repo=workspace)
+    assert audit["pixel_review_status"] == "RECEIPT_OR_PARENT_SHA_DRIFT"
