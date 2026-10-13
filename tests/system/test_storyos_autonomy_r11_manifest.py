@@ -9,7 +9,7 @@ EP="episodes/15_天界生活日常/01_天界普通女生的一天"
 
 def test_real_git_relocation_is_proven_but_rubric_revision_blocks_review_replay():
     report=m.plan(EP)
-    assert report["status"]=="PATH_RELOCATION_PROVEN"
+    assert report["status"] in ("PATH_RELOCATION_PROVEN","RELOCATION_ALREADY_APPLIED")
     assert len(report["paths"])==3
     assert report["legacy_review_replay_allowed"] is False
     assert report["review_replay_blocker"]=="CRITIC_SOURCE_SHA_DRIFT"

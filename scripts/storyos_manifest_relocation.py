@@ -33,7 +33,9 @@ def plan(episode: str) -> dict:
             return {**base,"status":relocated["status"]}
         full=evidence.verify_relocated_artifacts(
             root,ep,manifest,source.get("source_files") or [])
-        return {**base,"status":"PATH_RELOCATION_PROVEN",
+        already=all(manifest["artifacts"][key]==paths["new"]
+                    for key,paths in relocated["paths"].items())
+        return {**base,"status":"RELOCATION_ALREADY_APPLIED" if already else "PATH_RELOCATION_PROVEN",
                 "episode":ep.relative_to(root).as_posix(),
                 "manifest_sha256":evidence.sha256_file(manifest_path),
                 "request_sha256":evidence.sha256_file(req),
@@ -113,7 +115,7 @@ def main(argv=None):
         outcome=apply(args.episode,outcome) if args.ack_real_production else {
             "status":"PRODUCTION_ACK_REQUIRED","can_dispatch_image":False}
     print(json.dumps(outcome,ensure_ascii=False,sort_keys=True))
-    return 0 if outcome.get("status") in ("PATH_RELOCATION_PROVEN","SOURCE_PATHS_RELOCATED") else 2
+    return 0 if outcome.get("status") in ("PATH_RELOCATION_PROVEN","SOURCE_PATHS_RELOCATED","RELOCATION_ALREADY_APPLIED") else 2
 
 if __name__=="__main__":
     raise SystemExit(main())

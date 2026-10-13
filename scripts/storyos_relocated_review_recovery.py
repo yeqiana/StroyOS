@@ -48,6 +48,29 @@ def verify_relocated_artifacts(root: Path, ep: Path, manifest: dict, frozen: lis
     # unchanged story does not justify replay if its reviewed rubric drifted.
     if not frozen_by_old or len(frozen_by_old)!=len(frozen):
         return {"status":"CRITIC_SOURCE_SHA_DRIFT","paths":{}}
+    # Use immutable original request paths even after the canonical manifest
+    # was migrated. A completed migration must not invalidate its own tests.
+    historic_story=next((
+        source for source in frozen_by_old
+        if Path(source).name==Path(str(arts.get("story") or "")).name
+        and source.startswith("episodes/")),None)
+    historic_board=next((
+        source for source in frozen_by_old
+        if Path(source).name==Path(str(arts.get("storyboard") or "")).name
+        and source.startswith("episodes/")),None)
+    if not historic_story or not historic_board or Path(historic_story).parent!=Path(historic_board).parent:
+        return {"status":"CRITIC_SOURCE_SHA_DRIFT","paths":{}}
+    old_parent=Path(historic_story).parent
+    old_refs={field:(old_parent/Path(str(arts.get(field) or "")).name).as_posix()
+              for field in SUPPORTED_FIELDS}
+    # Only the historical or verified new path is admitted; no arbitrary
+    # basename-based alias remapping or half-migrated paths.
+    for field in SUPPORTED_FIELDS:
+        actual=arts.get(field)
+        expected_new=(ep/"docs"/Path(str(actual or "")).name).relative_to(root).as_posix()
+        if actual not in (old_refs[field],expected_new):
+            return {"status":"ARTIFACT_REFERENCE_UNVERIFIED","field":field,"paths":{}}
+
     if check_all_frozen_sources:
         for source,expected_sha in frozen_by_old.items():
             if not re.fullmatch(r"[a-f0-9]{64}", expected_sha) or ".." in Path(source).parts:
@@ -56,12 +79,13 @@ def verify_relocated_artifacts(root: Path, ep: Path, manifest: dict, frozen: lis
             if source_path.is_file() and source_path.is_relative_to(root):
                 if sha256_file(source_path)!=expected_sha:
                     return {"status":"CRITIC_SOURCE_SHA_DRIFT","paths":{}}
-            elif source not in [arts.get("story"), arts.get("storyboard")]:
+            elif source not in (old_refs["story"], old_refs["storyboard"]):
                 return {"status":"CRITIC_SOURCE_SHA_DRIFT","paths":{}}
     paths={}
     for field in SUPPORTED_FIELDS:
-        old=arts.get(field)
-        if not isinstance(old,str) or not old.startswith("episodes/") or ".." in Path(old).parts:
+        old=old_refs[field]
+        actual=arts.get(field)
+        if not isinstance(actual,str) or not actual.startswith("episodes/") or ".." in Path(actual).parts:
             return {"status":"ARTIFACT_REFERENCE_UNVERIFIED","field":field,"paths":{}}
         current=ep/"docs"/Path(old).name
         if not current.is_file() or not current.resolve().is_relative_to(ep.resolve()):
