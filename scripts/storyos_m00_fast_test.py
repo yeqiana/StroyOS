@@ -8,9 +8,17 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-TEST = ROOT / "episodes" / "_system" / "test_m00_genre_neutral.py"
+GENRE_TEST = ROOT / "episodes" / "_system" / "test_m00_genre_neutral.py"
+PIXEL_TEST = ROOT / "tests" / "system" / "test_m00_pixel_audit.py"
 
 if __name__ == "__main__":
-    cmd = [sys.executable, str(TEST), "-v"]
-    print("M00_FAST_TEST (no provider, no image attempts)", flush=True)
-    raise SystemExit(subprocess.call(cmd, cwd=ROOT))
+    print("M00_FAST_TEST (contracts + actual-pixel safety, no provider, no image attempts)", flush=True)
+    commands = (
+        [sys.executable, str(GENRE_TEST), "-v"],
+        [sys.executable, str(PIXEL_TEST), "-v"],
+    )
+    for argv in commands:
+        rc = subprocess.call(argv, cwd=ROOT)
+        if rc != 0:
+            raise SystemExit(rc)
+    print("M00_FAST_TEST PASS", flush=True)

@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "purpose": "read_only_pixel_audit",
+  "note": "历史真实图片测试样本：只供像素检查，不进入剧情/动作/设备选择与生图 Prompt。缺少源图片时必须显示 SOURCE_MISSING。不是合格图集。",
+  "samples": [
+    {
+      "id": "wedding_01",
+      "asset_path": "episodes/09_旧物怪谈/05_婚礼前夜_记忆麻醉/media/approved/01.png",
+      "sha256": "334619eca6a74e2786654440b7633fbc263a59f487bac44c2dd71a4da4140be6",
+      "sample_note": "留影构图; 需核对是否故事明确要求摆拍"
+    },
+    {
+      "id": "wedding_12",
+      "asset_path": "episodes/09_旧物怪谈/05_婚礼前夜_记忆麻醉/media/approved/12.png",
+      "sha256": "4e52e2b2383885fb17934061c3a28b1cda61ca236147fc8223daacd62834558a",
+      "sample_note": "低光/人物/遮挡"
+    },
+    {
+      "id": "taohua_01",
+      "asset_path": "episodes/07_误入/05_误入桃花源/media/approved/01.png",
+      "sha256": "615b268fdb1d8d87b6151c064257bfa71a87a85a8eb03c1e519f70fe533431d4",
+      "sample_note": "自拍近景/现实光照"
+    },
+    {
+      "id": "taohua_12",
+      "asset_path": "episodes/07_误入/05_误入桃花源/media/approved/12.png",
+      "sha256": "091b2b7ace7337f88121699f00c2d18eb71d45a88f6d59b1f5bd2c8fdb12b94d",
+      "sample_note": "傍晚人物/自然光源"
+    },
+    {
+      "id": "blackout_01",
+      "asset_path": "episodes/11_仲夏夜惊魂/01_停电夜蜕壳/media/approved/01.png",
+      "sha256": "f42261c0fe90ebdcc1e194c5806738fed9fdd198efbc43933e58db95e3313dc8",
+      "sample_note": "夜景街道/环境光/非主角镜头"
+    },
+    {
+      "id": "blackout_12",
+      "asset_path": "episodes/11_仲夏夜惊魂/01_停电夜蜕壳/media/approved/12.png",
+      "sha256": "5e7548b115a75c25d04b0b37cf259db93b8bea8097a92a0ca4b2d6abcf1160ff",
+      "sample_note": "第一视角近距离光源/遮挡"
+    },
+    {
+      "id": "exam_01",
+      "asset_path": "episodes/00_独立篇/04_未交的答卷/media/approved/01.png",
+      "sha256": "409d8be5b744293d5536e4b0c061de38d8c4ce093041c7cce5017c51f1f8d885",
+      "sample_note": "安静静态生活/自然姿态/书桌杂物"
+    }
+  ]
+}
