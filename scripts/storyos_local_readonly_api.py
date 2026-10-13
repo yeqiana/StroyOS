@@ -23,6 +23,7 @@ from platform.api.controllers import RuntimeStatusApiController, RuntimeAuthorit
 from platform.operations.runtime_authority_evidence import RuntimeAuthorityEvidenceService
 from platform.api.http_server import PlatformApiDispatcher, PlatformApiRequestHandler, build_http_server
 from platform.operations.local_episode_monitoring import read_recorded_production
+from platform.operations.local_worker_heartbeat_readonly import observe_local_redis_heartbeats
 
 SOURCE = "local_workspace_episode_state_file"
 
@@ -244,6 +245,17 @@ class LocalReadOnlyHandler(PlatformApiRequestHandler):
 
     def do_GET(self) -> None:
         route = urlsplit(self.path)
+        if route.path == "/api/v1/local-monitor/workers":
+            host = self.headers.get("Host", "")
+            origin = self.headers.get("Origin", "")
+            site = self.headers.get("Sec-Fetch-Site", "")
+            if (route.query or route.fragment or origin or
+                    (site and site not in ("same-origin", "none")) or
+                    host not in (f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}")):
+                self._send(403, {"code": "READ_ONLY_LOCAL_EVIDENCE", "data": None})
+                return
+            self._send(200, {"code": "OK", "data": observe_local_redis_heartbeats()})
+            return
         media = getattr(self.server, "approved_media", None)
         if media is not None and (route.path == "/api/v1/local-media/catalog" or route.path.startswith(MEDIA_PREFIX)):
             # Additional guard for browser cross-site reads; the Vite proxy sends Host 127.0.0.1.

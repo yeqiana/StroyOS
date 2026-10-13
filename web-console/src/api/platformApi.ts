@@ -333,6 +333,24 @@ export function mapExecutionStatus(executionStatus: string): 'RUNNING' | 'WAITIN
   }
 }
 
+/** Global Redis heartbeat observations only: not Episode-specific Writer ownership. */
+export interface LocalWorkerHeartbeatSnapshot {
+  scope: 'LOCAL_REDIS_HEARTBEAT_OBSERVATION';
+  read_only: true;
+  observed_at: string;
+  source: 'redis_storyos_worker_heartbeat';
+  available: boolean;
+  reason: string | null;
+  record_count: number;
+  fresh_heartbeats: number;
+  stale_heartbeats: number;
+  unverified_heartbeats: number;
+  scan_complete: boolean;
+  worker_execution_verified: false;
+  writer_owner_verified: false;
+  task_attempt_verified: false;
+}
+
 // ================= Platform API 客户端 =================
 
 export const platformApi = {
@@ -342,6 +360,9 @@ export const platformApi = {
   },
 
   // GET /api/v1/runtime/statuses?limit&offset
+  async localWorkerHeartbeats(): Promise<LocalWorkerHeartbeatSnapshot> {
+    return platformRequest<LocalWorkerHeartbeatSnapshot>('/api/v1/local-monitor/workers');
+  },
   async runtimeStatuses(limit = 20, offset = 0): Promise<RuntimeStatusList> {
     return platformRequest<RuntimeStatusList>(`/api/v1/runtime/statuses?limit=${limit}&offset=${offset}`);
   },

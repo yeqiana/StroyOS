@@ -36,7 +36,7 @@ import { StoryRunDetailView } from './StoryRunDetailView';
 import { RuntimeAuthorityPanel } from './RuntimeAuthorityPanel';
 import { ExclusiveReadGate } from '../../api/exclusiveReadGate';
 import { summarizeRuntimeCoverage } from '../../api/runtimeCoverage';
-import type { RuntimeStatusSummary } from '../../api/platformApi';
+import type { RuntimeStatusSummary, LocalWorkerHeartbeatSnapshot } from '../../api/platformApi';
 import { mergeRuntimeStatusSummaries } from '../../api/runtimeSummaryMerge';
 
 interface ProductionMonitorViewProps {
@@ -74,6 +74,30 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
   const [lastSync, setLastSync] = useState<string | null>(null);
   const requestGate = useRef(new ExclusiveReadGate());
   const [apiWarning, setApiWarning] = useState<string | null>(null);
+
+  // Redis heartbeat is a separate, global, read-only observation. Never merge
+  // it into an Episode's Writer, Task, Attempt, or generation state.
+  const [workerSnapshot, setWorkerSnapshot] = useState<LocalWorkerHeartbeatSnapshot | null>(null);
+  useEffect(() => {
+    let active = true;
+    let reading = false;
+    const refresh = async () => {
+      if (!active || reading) return;
+      reading = true;
+      try {
+        const next = await platformApi.localWorkerHeartbeats();
+        if (active) setWorkerSnapshot(next);
+      } catch {
+        // Never retain old green numbers as if the source were still reachable.
+        if (active) setWorkerSnapshot(null);
+      } finally { reading = false; }
+    };
+    void refresh();
+    const timer = refreshInterval > 0 ? window.setInterval(() => {
+      if (document.visibilityState !== 'hidden') void refresh();
+    }, refreshInterval * 1000) : null;
+    return () => { active = false; if (timer !== null) window.clearInterval(timer); };
+  }, [refreshInterval]);
 
   // 选中的 Story Run 详情视图
   const [selectedRunForDetail, setSelectedRunForDetail] = useState<StoryRunItem | null>(null);
@@ -351,6 +375,24 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
         <div className="flex flex-wrap items-center gap-3 text-[11px] text-[var(--text-tertiary)]"><span>{primaryView==='stages'?'Platform API 只读阶段 · 本机文件非实时':'历史 Run 快照 · 非实时 Worker 视图'}</span><span className="tabular-nums">{primaryView==='stages'?`已读取 ${runtimeCoverage.loaded} 条`:`${runs.length} 个历史实例`}</span></div>
       </div>
       {primaryView==='stages' ? <section aria-label="阶段证据主视图" className="min-w-0 space-y-3">
+        <section aria-label="Redis Worker 心跳只读观测" className="flex flex-wrap items-center gap-x-5 gap-y-2 border border-[var(--border-subtle)] px-3 py-2 text-[12px] text-[var(--text-secondary)]">
+          <strong className="font-medium text-[var(--text-primary)]">Redis 心跳观测</strong>
+          {!workerSnapshot || !workerSnapshot.available ? (
+            <span role="status">只读来源未接通 · Worker 在线状态未知</span>
+          ) : (
+            <>
+              <span>采集记录 {workerSnapshot.record_count}</span>
+              <span>时间与 TTL 均新鲜 {workerSnapshot.fresh_heartbeats}</span>
+              <span className={workerSnapshot.stale_heartbeats > 0 ? 'text-[var(--warning)]' : ''}>心跳过期 {workerSnapshot.stale_heartbeats}</span>
+              <span>无法核验 {workerSnapshot.unverified_heartbeats}</span>
+              {!workerSnapshot.scan_complete && <span className="text-[var(--warning)]">仅部分扫描结果</span>}
+            </>
+          )}
+          <span className="text-[11px] text-[var(--text-tertiary)]">
+            仅核对 Redis TTL、记录时间和身份；不等于 Worker 仍运行，更不代表当前作品有执行权。
+          </span>
+        </section>
+
         {apiState !== 'ok' && <div role="status" className="flex flex-wrap items-center justify-between gap-2 border-l-2 border-[var(--warning)] px-3 py-2 text-[12px] text-[var(--text-secondary)]"><span>{apiState === 'loading' ? '正在读取 Platform API 阶段摘要…' : apiWarning}</span><span className="shrink-0 text-[var(--text-tertiary)]">{lastSync ? `最近获取 ${lastSync}` : '未获得有效在线证据'}</span></div>}
         <RuntimeAuthorityPanel items={runtimeRows} coverage={runtimeCoverage} hasMore={runtimeHasMore} loadingMore={runtimeLoadingMore} onLoadMore={loadNextRuntimePage} dataState={apiState} lastSync={lastSync}/>
       </section> : <section aria-label="历史 Run 主视图" className="min-w-0 space-y-3">
