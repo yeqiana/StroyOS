@@ -75,6 +75,23 @@ async function browserCase(c){
    const importBtn=[...vault.querySelectorAll('button')].find(x=>x.textContent.includes('从备份文件恢复'));
    if(!exportBtn||!importBtn)throw Error('R16 backup controls unavailable');
    if(!vault.textContent.includes('浏览器数据不是正式项目持久化'))throw Error('R16 disclosure must be visible');
+   const fileInput=vault.querySelector('input[type="file"]');
+   if(!fileInput)throw Error('R16 recovery file input absent');
+   const payload={format:'storyos-local-draft-backup',version:1,exportedAt:'2026-10-13T00:00:00.000Z',source:'browser_local_only',
+     drafts:[{id:'ep-home-161620261013',title:'R16 Chrome 本地恢复测试',code:'LOCAL-R16TEST',synopsis:'仅隔离测试浏览器',currentStage:'IDEA_LOCK',
+       frameReviews:[],preflightChecks:[],storyboardBeats:[],characters:[],runtimeRequest:{imageModel:'mock-only'}}],projects:[]};
+   const upload=async()=>{const dt=new DataTransfer();dt.items.add(new File([JSON.stringify(payload)],'r16-local-only.json',{type:'application/json'}));
+     fileInput.files=dt.files;fileInput.dispatchEvent(new Event('change',{bubbles:true}));};
+   await upload();
+   const confirm=await wait(()=>[...document.querySelectorAll('.ant-modal-confirm button')].find(b=>b.textContent.includes('确认恢复到本浏览器')),'R16 explicit user confirmation');
+   confirm.click();
+   await wait(()=>{try{return JSON.parse(localStorage.getItem('storyos_local_story_drafts_v1')||'[]').some(x=>x.id==='ep-home-161620261013')}catch{return false}},'R16 restored draft locally');
+   await wait(()=>![...document.querySelectorAll('.ant-modal-confirm button')].some(b=>b.textContent.includes('确认恢复到本浏览器')&&b.getClientRects().length>0),'R16 first confirmation dismissed');
+   await upload();
+   await wait(()=>vault.textContent.includes('已拒绝覆盖'),'R16 duplicate ID restore rejected');
+   if([...document.querySelectorAll('.ant-modal-confirm button')].some(b=>b.textContent.includes('确认恢复到本浏览器')&&b.getClientRects().length>0))throw Error('R16 collision must not produce visible import confirmation');
+   const count=JSON.parse(localStorage.getItem('storyos_local_story_drafts_v1')||'[]').filter(x=>x.id==='ep-home-161620261013').length;
+   if(count!==1)throw Error('R16 duplicate recovery changed previous browser state');
    const directory=await wait(()=>view.querySelector('section[aria-label="正式Runtime作品目录"]'),'R16 Library real catalog');
    await wait(()=>directory.textContent.includes('11 / 11')&&directory.querySelectorAll('button').length>=12,'R16 Library 11 real Episodes');
    const unlinked=[...directory.querySelectorAll('button')].find(b=>b.textContent==='查看真实监控');

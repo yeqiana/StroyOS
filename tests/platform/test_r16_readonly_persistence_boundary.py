@@ -6,9 +6,10 @@ ROOT=Path(__file__).resolve().parents[2]
 
 def test_local_readonly_api_does_not_dispatch_mutation():
     source=(ROOT/"scripts/storyos_local_readonly_api.py").read_text(encoding="utf-8")
-    assert "do_POST" in source
     assert "do_GET" in source
-    assert '"POST_NOT_ALLOWED"' in source or "403" in source
+    assert 'method.upper() != "GET"' in source
+    assert "class ReadOnlyLocalDispatcher" in source
+    assert "def do_POST" not in source
     assert "onOpen" not in source
 
 
