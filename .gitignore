@@ -145,6 +145,9 @@ episodes/**/*.zip
 /.storyos/smoke/
 /.storyos/tmp/
 /.storyos/runtime/
+# User-supplied original visual references, SHA-addressed runtime copies and
+# source packages are private local input, never public Git or release media.
+/.storyos/user-visual-references/
 /.storyos/drill/
 /.storyos/alert-channel/
 /.storyos/metrics/
