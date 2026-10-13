@@ -23,6 +23,7 @@ import { REAL_EPISODES } from './data/storyosEpisodeSnapshots';
 import { isHistoricalEpisodeIndex, loadHistoricalEpisodeDetail } from './data/storyosEpisodeLoader';
 import { platformApi } from './api/platformApi';
 import { detachLocalDraftProject } from './api/localDraftProject';
+import {reviewDraftRestore} from './api/localDraftBackup';
 import { Episode, NavigationTab, ProductionStage, ThemeMode, ProjectItem } from './types';
 
 const STORY_PLACEHOLDER_IMAGE = 'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20800%201000%22%3E%3Crect%20width%3D%22800%22%20height%3D%221000%22%20fill%3D%22%23e4e4e7%22%2F%3E%3Cpath%20d%3D%22M160%20720%20340%20500l120%20140%2090-110%20110%20190H160Z%22%20fill%3D%22%23a1a1aa%22%2F%3E%3Ccircle%20cx%3D%22300%22%20cy%3D%22330%22%20r%3D%2270%22%20fill%3D%22%23a1a1aa%22%2F%3E%3C%2Fsvg%3E';
@@ -142,6 +143,14 @@ export default function App() {
     try {
       localStorage.setItem('storyos_projects', JSON.stringify(newProjects));
     } catch {}
+  };
+
+  const restoreLocalDrafts=(text:string)=>{
+    const review=reviewDraftRestore(text,episodes,projects);
+    if(!review.ok)throw new Error(review.reason);
+    setEpisodes(previous=>[...review.addedDrafts,...previous]);
+    saveProjects([...review.addedProjects,...projects]);
+    showToast('本机草稿恢复成功；未提交到正式生产 Runtime');
   };
 
   // 项目同级的“最近故事”状态管理 (主页自建故事与最近活跃故事)
@@ -458,6 +467,8 @@ export default function App() {
                 onGoToWorkbench={() => setCurrentTab('workbench')}
                 onGoToMonitor={openRuntimeEpisode}
                 onNewStoryClick={() => handleCreateStoryFromHome()}
+                projects={projects}
+                onRestoreLocalDrafts={restoreLocalDrafts}
               /></AntdSurface>
             </div>
           )}
