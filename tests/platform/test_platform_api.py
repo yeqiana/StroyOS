@@ -123,6 +123,7 @@ def test_platform_route_catalog_matches_p51_contract():
         ("GET", "/api/v1/executions/{id}"),
         ("GET", "/api/v1/runtime/status"),
         ("GET", "/api/v1/runtime/statuses"),
+        ("GET", "/api/v1/runtime/authority"),
         ("POST", "/api/v1/memory/search"),
         ("GET", "/api/v1/memory/{id}"),
         ("GET", "/api/v1/skills"),

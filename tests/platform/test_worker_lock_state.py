@@ -29,8 +29,8 @@ def test_episode_lock():
     store = FakeStateStore()
     manager = EpisodeLockManager(store)
 
-    assert manager.acquire("ep001", "worker01") is True
+    # A legacy get-then-set store lacks atomic NX+TTL/CAS. Fail closed.
+    assert manager.acquire("ep001", "worker01") is False
     assert manager.acquire("ep001", "worker02") is False
-
-    manager.release("ep001")
-    assert manager.acquire("ep001", "worker02") is True
+    assert manager.release("ep001") is False
+    assert store.get_state("storyos:lock:episode:ep001") is None

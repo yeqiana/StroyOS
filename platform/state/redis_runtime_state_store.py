@@ -1,15 +1,20 @@
+"""Redis runtime state storage, with fail-closed atomic fenced lease operations."""
 import json
 
 from platform.state.runtime_state_store import RuntimeStateStore
 
 
+_DELETE_OWNED = (
+    'if redis.call("GET", KEYS[1]) == ARGV[1] then '
+    'return redis.call("DEL", KEYS[1]) else return 0 end'
+)
+_RENEW_OWNED = (
+    'if redis.call("GET", KEYS[1]) == ARGV[1] then '
+    'return redis.call("EXPIRE", KEYS[1], ARGV[2]) else return 0 end'
+)
+
+
 class RedisRuntimeStateStore(RuntimeStateStore):
-    """Redis运行状态实现。
-
-    生产环境通过Redis客户端连接。
-    当前保留实现边界。
-    """
-
     def __init__(self, client=None):
         self.client = client
 
@@ -18,10 +23,6 @@ class RedisRuntimeStateStore(RuntimeStateStore):
             self.client.set(key, json.dumps(value), ex=expire_seconds)
 
     def set_if_absent(self, key, value, expire_seconds=None):
-        """原子写入（SET NX）。分布式锁依赖它避免 get-then-set 竞争（P9.27）。
-
-        返回 True 表示本次写入成功（即拿到锁）。
-        """
         if not self.client:
             return False
         result = self.client.set(key, json.dumps(value), ex=expire_seconds, nx=True)
@@ -36,3 +37,16 @@ class RedisRuntimeStateStore(RuntimeStateStore):
     def delete_state(self, key):
         if self.client:
             self.client.delete(key)
+
+    def compare_and_delete(self, key, expected):
+        """Lua GET+DEL atomic against serialized lock including unique token."""
+        if not self.client or not callable(getattr(self.client, "eval", None)):
+            return False
+        return bool(self.client.eval(_DELETE_OWNED, 1, key, json.dumps(expected)))
+
+    def compare_and_expire(self, key, expected, expire_seconds):
+        """Atomic lease heartbeat; stale token cannot extend a successor."""
+        if (not self.client or not callable(getattr(self.client, "eval", None))
+                or not isinstance(expire_seconds, int) or expire_seconds <= 0):
+            return False
+        return bool(self.client.eval(_RENEW_OWNED, 1, key, json.dumps(expected), expire_seconds))

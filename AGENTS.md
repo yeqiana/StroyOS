@@ -35,6 +35,13 @@
 - **每个四槽增量变更必须执行对应 `python scripts/storyos_autonomy_fast_test.py --slot watchdog|budget|authority|e2e`，合并前执行 `--slot all`，整体交付前执行 `--slot all --stress`，失败不得伪装为通过。**
 - 文档见 `docs/StoryOS_R2_自治Watchdog_四槽极速验收_20261013.md`。
 
+## R3 原生 Codex 安全自治推进
+
+- Windows 自恢复的计划任务必须由 `storyos_autonomy_carrier.py` 显式授权，在可信交互账号和正式主工作区安装；不得从临时 Worktree 登记可永久存在的任务，不得覆盖或删除不匹配的计划任务。
+- 单 Episode Writer 锁必须使用原子 NX+TTL、持有者令牌校验和 Redis Lua compare-and-expire / compare-and-delete；无原子能力时拒绝，不允许 get-then-set 回退、无令牌释放。**Owner Token 不等于跨主机单调 Fencing，未接入所有生产写端前不可声称全局租约完成**。
+- 正式单帧 Canary 先走 `storyos_autonomy_canary.py plan` 和已有 Frame01 证据入口；EVIDENCE_ONLY 绝不构成生图授权，不得追加独立图像 Provider 派发。
+- **每槽修复须有 RED → GREEN 极速验证**：`--slot carrier|writer|canary|autonomy-integration`；四槽联合 `--slot all`；完整验收 `--slot all --stress`。详见 `docs/StoryOS_R3_四槽自治Carrier_Writer_Canary_极速验收_20261013.md`。
+
 ## Story OS 当前执行入口
 
 涉及 `story` 分支的选题、分镜、出图、字幕、审核、发布、复盘任务，Codex 必须先读取仓库根目录 `START_HERE.md`，再读取 `SKILL.md`。

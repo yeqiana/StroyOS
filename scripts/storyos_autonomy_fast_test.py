@@ -21,8 +21,17 @@ SLOTS = {
     "budget": ["tests/system/test_storyos_autonomy_watchdog_budget.py"],
     "authority": ["tests/system/test_storyos_autonomy_watchdog_authority.py"],
     "e2e": ["tests/system/test_storyos_autonomy_watchdog_e2e.py"],
+    # R3 four slots; each one fast before the integrated stress run.
+    "carrier": ["tests/system/test_storyos_autonomy_r3_carrier.py"],
+    "writer": ["tests/platform/test_storyos_autonomy_r3_writer.py",
+               "tests/platform/test_runtime_state_store.py",
+               "tests/platform/test_worker_lock_state.py"],
+    "canary": ["tests/system/test_storyos_autonomy_r3_canary.py"],
+    "autonomy-integration": ["tests/system/test_storyos_autonomy_r3_integration.py"],
 }
 FULL_STRESS = [
+    "tests/platform/test_runtime_state_store.py",
+    "tests/platform/test_worker_lock_state.py",
     "tests/system/test_canonical_full_auto_integration.py",
     "tests/system/test_runtime_recovery.py",
     "tests/system/test_runner_host_loop_v262.py",

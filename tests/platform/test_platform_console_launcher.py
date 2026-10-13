@@ -10,5 +10,7 @@ def test_console_children_use_loopback_and_built_vite(tmp_path: Path):
     assert "preview" in children[1].command
     assert children[1].command[-5:] == ("--host", "127.0.0.1", "--port", "3100", "--strictPort")
     assert children[0].log_path == tmp_path / "platform-api.log"
-    assert children[0].cwd.name == "storyOS"
-    assert children[1].cwd.name == "web-console"
+    # Same contract in the main checkout and disposable Git worktrees.
+    root = Path(__file__).resolve().parents[2]
+    assert children[0].cwd.resolve() == root
+    assert children[1].cwd.resolve() == root / "web-console"

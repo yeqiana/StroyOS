@@ -25,6 +25,17 @@ class FakeRedis:
         self.data.pop(key, None)
         self.expires.pop(key, None)
 
+    def eval(self, script, numkeys, *args):
+        assert numkeys == 1
+        key, expected = args[:2]
+        if self.data.get(key) != expected:
+            return 0
+        if 'DEL' in script:
+            self.delete(key)
+        elif 'EXPIRE' in script:
+            self.expires[key] = int(args[2])
+        return 1
+
 
 class LegacyStoreWithoutAtomicWrite:
     """只实现 RuntimeStateStore 抽象方法的旧存储，用于验证回退路径。"""
@@ -89,8 +100,9 @@ def test_episode_lock_manager_release_allows_reacquire():
     store = RedisRuntimeStateStore(FakeRedis())
     locks = EpisodeLockManager(store)
 
-    assert locks.acquire("ep1", "runtime-a") is True
-    locks.release("ep1")
+    token = locks.acquire_lease("ep1", "runtime-a")
+    assert token
+    assert locks.release("ep1", "runtime-a", token) is True
 
     assert store.get_state("storyos:lock:episode:ep1") is None
     assert locks.acquire("ep1", "runtime-b") is True
@@ -100,7 +112,7 @@ def test_episode_lock_manager_falls_back_without_atomic_support():
     store = LegacyStoreWithoutAtomicWrite()
     locks = EpisodeLockManager(store)
 
-    assert locks.acquire("ep1", "runtime-a") is True
+    assert locks.acquire("ep1", "runtime-a") is False
     assert locks.acquire("ep1", "runtime-b") is False
 
 
