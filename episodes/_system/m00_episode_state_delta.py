@@ -18,13 +18,70 @@ BEG = "[M00 LOCKED ADJACENT STATE TRANSITION]"
 END = "[END M00 LOCKED ADJACENT STATE TRANSITION]"
 
 
-def source_transition(storyboard: Path, frame: int, profile_id: str) -> dict | None:
+def source_transition(storyboard: Path, frame: int, profile_id: str,
+                      *, episode: Path | None = None) -> dict | None:
     """Read one authorized JSON storyboard frame; no unrelated/global fallback.
 
     Deliberately no Markdown parsing or LLM guessing: if not explicitly locked
     in a JSON frame, there is no opt-in and no imposed motion.
     """
-    if str(profile_id) != "M00" or storyboard.suffix.lower() != ".json":
+    if str(profile_id) != "M00":
+        return None
+    # R10: the locked Markdown/JSON source is never rewritten. Source-attested
+    # derivative only appears when an Episode opts in with exact source SHAs.
+    if episode is not None:
+        import m00_storyboard_delta_sources as source_rows
+        ep = Path(episode).resolve()
+        path = source_rows.candidate_path(ep, frame)
+        if path.is_file():
+            document = json.loads(path.read_text(encoding="utf-8-sig"))
+            if not isinstance(document, dict):
+                raise ValueError("M00_DELTA_SIDECAR_MALFORMED")
+            if document.get("status") == "DRAFT_ONLY":
+                # Drafts must be non-invasive: a future incomplete candidate
+                # does not change or block any established production lane.
+                return (source_transition(storyboard, frame, profile_id)
+                        if storyboard.suffix.lower() == ".json" else None)
+            if document.get("status") != "SOURCE_ATTESTED":
+                raise ValueError("M00_DELTA_UNKNOWN_SIDECAR_STATUS")
+            if storyboard.suffix.lower() == ".json":
+                from frame_contract import _frame_from_json
+                doc = json.loads(storyboard.read_text(encoding="utf-8-sig"))
+                current = _frame_from_json(doc, frame)
+                if isinstance(current, dict) and FIELD in current:
+                    raise ValueError("M00_DELTA_AMBIGUOUS_DUAL_SOURCE")
+            from frame_contract import artifact_paths
+            story_path, official_board = artifact_paths(ep)
+            if official_board.resolve() != storyboard.resolve():
+                raise ValueError("M00_DELTA_STORYBOARD_NOT_MANIFEST_SOURCE")
+            attested = source_rows.approve_source_bound(
+                document=document,
+                story=story_path, storyboard=storyboard, frame=frame)
+            # This sidecar is *never* a replacement for the canonical Story
+            # Review. Bind the editorial source decision to the live approved
+            # Story Review authority; no ad-hoc/mock PASS in production.
+            import story_review
+            if not story_review.review_required(ep):
+                raise ValueError("M00_DELTA_CANONICAL_STORY_REVIEW_REQUIRED")
+            errors = story_review.verify(ep)
+            if errors:
+                raise ValueError("M00_DELTA_CANONICAL_STORY_REVIEW_INVALID: " + "; ".join(errors[:3]))
+            review_sha = story_review.review_authority_sha256(ep)
+            witness = json.loads(path.read_text(encoding="utf-8-sig")).get("editorial_attestation") or {}
+            if (not review_sha or witness.get("story_review_authority_sha256") != review_sha):
+                raise ValueError("M00_DELTA_STORY_REVIEW_AUTHORITY_SHA_MISMATCH")
+            return {
+                "frame": f"{frame:02d}", "previous_frame": f"{frame - 1:02d}",
+                "delta": attested["delta"], "delta_sha256": attested["delta_sha256"],
+                "frame_excerpt_sha256": attested["source"]["current_excerpt_sha256"],
+                "previous_frame_excerpt_sha256": attested["source"]["previous_excerpt_sha256"],
+                "source_format": attested["source_format"],
+                "source_attestation_sha256": attested["attestation_sha256"],
+                "source_document_sha256": source_rows.digest(path),
+                "story_sha256": attested["source"]["story_sha256"],
+                "storyboard_sha256": attested["source"]["storyboard_sha256"],
+            }
+    if storyboard.suffix.lower() != ".json":
         return None
     # A storyboard already bound by the release manifest is the only source.
     from frame_contract import _frame_from_json, extract_frame_excerpt
