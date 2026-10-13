@@ -57,7 +57,9 @@
     "test:r36": "node scripts/test-r36-authority-browser.mjs",
     "test:r37:guards": "node scripts/test-r37-evidence-expiry.mjs",
     "test:r37": "node scripts/test-r37-authority-browser.mjs",
-    "test:responsive": "node scripts/test-r17-responsive-browser.mjs"
+    "test:responsive": "node scripts/test-r17-responsive-browser.mjs",
+    "test:r17:persistence": "node scripts/test-r17-persistence-p0.mjs",
+    "test:r17:browser": "node scripts/test-r17-persistence-browser.mjs"
   },
   "dependencies": {
     "@rc-component/motion": "1.3.3",

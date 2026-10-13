@@ -1,5 +1,6 @@
 import React, {useRef, useState} from 'react';
-import {Button, Modal} from 'antd';
+import {Button, Modal, Input} from 'antd';
+import {saveTestBackup,listTestBackups,getTestBackup} from '../../api/isolatedDraftVault';
 import type {Episode,ProjectItem} from '../../types';
 import {createDraftBackup,MAX_BACKUP_CHARS,reviewDraftRestore} from '../../api/localDraftBackup';
 
@@ -10,7 +11,46 @@ type Props={
 export const LocalDraftSafetyPanel:React.FC<Props>=({episodes,projects,onRestore})=>{
   const fileRef=useRef<HTMLInputElement>(null);
   const [status,setStatus]=useState<string|null>(null);
+  const [operatorToken,setOperatorToken]=useState('');
+  const [testBusy,setTestBusy]=useState(false);
   const drafts=episodes.filter(x=>/^ep-(home|proj)-/.test(x.id));
+
+  // Isolated SQLite test vault only; never creates a canonical Project/Episode.
+  const saveTestOnly=()=>{
+    Modal.confirm({
+      title:'保存到 R17 隔离测试存档？',
+      content:'仅向 TEST_ONLY 本地测试数据库写入一份草稿副本。不会创建正式作品、连接生产 MySQL 或执行图片生成。',
+      okText:'确认测试存档',cancelText:'取消',
+      onOk:async()=>{
+        setTestBusy(true);
+        try {
+          const value=await saveTestBackup(operatorToken,createDraftBackup(episodes,projects));
+          setStatus('已保存测试存档 '+value.bundle_id+'；没有创建正式 Runtime 作品。');
+        }catch(e){setStatus('隔离存档失败：'+(e instanceof Error?e.message:'未知错误'));}
+        finally{setTestBusy(false);}
+      }
+    });
+  };
+  const retrieveTestOnly=async()=>{
+    setTestBusy(true);
+    try {
+      const catalog=await listTestBackups(operatorToken);
+      if(!catalog.items.length){setStatus('隔离测试库没有保存过草稿');return;}
+      const latest=catalog.items[0];
+      const value=await getTestBackup(operatorToken,latest.bundle_id);
+      const json=JSON.stringify(value.backup);
+      const review=reviewDraftRestore(json,episodes,projects);
+      if(!review.ok){setStatus('测试存档无法恢复：'+review.reason);return;}
+      Modal.confirm({
+        title:'从隔离测试存档恢复到当前浏览器？',
+        content:'选择最新测试存档 '+latest.bundle_id+'。将新增 '+review.draftCount+' 部本地草稿和 '+review.projectCount+' 个本地项目，不会写入正式 Runtime。',
+        okText:'确认恢复到浏览器',cancelText:'取消',
+        onOk:()=>{onRestore(json);setStatus('已恢复至当前浏览器；正式生产未变化。');}
+      });
+    }catch(e){setStatus('无法读取隔离存档：'+(e instanceof Error?e.message:'未知错误'));}
+    finally{setTestBusy(false);}
+  };
+
   const exportNow=()=>{
     try {
       const text=JSON.stringify(createDraftBackup(episodes,projects),null,2);
@@ -54,6 +94,13 @@ export const LocalDraftSafetyPanel:React.FC<Props>=({episodes,projects,onRestore
             void receive(file);
           }}/>
       </div>
+    </div>
+
+    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[var(--border-subtle)] pt-3">
+      <span className="text-[11px] text-[var(--text-tertiary)]">R17 · TEST_ONLY 隔离存档（不等于正式保存）</span>
+      <Input.Password size="small" aria-label="隔离测试授权口令" placeholder="隔离测试授权口令（仅保留在内存）" className="!w-[235px]" value={operatorToken} onChange={event=>setOperatorToken(event.target.value)} autoComplete="off"/>
+      <Button size="small" disabled={testBusy||operatorToken.trim().length<32} onClick={saveTestOnly}>保存测试存档</Button>
+      <Button size="small" disabled={testBusy||operatorToken.trim().length<32} onClick={()=>void retrieveTestOnly()}>读取最新测试存档</Button>
     </div>
     {status&&<p role="status" className="mt-2 text-[11px] text-[var(--text-secondary)]">{status}</p>}
     <p className="mt-2 text-[11px] text-[var(--text-tertiary)]">

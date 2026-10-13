@@ -8,6 +8,7 @@ import { defineConfig } from 'vite';
 const platformApiTarget = process.env.STORYOS_PLATFORM_PROXY_TARGET || process.env.VITE_PLATFORM_API_URL || 'http://127.0.0.1:8080';
 
 const platformProxy = {
+  '/api/v1/draft-vault': { target: process.env.STORYOS_R17_TEST_PROXY_TARGET || 'http://127.0.0.1:19118', changeOrigin: true },
   '/api': {
     target: platformApiTarget,
     changeOrigin: true,

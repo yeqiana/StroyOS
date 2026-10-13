@@ -1,0 +1,13 @@
+import {resolve} from 'node:path';
+import {IsolatedDraftStore} from './draftStore.mjs';
+import {createDraftMutationServer,listenLocal} from './draftMutationServer.mjs';
+if(process.env.STORYOS_R17_TEST_ONLY!=='1')throw new Error('Production mode forbidden');
+const port=Number(process.env.STORYOS_R17_PORT||19118);
+const token=process.env.STORYOS_R17_OPERATOR_TOKEN;
+if(!token || token.length < 32)throw new Error('A strong operator secret is required before creating a database');
+const db=resolve('.storyos-tmp/r17-test-only/draft-vault.sqlite');
+const store=new IsolatedDraftStore(db,{testOnly:true});
+const server=createDraftMutationServer(store,{token,port,allowedBrowserOrigin:process.env.STORYOS_R17_BROWSER_ORIGIN});
+await listenLocal(server,port);
+console.log('StoryOS R17 TEST_ONLY draft vault on loopback '+port+' (not a production Writer)');
+process.on('SIGINT',()=>{server.close();store.close();});
