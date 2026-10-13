@@ -129,11 +129,24 @@ def _normalize_references(references: Any) -> list[dict[str, str | None]]:
         if identity in seen:
             raise ValueError(f"IMAGE_PAYLOAD_REQUEST_REFERENCE_DUPLICATE:{index}")
         seen.add(identity)
-        result.append({
+        normalized = {
             "authority_id": normalized_authority,
             "path": normalized_path,
             "sha256": digest,
-        })
+        }
+        # Reference semantics are business request data, not a model hint that
+        # the transport may reinterpret. Preserve them in the fingerprint.
+        if row.get("kind") is not None:
+            kind = str(row["kind"])
+            if kind not in {"identity", "prop", "location", "capture_style"}:
+                raise ValueError(f"IMAGE_PAYLOAD_REQUEST_REFERENCE_KIND_INVALID:{index}")
+            normalized["kind"] = kind
+        if row.get("role") is not None:
+            role = str(row["role"]).strip()
+            if not role or len(role) > 120 or any(ch in role for ch in "\r\n"):
+                raise ValueError(f"IMAGE_PAYLOAD_REQUEST_REFERENCE_ROLE_INVALID:{index}")
+            normalized["role"] = role
+        result.append(normalized)
     return result
 
 

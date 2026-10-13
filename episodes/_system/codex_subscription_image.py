@@ -1340,6 +1340,23 @@ def payload_transport_prompt(request: dict, size: str, reference_count: int) -> 
     orientation = (
         "PORTRAIT" if height > width else "LANDSCAPE" if width > height else "SQUARE"
     )
+    refs = request.get("references") if isinstance(request.get("references"), list) else []
+    semantics = []
+    for index, row in enumerate(refs, 1):
+        kind = str(row.get("kind") or "unspecified") if isinstance(row, dict) else "unspecified"
+        if kind == "capture_style":
+            rule = ("appearance and physical camera capture only; no copying people, faces, "
+                    "actions, scenery, locations, props, wardrobe, screenshot UI, timestamps, or narrative events")
+        elif kind == "identity":
+            rule = "identity and visual continuity only; do not inherit unrelated scene actions or props"
+        elif kind == "location":
+            rule = "the story-authorized location only; do not copy reference people or actions"
+        elif kind == "prop":
+            rule = "the story-authorized prop only; do not copy reference people or actions"
+        else:
+            rule = "only the use permitted by the locked Frame Contract; never assume identity"
+        semantics.append(f"REFERENCE_{index}_KIND: {kind}; ALLOWED_USE: {rule}")
+    semantics_block = "\n".join(semantics)
     return (
         "You are an image tool transport only. Do not rewrite, summarize, reinterpret, "
         "improve, or alter the payload. FIRST ACTION: call image_generation exactly once. "
@@ -1360,7 +1377,10 @@ def payload_transport_prompt(request: dict, size: str, reference_count: int) -> 
         "closest compatible portrait option; do not skip generation solely because exact "
         "canvas geometry is unavailable. StoryOS validates actual output geometry after "
         "artifact commit.\n"
-        "Use every attached reference exactly as an identity/continuity reference; do not add others.\n"
+        "Use each attached image only for its explicitly typed reference purpose; do not add others.\n"
+        "The locked Story/Frame Contract exclusively controls scene content and motion; "
+        "reference photos do not authorize importing any other story elements.\n"
+        f"{semantics_block}\n"
         "<exact_scene_prompt>\n"
         f"{str(request.get('scene_prompt') or '')}\n"
         "</exact_scene_prompt>\n"
@@ -1405,7 +1425,8 @@ def worker_prompt(scene: str, refs: list[Path], size: str, visual_contract: str 
         'Do NOT call shell/exec/Python/node before image_generation.\n'
         f'IMAGE MODEL CONTRACT: request model={image_model}, quality={image_quality}, canvas={size} exactly. strict={strict_model}. Never silently substitute a different image model or quality. If the image tool cannot honor an explicitly strict model, fail instead of pretending success.\n'
         f'{reference_lines}\n'
-        'Use attached images only as continuity references required by the scene. '
+        'Use attached images only in the specific roles declared in the locked Frame Contract. '
+        'Never treat a capture-style example as permission to copy its people, actions, props or environment. '
         f'Do not invent a different story. Generate in the locked Episode aspect ratio and request exact canvas {size}; do not request a different provider ratio for later cropping.\n\n'
         f'{visual_block}'
         f'{frame_block}'

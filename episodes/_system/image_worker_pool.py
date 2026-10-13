@@ -103,7 +103,13 @@ def _payload_reference_evidence(ep: Path, root: Path, refs: list[Path],
             expected_sha = str(declared.get("sha256") or "").lower()
             if expected_sha and expected_sha != digest:
                 raise ValueError("IMAGE_PAYLOAD_REFERENCE_SOURCE_SHA_DRIFT")
-        rows.append({"path": relative, "authority_id": None, "sha256": digest})
+        reference = {"path": relative, "authority_id": None, "sha256": digest}
+        if declarations is not None:
+            for key in ("kind", "role"):
+                value = declarations[index].get(key)
+                if value is not None:
+                    reference[key] = value
+        rows.append(reference)
     return rows
 
 
