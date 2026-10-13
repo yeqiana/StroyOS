@@ -180,6 +180,8 @@ def test_slot4_drafts_plan_and_apply_never_overwrite(ep, monkeypatch):
     first = sources.candidate_path(folder, 2).read_bytes()
     assert drafts.prepare(folder, apply=True)["existing_untouched"] == 1
     assert sources.candidate_path(folder, 2).read_bytes() == first
+    assert episode_delta.source_transition(board, 2, "M00", episode=folder) is None
+    # No source approval and no production Frame Contract hash change.
 
 
 def test_multi_frame_preflight_does_not_partial_write(ep, monkeypatch):
@@ -190,6 +192,19 @@ def test_multi_frame_preflight_does_not_partial_write(ep, monkeypatch):
     with pytest.raises(ValueError, match="FRAME_NOT_FOUND"):
         drafts.prepare(folder, apply=True)
     assert not sources.candidate_path(folder, 2).exists()
+
+
+def test_unrecognized_sidecar_status_blocks_but_draft_only_never_blocks(ep):
+    folder, story, board = ep
+    candidate = sources.candidate_path(folder, 2)
+    candidate.parent.mkdir(parents=True)
+    raw = sources.proposal(story=story, storyboard=board, frame=2)
+    candidate.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+    assert episode_delta.source_transition(board, 2, "M00", episode=folder) is None
+    raw["status"] = "MANUALLY_PRETENDED_PASS"
+    candidate.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+    with pytest.raises(ValueError, match="UNKNOWN_SIDECAR_STATUS"):
+        episode_delta.source_transition(board, 2, "M00", episode=folder)
 
 
 def test_missing_frame_and_duplicate_markdown_rows_fail_closed(ep):

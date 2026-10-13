@@ -34,6 +34,16 @@ def source_transition(storyboard: Path, frame: int, profile_id: str,
         ep = Path(episode).resolve()
         path = source_rows.candidate_path(ep, frame)
         if path.is_file():
+            document = json.loads(path.read_text(encoding="utf-8-sig"))
+            if not isinstance(document, dict):
+                raise ValueError("M00_DELTA_SIDECAR_MALFORMED")
+            if document.get("status") == "DRAFT_ONLY":
+                # Drafts must be non-invasive: a future incomplete candidate
+                # does not change or block any established production lane.
+                return (source_transition(storyboard, frame, profile_id)
+                        if storyboard.suffix.lower() == ".json" else None)
+            if document.get("status") != "SOURCE_ATTESTED":
+                raise ValueError("M00_DELTA_UNKNOWN_SIDECAR_STATUS")
             if storyboard.suffix.lower() == ".json":
                 from frame_contract import _frame_from_json
                 doc = json.loads(storyboard.read_text(encoding="utf-8-sig"))
@@ -45,7 +55,7 @@ def source_transition(storyboard: Path, frame: int, profile_id: str,
             if official_board.resolve() != storyboard.resolve():
                 raise ValueError("M00_DELTA_STORYBOARD_NOT_MANIFEST_SOURCE")
             attested = source_rows.approve_source_bound(
-                document=json.loads(path.read_text(encoding="utf-8-sig")),
+                document=document,
                 story=story_path, storyboard=storyboard, frame=frame)
             # This sidecar is *never* a replacement for the canonical Story
             # Review. Bind the editorial source decision to the live approved

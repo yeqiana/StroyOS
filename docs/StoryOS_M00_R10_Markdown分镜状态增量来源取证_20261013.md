@@ -6,7 +6,7 @@ R9 已实现“锁定 JSON 分镜某帧 → 相邻状态增量 SHA → Frame Con
 
 ## 本轮四槽
 
-**① 来源识别、自动建草案。** `scripts/storyos_m00_storyboard_delta_drafts_r10.py` 读取 Release Manifest 当前锁定故事/分镜，识别 Markdown 三列逐帧表格或 JSON 帧，不改变故事文件。默认仅 dry-run，显式 `--apply` 才在 `meta/runtime/m00-adjacent-state-deltas/NN.json` 逐帧创建不存在的草案，包含前一帧/当前帧原文、原文件 SHA、两段原文 SHA、源格式和空白待审核字段。绝不写 `SOURCE_ATTESTED` 或预填虚假内容；其它风格不作操作。现有文件永不覆盖。
+**① 来源识别、自动建草案。** `scripts/storyos_m00_storyboard_delta_drafts_r10.py` 读取 Release Manifest 当前锁定故事/分镜，识别 Markdown 三列逐帧表格或 JSON 帧，不改变故事文件。默认仅 dry-run，显式 `--apply` 才在 `meta/runtime/m00-adjacent-state-deltas/NN.json` 逐帧创建不存在的草案，包含前一帧/当前帧原文、原文件 SHA、两段原文 SHA、源格式和空白待审核字段。绝不写 `SOURCE_ATTESTED` 或预填虚假内容；其它风格不作操作。现有文件永不覆盖。 **DRAFT_ONLY 草案只是可编辑证据**：无论存在多少个，旧 Frame Contract 和 Provider 请求均不因它而改变或阻断；仅正式 `SOURCE_ATTESTED` 并验证审核链的文档才会进入生产。
 
 **② 不凭空发明内容。** 正式 `SOURCE_ATTESTED` 衍生合同必须经过来源审核元数据（审核人/决策/说明/原 Storyboard SHA 和**真实 canonical Story Review Authority SHA**），还必须调用既有 `story_review.verify` 成功且 `review_required` 为真，任何伪造 Story Review SHA 直接拒绝。六类 `locked` 约束的文本**逐字出现**在锁定故事、前帧或当前帧中；每项行动变化的 `before` 必须能在**严格前一帧**找到，`after` 和 `pixel_evidence` 必须能在**严格当前帧**找到，不能从故事里其它时间点借用事实。任何空缺、重复帧、源 SHA 不一致、引入原文没有的主角/道具/动作均拒绝进入正式合同。这个证据检查不等于语义审核，更不能替代 Story Review Authority；如果分镜原文不含足够状态证据，必须先在正规故事/分镜审查流程补充并重新审核，不可让模型猜测。
 
