@@ -16,16 +16,23 @@ def assess(driver: dict, attempt: dict, stage: dict) -> dict:
             "read_only":True,"model_calls":0,"sql_writes":0,
             "publish_ready_verified":False,"image_generation_verified":False,
             "may_retry_paid_attempt":False,"active_attempt_count":0,
-            "outcome_unknown_count":0,"driver_running":False}
+            "outcome_unknown_count":0,"driver_running":False,
+            "previous_driver_start_verified":False,
+            "historical_attempt_rows":None}
     if not all(isinstance(x,dict) for x in (driver,attempt,stage)):
         return report
     active=attempt.get("active_attempt_assets")
     unknown=attempt.get("outcome_unknown_assets")
+    unverifiable=attempt.get("unverified_status_assets",[])
+    historical=attempt.get("attempt_rows",0)
     if (attempt.get("status")!="ATTEMPT_HISTORY_READ_ONLY"
             or not isinstance(active,list) or not isinstance(unknown,list)
+            or not isinstance(unverifiable,list)
+            or type(historical) is not int or historical < 0
             or stage.get("source")!="mysql"
             or stage.get("status") not in ("STAGE_ELIGIBLE","ALREADY_PUBLISH_READY")):
         return report
+    report["historical_attempt_rows"]=historical
     report["active_attempt_count"]=len(active)
     report["outcome_unknown_count"]=len(unknown)
     running=(driver.get("driver_state")=="RUNNING"
@@ -33,19 +40,23 @@ def assess(driver: dict, attempt: dict, stage: dict) -> dict:
     report["driver_running"]=running
     report["driver_heartbeat_status"]=str(driver.get("heartbeat_status") or "UNVERIFIED")
     report["canonical_mysql_stage"]=stage.get("stage")
-    if unknown:
+    if unknown or unverifiable:
         report["status"]="PAID_ATTEMPT_RECONCILIATION_REQUIRED"
     elif stage.get("stage") in ("PUBLISH_READY","PUBLISHED","DATA_REVIEWED"):
         report["status"]="MYSQL_PUBLISH_READY"
         report["publish_ready_verified"]=True
     elif running and report["driver_heartbeat_status"]=="RETRY_WAIT":
         report["status"]="RUNNING_RETRY_WAIT"
+    elif running and not active and historical:
+        report["status"]="RUNNING_WITH_HISTORICAL_ATTEMPTS"
     elif running and not active:
         report["status"]="RUNNING_NO_PAID_ATTEMPT"
     elif running:
         report["status"]="RUNNING_ATTEMPT_UNVERIFIED"
     elif driver.get("driver_state")=="NEVER_STARTED":
-        report["status"]="FIRST_START_NOT_REQUESTED"
+        # An absent volatile Driver record is not evidence that the episode
+        # never ran; the Windows carrier may have an earlier completed task.
+        report["status"]="DRIVER_HISTORY_UNVERIFIED"
     else:
         report["status"]="DRIVER_NOT_RUNNING"
     return report

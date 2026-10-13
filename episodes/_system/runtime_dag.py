@@ -504,6 +504,32 @@ def _run_targeted_review(ep, *, kind, attempt, codex, timeout, run_id, trace_id)
     """Resume an existing scoped request or dispatch only the requested critic."""
     import product_review_adapter
 
+    if kind == "story-semantic":
+        import story_review_attempt_admission
+        import story_review
+        # DAG step counters include dozens of REUSED runs; they are NOT Critic
+        # attempt indexes. The official review and scoped lifecycle own those.
+        rows = {}
+        candidates = {}
+        for index in (1, 2):
+            scoped = product_review_adapter.request_path(
+                Path(ep).resolve(), kind, attempt=index)
+            if product_review_adapter._request_exists(scoped):
+                rows[index] = product_review_adapter._read_json(scoped)
+                try:
+                    candidate_path = (ROOT / str(rows[index].get("candidate_path") or "")).resolve()
+                    candidates[index] = candidate_path.is_relative_to(ROOT) and candidate_path.is_file()
+                except (TypeError, ValueError, OSError):
+                    candidates[index] = False
+        official = story_review.load_review(Path(ep).resolve())
+        selection = story_review_attempt_admission.decide(
+            dag_attempt=attempt, official_review=official if official else None,
+            request_rows=rows, candidate_exists=candidates)
+        if selection["status"] not in {
+                "DISPATCH_BOUNDED_STORY_CRITIC",
+                "EXISTING_REVIEW_REQUIRES_FINALIZATION"}:
+            return 22, "STORY_REVIEW_ATTEMPT_AUTHORITY_BLOCKED:" + selection["status"]
+        attempt = selection["attempt"]
     request = product_review_adapter.request_path(Path(ep).resolve(), kind, attempt=attempt)
     if product_review_adapter._request_exists(request):
         saved = product_review_adapter._read_json(request)

@@ -69,6 +69,16 @@ SLOTS = {
     "mysql-receipt": ["tests/system/test_storyos_autonomy_r9_probe.py",
                       "tests/system/test_storyos_autonomy_r8_stage.py"],
     "r9-integrated": ["tests/system/test_storyos_autonomy_r9_integration.py"],
+    # R10: concrete main-Episode reproduction of attempt-162 drift and
+    # finalized review lacking official evidence, no paid image loops.
+    "story-critic-authority": [
+        "tests/system/test_storyos_autonomy_r10_story_attempt.py",
+        "tests/system/test_storyos_autonomy_r10_runtime_admission.py"],
+    "driver-lifecycle": ["tests/system/test_storyos_autonomy_r10_driver_paid.py",
+                          "tests/system/test_storyos_autonomy_watchdog_policy.py"],
+    "paid-attempt-proof": ["tests/system/test_storyos_autonomy_r10_driver_paid.py",
+                           "tests/system/test_storyos_autonomy_r9_probe.py"],
+    "r10-integrated": ["tests/system/test_storyos_autonomy_r10_integration.py"],
 }
 FULL_STRESS = [
     "tests/platform/test_runtime_state_store.py",

@@ -85,6 +85,13 @@
 - Windows Task Scheduler 的 principal 显示名可能与交互用户不同；仅 Windows SID 一致（加可执行文件、参数、工作目录、用户 Logon、IgnoreNew、Enabled 全验证）才能判为 `INSTALLED`。注册完成后必须再查任务，未证实则 `REGISTERED_BUT_UNVERIFIED`，不可擅自自动续跑。
 - 用 `storyos_autonomy_production_probe.py` 在真正 runtime.env 下读取 Driver/MySQL Stage/Attempt，区别心跳、历史状态和真实 Provider 图片。带 UNKNOWN 的 Attempt 禁止自动新付费请求。每槽极速 `--slot real-canary|watchdog-user|mysql-receipt|r9-integrated`，完工 `--slot all --stress`。参见 `docs/StoryOS_R9_授权生产直连与四槽回归_20261013.md`。
 
+## R10 · Story Critic 有界尝试权威与真实生产审计
+
+- `CREATIVE_STORY` 的 DAG `REUSED` 调度次数不等于正式审核尝试次数；它在旧 Episode 上可达 161+，不能继续传给仅接受 1/2 次正常尝试的 `story_review.py run-critic`。`story_review_attempt_admission.py` 必须使用现存审核 lifecycle + 正式 Review 权威判定，任何超限重试先拦截。
+- 如果正式 `story-semantic` 请求出现 `FINALIZED` 但官方 Review 权威不存在，返回 `FINALIZED_REVIEW_WITHOUT_CANONICAL_PROOF`，Driver 使用 `HUMAN_REQUIRED` 非技术重试分支，禁止伪造 PASS 或自动再次发起模型。
+- `storyos_story_review_readonly.py` 是原生环境、MySQL Stage 与真实审核请求的双核验只读诊断；`storyos_autonomy_production_probe.py` 的 `NEVER_STARTED` 只能解释为丢失 Driver runtime 证据，不能推断首次启动未发生。`unverified_status_assets` 与 UNKNOWN paid receipts 必须人工/权威对账。
+- R10 四槽独立极速：`--slot story-critic-authority|driver-lifecycle|paid-attempt-proof|r10-integrated`；最终 `--slot all --stress`；详情 `docs/StoryOS_R10_真实StoryCritic权威与四槽闭环_20261013.md`。
+
 ## Story OS 当前执行入口
 
 涉及 `story` 分支的选题、分镜、出图、字幕、审核、发布、复盘任务，Codex 必须先读取仓库根目录 `START_HERE.md`，再读取 `SKILL.md`。
