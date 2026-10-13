@@ -37,6 +37,7 @@ import { RuntimeAuthorityPanel } from './RuntimeAuthorityPanel';
 import { ExclusiveReadGate } from '../../api/exclusiveReadGate';
 import { summarizeRuntimeCoverage } from '../../api/runtimeCoverage';
 import type { RuntimeStatusSummary } from '../../api/platformApi';
+import { mergeRuntimeStatusSummaries } from '../../api/runtimeSummaryMerge';
 
 interface ProductionMonitorViewProps {
   onSelectStoryRun?: (run: StoryRunItem) => void;
@@ -148,14 +149,7 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
       const data = await platformApi.runtimeStatuses(100, offset);
       if (!requestGate.current.isCurrent(generation)) return;
       const page = data.items ?? [];
-      const existing = new Set(runtimeRowsRef.current.map(r => r.episode_id || r.episode_ref).filter(Boolean));
-      const next = [...runtimeRowsRef.current];
-      for (const record of page) {
-        const key = record.episode_id || record.episode_ref;
-        if (key && existing.has(key)) continue;
-        if (key) existing.add(key);
-        next.push(record);
-      }
+      const next = mergeRuntimeStatusSummaries(runtimeRowsRef.current, page);
       runtimeRowsRef.current = next;
       runtimeOffsetRef.current = offset + page.length;
       const hasMore = Boolean(data.has_more) && page.length > 0;

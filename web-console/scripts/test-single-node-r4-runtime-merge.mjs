@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {mergeRuntimeStatusSummaries as merge} from '../src/api/runtimeSummaryMerge.ts';
+const first=[{episode_id:'sql-123',episode_ref:'story/EP001',title:'First',production_stage:'A'}];
+const second=[{episode_id:'',episode_ref:'story/EP001',title:'Renamed',production_stage:'B'}];
+assert.equal(merge(first,second).length,1,'same ref must not duplicate when id goes missing');
+assert.equal(merge(first,[{episode_id:'sql-123',episode_ref:'',title:'Renamed'}]).length,1,'same id must not duplicate when ref goes missing');
+assert.equal(merge(first,[{episode_id:'sql-999',episode_ref:'story/EP999',title:'First'}]).length,2,'matching title is not identity');
+const distinct=merge([],[{episode_id:'a',episode_ref:'EP-A'},{episode_id:'b',episode_ref:'EP-B'}]);
+assert.equal(distinct.length,2);
+assert.equal(merge(distinct,[{episode_id:'b',episode_ref:'EP-B'},{episode_id:'c',episode_ref:'EP-C'}]).length,3);
+assert.equal(merge(first,second)[0].title,'First','earlier already-displayed evidence remains stable');
+console.log('SINGLE_NODE_RUNTIME_PAGE_IDENTITY_6_OF_6_PASS');
