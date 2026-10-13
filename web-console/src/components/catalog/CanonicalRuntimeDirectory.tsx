@@ -8,7 +8,7 @@ import {matchCanonicalHistoricalEpisode, useCanonicalRuntimeCatalog} from '../..
 interface Props {
   episodes: Episode[];
   onSelectHistorical: (ep:Episode)=>void;
-  onOpenMonitor: ()=>void;
+  onOpenMonitor: (episodeRef:string)=>void;
   condensed?:boolean;
 }
 
@@ -33,17 +33,17 @@ export const CanonicalRuntimeDirectory:React.FC<Props>=({episodes,onSelectHistor
       <Button size="small" onClick={catalog.refresh} icon={<RefreshCw size={13}/>} loading={catalog.status==='loading'}>刷新正式目录</Button>
     </div>
     {catalog.warning&&<p role="status" className="text-[11px] text-[var(--warning)]">{catalog.warning}</p>}
-    {catalog.items.length ? <div className="divide-y divide-[var(--border-subtle)]">
+    {catalog.items.length ? <div className="grid min-w-0 grid-cols-1 gap-x-5 md:grid-cols-2 lg:grid-cols-3">
       {entries.map(item=>{
         const match=matchCanonicalHistoricalEpisode(item,episodes,catalog.items);
-        return <div key={item.episode_ref} className="flex flex-wrap items-center justify-between gap-2 py-2">
+        return <div key={item.episode_ref} className="flex min-w-0 items-center justify-between gap-2 border-b border-[var(--border-subtle)] py-2">
           <div className="min-w-0 flex-1">
             <p className="truncate text-[13px] font-medium text-[var(--text-primary)]">{item.title}</p>
             <p className="mt-1 truncate text-[11px] text-[var(--text-tertiary)]">
               {item.business_episode_id} · {stageLabel(item.production_stage||'NO_STATE')} · {match?'历史分镜已双重匹配':'历史分镜尚未可靠关联'}
             </p>
           </div>
-          <Button size="small" type="link" onClick={()=>match?onSelectHistorical(match):onOpenMonitor()}>
+          <Button size="small" type="link" onClick={()=>match?onSelectHistorical(match):onOpenMonitor(item.episode_ref||"")}>
             {match?'检视历史分镜':'查看真实监控'}
           </Button>
         </div>;

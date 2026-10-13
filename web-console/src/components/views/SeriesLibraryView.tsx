@@ -6,7 +6,7 @@ import type {Episode} from '../../types';
 import {useLocalApprovedMedia} from '../../api/localApprovedMedia';
 import {CanonicalRuntimeDirectory} from '../catalog/CanonicalRuntimeDirectory';
 
-interface Props { episodes:Episode[]; activeEpisode:Episode; onSelectEpisode:(episode:Episode)=>void; onGoToWorkbench:()=>void; onGoToMonitor:()=>void; onNewStoryClick:()=>void; }
+interface Props { episodes:Episode[]; activeEpisode:Episode; onSelectEpisode:(episode:Episode)=>void; onGoToWorkbench:()=>void; onGoToMonitor:(episodeRef:string)=>void; onNewStoryClick:()=>void; }
 const STAGES:Record<string,string> = {IDEA_LOCK:'创意锁定',STORYBOARD_LOCK:'分镜锁定',VISUAL_CALIBRATE:'视觉校准',PROD_APPROVED:'生产审核',READY_TO_PUBLISH:'待发布',PUBLISHED:'已发布',POST_MORTEM:'数据复盘'};
 const readableTime=(value:string)=>{if(!value)return '未知';const d=new Date(value);return Number.isNaN(d.valueOf())?value:new Intl.DateTimeFormat('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).format(d);};
 export const SeriesLibraryView: React.FC<Props> = ({episodes,activeEpisode,onSelectEpisode,onGoToWorkbench,onGoToMonitor,onNewStoryClick}) => {

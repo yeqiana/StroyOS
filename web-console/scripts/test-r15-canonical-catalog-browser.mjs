@@ -28,7 +28,7 @@ async function browserCase(c){
  const menu=c.menu==='系统设置'?controls.find(x=>x.textContent?.trim()==='系统设置'):[...nav.querySelectorAll('button')].find(x=>x.textContent?.trim()===c.menu);
  if(!menu)throw Error('missing navigation menu '+c.menu);
  menu.click();
- const view=await wait(()=>document.querySelector(c.selector),'page '+c.name);
+ let view=await wait(()=>document.querySelector(c.selector),'page '+c.name);
  if(c.name!=='creator')await wait(()=>view.querySelector('h1')?.textContent?.trim()===c.heading,'page heading '+c.heading);
  let evidence='normal';
  if(c.name==='overview'){
@@ -74,8 +74,12 @@ async function browserCase(c){
    await wait(()=>directory.textContent.includes('11 / 11')&&directory.querySelectorAll('button').length>=12,'R15 Library 11 real Episodes');
    const unlinked=[...directory.querySelectorAll('button')].find(b=>b.textContent==='查看真实监控');
    if(!unlinked)throw Error('R15 unmatched official Episode must offer monitor');
+   const expectedTitle=unlinked.parentElement?.querySelector('p')?.textContent?.trim();
+   if(!expectedTitle)throw Error('R15 source row has no stable title');
    unlinked.click();await wait(()=>document.querySelector('#storyos-production-monitor-view'),'R15 unmatched -> monitor');
-   menu.click();await wait(()=>document.querySelector('#series-library-view'),'R15 return to Library');
+   const inspector=await wait(()=>document.querySelector('.storyos-authority-inspector'),'R15 exact production detail navigation');
+   await wait(()=>inspector.textContent.includes(expectedTitle),'R15 monitor must open matching Runtime Episode '+expectedTitle);
+   menu.click();view=await wait(()=>document.querySelector('#series-library-view'),'R15 return to Library');
    evidence='11 official Episodes and unmatched safe monitor routing';
  }else if(c.name==='monitor'){
    const navStage=await wait(()=>view.querySelector('[aria-label="生产阶段快速筛选"]'),'stage summary');

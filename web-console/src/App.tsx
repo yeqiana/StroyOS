@@ -95,6 +95,12 @@ export default function App() {
     } catch { /* restricted local storage; draft selection remains in memory */ }
   }, [activeEpisode.id]);
   const [currentTab, setCurrentTab] = useState<NavigationTab>('overview');
+  const [runtimeFocus,setRuntimeFocus] = useState<string|null>(null);
+  const openRuntimeEpisode = (ref:string) => {
+    if(!/^LOCAL_[a-f0-9]{24}$/.test(ref))return;
+    setRuntimeFocus(ref);
+    setCurrentTab('production_monitor');
+  };
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detailRetry, setDetailRetry] = useState(0);
   const detailGeneration = useRef(0);
@@ -411,12 +417,13 @@ export default function App() {
           )}
 
           <Suspense fallback={<div role="status" className="py-10 text-center text-[13px] text-[var(--text-secondary)]">正在载入工作区…</div>}>
-          {currentTab === 'overview' && <AntdSurface><HomeOverviewView episodes={episodes} projects={projects} onSelectEpisode={(ep) => { setActiveEpisode(ep); setCurrentTab('workbench'); }} onNewStory={() => handleCreateStoryFromHome()} onNavigate={setCurrentTab} /></AntdSurface>}
+          {currentTab === 'overview' && <AntdSurface><HomeOverviewView episodes={episodes} projects={projects} onSelectEpisode={(ep) => { setActiveEpisode(ep); setCurrentTab('workbench'); }} onNewStory={() => handleCreateStoryFromHome()} onNavigate={setCurrentTab} onOpenRuntimeEpisode={openRuntimeEpisode} /></AntdSurface>}
 
           {/* 生产监控台主控页 (StoryOS 生产监控台 V1.0 - Dense Operations Console) */}
           {currentTab === 'production_monitor' && (
             <div className="w-full">
               <AntdSurface><ProductionMonitorView
+                focusEpisodeRef={runtimeFocus}
                 onShowToast={showToast}
                 onSelectStoryRun={(run) => {
                   const matched = matchRunEpisodeByTitle(episodes, run.storyName);
@@ -449,7 +456,7 @@ export default function App() {
                   setCurrentTab('workbench');
                 }}
                 onGoToWorkbench={() => setCurrentTab('workbench')}
-                onGoToMonitor={() => setCurrentTab('production_monitor')}
+                onGoToMonitor={openRuntimeEpisode}
                 onNewStoryClick={() => handleCreateStoryFromHome()}
               /></AntdSurface>
             </div>

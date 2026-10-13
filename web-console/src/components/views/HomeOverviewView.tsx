@@ -14,6 +14,7 @@ interface Props {
   onSelectEpisode: (episode: Episode) => void;
   onNewStory: () => void;
   onNavigate: (tab: NavigationTab) => void;
+  onOpenRuntimeEpisode: (episodeRef:string)=>void;
 }
 
 const STAGES: Record<string, string> = {
@@ -34,7 +35,7 @@ const readableDate = (raw?: string) => {
   return value ? new Date(value).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) : '未知';
 };
 
-export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelectEpisode, onNewStory, onNavigate }) => {
+export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelectEpisode, onNewStory, onNavigate, onOpenRuntimeEpisode }) => {
   const { findEpisode } = useLocalApprovedMedia();
   // No generated placeholder image can pass this contract: the image is from the approved-only media catalog.
   const approvedFrames = (episode: Episode) => findEpisode(episode.title, episode.code)?.frames ?? [];
@@ -100,8 +101,6 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
       <span className="text-[11px] text-[var(--text-tertiary)]">本机工作区只读证据 · 非在线执行状态</span>
     </header>
 
-    <CanonicalRuntimeDirectory episodes={episodes} condensed onSelectHistorical={onSelectEpisode} onOpenMonitor={()=>onNavigate('production_monitor')}/>
-
     <section aria-label="创作快捷入口" className="space-y-3">
       <div><h2 className="text-[22px] font-semibold leading-8 tracking-tight">今天想创作什么？</h2><p className="mt-1 text-[12px] text-[var(--text-secondary)]">从已有作品接着做，或去素材库查看批准图片；正式生图仍使用受控流程。</p></div>
       <div className="grid min-w-0 gap-px border-y border-[var(--border-subtle)] bg-[var(--border-subtle)] md:grid-cols-3" role="group" aria-label="三项核心创作操作">
@@ -122,6 +121,10 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
         </div>
       </div>
     </section>
+
+    <CanonicalRuntimeDirectory episodes={episodes} condensed onSelectHistorical={onSelectEpisode} onOpenMonitor={onOpenRuntimeEpisode}/>
+
+
 
     <section aria-label="最近创作画廊" className="min-w-0 space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="os-section-heading">最近创作</h2><p className="mt-1 text-[11px] text-[var(--text-tertiary)]">展示已有批准图片的作品 · 不模拟生成结果</p></div><button type="button" onClick={()=>onNavigate('episodes')} className="inline-flex items-center gap-1 text-[12px] text-[var(--info)]">查看全部作品 <ArrowRight size={14}/></button></div>

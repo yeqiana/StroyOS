@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { recordedTraceCoverage } from '../../api/recordedTraceCoverage';
 import {Button,Drawer,Input,Select,Table} from 'antd';
 import { platformApi, RuntimeStatusDetail, RuntimeStatusSummary, stageLabel } from '../../api/platformApi';
@@ -14,9 +14,15 @@ const readOnlyAge = (seconds: number | null | undefined): string => {
   return Math.floor(seconds / 86400) + " 天前";
 };
 
-interface Props { items: RuntimeStatusSummary[]; coverage: RuntimeCoverage; hasMore: boolean; loadingMore: boolean; onLoadMore: () => void; dataState: 'loading' | 'ok' | 'partial' | 'offline'; lastSync: string | null; }
-export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMore, loadingMore, onLoadMore, dataState, lastSync }) => {
+interface Props { items: RuntimeStatusSummary[]; coverage: RuntimeCoverage; hasMore: boolean; loadingMore: boolean; onLoadMore: () => void; dataState: 'loading' | 'ok' | 'partial' | 'offline'; lastSync: string | null; focusEpisodeRef?:string|null; }
+export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMore, loadingMore, onLoadMore, dataState, lastSync, focusEpisodeRef }) => {
   const [selected, setSelected] = useState<RuntimeStatusSummary | null>(null);
+  const openedFocus = useRef<string|null>(null);
+  useEffect(()=>{
+    if(!focusEpisodeRef||!/^LOCAL_[a-f0-9]{24}$/.test(focusEpisodeRef)||openedFocus.current===focusEpisodeRef)return;
+    const target=items.find(item=>item.episode_ref===focusEpisodeRef);
+    if(target){openedFocus.current=focusEpisodeRef;setSelected(target);}
+  },[focusEpisodeRef,items]);
   const [page,setPage]=useState(1);
   const [stageFilter,setStageFilter]=useState('ALL');
   const [keyword,setKeyword]=useState('');

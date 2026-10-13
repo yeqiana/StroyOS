@@ -42,11 +42,13 @@ import { mergeRuntimeStatusSummaries } from '../../api/runtimeSummaryMerge';
 interface ProductionMonitorViewProps {
   onSelectStoryRun?: (run: StoryRunItem) => void;
   onShowToast: (msg: string) => void;
+  focusEpisodeRef?:string|null;
 }
 
 export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
   onSelectStoryRun,
   onShowToast,
+  focusEpisodeRef,
 }) => {
   // 历史运行快照，仅用于展示，不代表当前实时运行状态
   const [runs, setRuns] = useState<StoryRunItem[]>(REAL_STORY_RUNS);
@@ -394,7 +396,7 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
         </section>
 
         {apiState !== 'ok' && <div role="status" className="flex flex-wrap items-center justify-between gap-2 border-l-2 border-[var(--warning)] px-3 py-2 text-[12px] text-[var(--text-secondary)]"><span>{apiState === 'loading' ? '正在读取 Platform API 阶段摘要…' : apiWarning}</span><span className="shrink-0 text-[var(--text-tertiary)]">{lastSync ? `最近获取 ${lastSync}` : '未获得有效在线证据'}</span></div>}
-        <RuntimeAuthorityPanel items={runtimeRows} coverage={runtimeCoverage} hasMore={runtimeHasMore} loadingMore={runtimeLoadingMore} onLoadMore={loadNextRuntimePage} dataState={apiState} lastSync={lastSync}/>
+        <RuntimeAuthorityPanel focusEpisodeRef={focusEpisodeRef} items={runtimeRows} coverage={runtimeCoverage} hasMore={runtimeHasMore} loadingMore={runtimeLoadingMore} onLoadMore={loadNextRuntimePage} dataState={apiState} lastSync={lastSync}/>
       </section> : <section aria-label="历史 Run 主视图" className="min-w-0 space-y-3">
       <p className="text-[12px] text-[var(--text-secondary)]">历史工作区运行快照（非实时），与本机阶段证据不同源；仅用于追溯。</p>
       {/* ======================= 1. Operational Status Bar ======================= */}
