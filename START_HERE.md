@@ -14,9 +14,11 @@
 **纯 Codex 全流程（显式选择）**：见 `docs/StoryOS_原生Codex全流程自动生产_20261010.md`。
 在本机原生 Codex CLI 先执行 `python scripts/storyos_codex_managed.py plan <episode>`，
 只在 `READY_TO_START` 后执行 `python scripts/storyos_codex_managed.py run <episode> --ack-real-production`；
-新故事可用 `create <故事要求> --ack-real-production`。这个入口将单次会话路由为
+新故事可用 `create <故事要求> --ack-real-production`。以上入口将单次会话路由为
 `CODEX_MANAGED`（文本/治理/视觉审核与图片执行全走 Codex），并对本地正式 MySQL 和
 历史 `OUTCOME_UNKNOWN` 做只读准入；不会跳过审核/Attempt/Revision，也不使用视频生成。
+
+已有 Episode 需要在会话退出后继续生产，优先使用 `python scripts/storyos_codex_managed.py start <episode> --ack-real-production`；`start` 调用已有常驻 Driver，仍先执行全部只读 Attempt / Owner / Stage 准入，不代表可以越过审核。四槽极速测试：`python scripts/storyos_autonomy_fast_test.py --slot all`；改造完成再用 `--stress`。详见 `docs/StoryOS_原生Codex自治生产与四槽极速验收_20261013.md`。
 默认 `COLLABORATIVE` 配置保持不变。
 
 ```text

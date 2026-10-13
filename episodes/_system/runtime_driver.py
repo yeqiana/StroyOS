@@ -521,13 +521,30 @@ def _storage_mode_args() -> list[str]:
     ]
 
 
+def _native_child_scope_args() -> list[str]:
+    """Carry a validated native Codex route across detached/task carriers."""
+    mode = str(os.environ.get("STORY_OS_PRODUCTION_MODE") or "")
+    image = str(os.environ.get("STORY_OS_IMAGE_EXECUTOR") or "")
+    if mode != "CODEX_MANAGED":
+        return []
+    if image != "CODEX":
+        raise ValueError("NATIVE_DRIVER_SCOPE_MISMATCH")
+    return ["--production-mode", "CODEX_MANAGED", "--image-executor", "CODEX"]
+
+
 def _load_child_runtime_environment(
     *,
     runtime_store_mode: str,
     episode_meta_store_mode: str,
     hot_state_mode: str,
+    production_mode: str | None = None,
+    image_executor: str | None = None,
 ) -> None:
-    """Load local connection secrets, then restore the parent's resolved authority modes."""
+    """Load secrets, then restore explicitly bound authority and Codex routing."""
+    if bool(production_mode) != bool(image_executor) or (
+        production_mode and (production_mode, image_executor) != ("CODEX_MANAGED", "CODEX")
+    ):
+        raise ValueError("NATIVE_DRIVER_SCOPE_MISMATCH")
     root = str(REPO_ROOT)
     if root not in sys.path:
         sys.path.insert(0, root)
@@ -538,6 +555,14 @@ def _load_child_runtime_environment(
     os.environ["STORYOS_RUNTIME_STORE_MODE"] = runtime_store_mode
     os.environ["STORYOS_EPISODE_META_STORE_MODE"] = episode_meta_store_mode
     os.environ["STORYOS_HOT_STATE_MODE"] = hot_state_mode
+    if production_mode == "CODEX_MANAGED":
+        # Task Scheduler may inherit an unrelated service account proxy.
+        for key in ("OPENAI_BASE_URL", "OPENAI_API_BASE", "CODEX_BASE_URL",
+                    "STORY_OS_OPENCODEX_URL", "OPENAI_API_KEY", "STORY_OS_RUNTIME",
+                    "STORY_OS_IMAGE_RUNTIME"):
+            os.environ.pop(key, None)
+        os.environ["STORY_OS_PRODUCTION_MODE"] = production_mode
+        os.environ["STORY_OS_IMAGE_EXECUTOR"] = image_executor
 
 
 def _add_storage_mode_arguments(parser: argparse.ArgumentParser) -> None:
@@ -566,7 +591,7 @@ def launch(ep: Path, *, codex: str | None = None, interval: int = 10,
     log = log_dir / f"driver_{stamp}.log"
     direct_cmd = [sys.executable, "-u", str(Path(__file__).resolve()), "_serve", str(ep),
                   "--interval", str(max(0, int(interval)))]
-    direct_cmd += _storage_mode_args()
+    direct_cmd += _storage_mode_args() + _native_child_scope_args()
     if codex:
         direct_cmd += ["--codex", str(codex)]
     if resume:
@@ -590,7 +615,7 @@ def launch(ep: Path, *, codex: str | None = None, interval: int = 10,
         carrier = "WINDOWS_TASK_SCHEDULER"
         task_cmd = [sys.executable, "-u", str(Path(__file__).resolve()), "_serve_task", str(ep),
                     "--interval", str(max(0, int(interval))), "--log", str(log)]
-        task_cmd += _storage_mode_args()
+        task_cmd += _storage_mode_args() + _native_child_scope_args()
         if codex:
             task_cmd += ["--codex", str(codex)]
         if resume:
@@ -645,6 +670,13 @@ def recover(ep: Path) -> dict:
     if report["driver_state"] == "NEVER_STARTED":
         return {**report, "recovery": "START"}
     if report["driver_state"] == "EXITED":
+        # Read-only advice must not invite blind restarts after a hard stop,
+        # exhausted technical budget or unresolved host action.
+        code = str(report.get("exit_code") or "").strip().split(" ", 1)[0]
+        if code != "0":
+            return {**report, "recovery": "REMEDIATION_REQUIRED",
+                    "note": "Driver exited nonzero; inspect canonical gates/Attempt authority "
+                            "before a new production admission."}
         return {**report, "recovery": "START_IF_WORK_REMAINS"}
     if report["driver_state"] in {"UNKNOWN", "ALIVE_NOT_BEATING"}:
         return {**report, "recovery": "VERIFY_BEFORE_START",
@@ -734,11 +766,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--codex"); p.add_argument("--interval", type=int, default=10)
     p.add_argument("--resume", action="store_true")
     _add_storage_mode_arguments(p)
+    p.add_argument("--production-mode", choices=("CODEX_MANAGED",))
+    p.add_argument("--image-executor", choices=("CODEX",))
 
     p = sub.add_parser("_serve_task"); p.add_argument("episode_dir")
     p.add_argument("--codex"); p.add_argument("--interval", type=int, default=10)
     p.add_argument("--resume", action="store_true"); p.add_argument("--log", required=True)
     _add_storage_mode_arguments(p)
+    p.add_argument("--production-mode", choices=("CODEX_MANAGED",))
+    p.add_argument("--image-executor", choices=("CODEX",))
 
     args = ap.parse_args(argv)
 
@@ -747,6 +783,7 @@ def main(argv: list[str] | None = None) -> int:
             runtime_store_mode=args.runtime_store_mode,
             episode_meta_store_mode=args.episode_meta_store_mode,
             hot_state_mode=args.hot_state_mode,
+            production_mode=args.production_mode, image_executor=args.image_executor,
         )
         return serve(Path(args.episode_dir), codex=args.codex, interval=args.interval, resume=args.resume)
 
@@ -758,6 +795,7 @@ def main(argv: list[str] | None = None) -> int:
                 runtime_store_mode=args.runtime_store_mode,
                 episode_meta_store_mode=args.episode_meta_store_mode,
                 hot_state_mode=args.hot_state_mode,
+                production_mode=args.production_mode, image_executor=args.image_executor,
             )
         except Exception:
             import traceback

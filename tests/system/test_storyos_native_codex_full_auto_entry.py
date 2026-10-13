@@ -266,3 +266,87 @@ def test_main_authorized_delegates_once_without_background_or_provider_calls(mon
     assert len(calls) == 1
     assert calls[0][0][-2:] == ["--full-auto", "--resume"]
     assert calls[0][1] == native.ROOT
+
+# Autonomy fast tests: hermetic; never connect to MySQL or paid providers.
+def test_resident_start_routes_to_existing_runtime_driver(monkeypatch):
+    monkeypatch.setattr(native, "canonical_episode", lambda _name: native.ROOT / "episodes")
+    monkeypatch.setattr(native, "native_environment", lambda: _test_env())
+    monkeypatch.setattr(native, "_probe", _proofs())
+    calls = []
+    monkeypatch.setattr(native.subprocess, "call",
+                        lambda cmd, *, cwd, env: (calls.append((cmd, cwd, env)) or 0))
+    assert native.main(["start", "placeholder", "--ack-real-production"]) == 0
+    assert len(calls) == 1
+    cmd, cwd, env = calls[0]
+    assert cmd[1].endswith("runtime_driver.py")
+    assert cmd[2:] == ["start", str(native.ROOT / "episodes"), "--resume", "--json"]
+    assert cwd == native.ROOT
+
+
+def test_resident_start_requires_ack_and_blocks_unknown(monkeypatch):
+    monkeypatch.setattr(native, "canonical_episode", lambda _name: native.ROOT / "episodes")
+    monkeypatch.setattr(native, "native_environment", lambda: _test_env())
+    monkeypatch.setattr(native.subprocess, "call",
+                        lambda *_a, **_kw: pytest.fail("no production subprocess allowed"))
+    monkeypatch.setattr(native, "_probe", _proofs())
+    assert native.main(["start", "placeholder"]) == 2
+    monkeypatch.setattr(native, "_probe", _proofs(status="OUTCOME_UNKNOWN_BLOCKED"))
+    assert native.main(["start", "placeholder", "--ack-real-production"]) == 3
+
+
+@pytest.mark.parametrize("rc", ["20 2026-10-13T01:00:00Z", "21 2026-10-13T01:00:00Z",
+                               "22 2026-10-13T01:00:00Z", "23 2026-10-13T01:00:00Z",
+                               "24 2026-10-13T01:00:00Z", "25 2026-10-13T01:00:00Z"])
+def test_resident_start_refuses_terminal_or_exhausted_driver(monkeypatch, rc):
+    base = _proofs(driver="EXITED")
+    def probe(env, script, args, **kw):
+        if script.endswith("runtime_driver.py"):
+            return 0, {"driver_state": "EXITED", "exit_code": rc}
+        return base(env, script, args, **kw)
+    monkeypatch.setattr(native, "_probe", probe)
+    result = native.preflight(_test_env(), episode=native.ROOT / "episodes")
+    assert result["status"] == "BLOCKED"
+    assert "EPISODE_DRIVER_EXIT_REQUIRES_REMEDIATION" in result["blockers"]
+    assert result["production_authorization"] is False
+
+
+@pytest.mark.parametrize("exit_code,allowed", [
+    ("", True), ("0 2026-10-13T01:00:00Z", True),
+    ("901 2026-10-13T01:00:00Z", False),
+    ("20 2026-10-13T01:00:00Z", False),
+])
+def test_resident_exit_decision_is_bounded_and_explicit(exit_code, allowed):
+    assert native.resident_restart_permitted(
+        {"driver_state": "EXITED", "exit_code": exit_code}
+    ) is allowed
+
+def test_crashed_driver_is_recoverable_only_when_pid_proven_dead(monkeypatch):
+    base = _proofs(driver="EXITED")
+    def probe(env, script, args, **kw):
+        if script.endswith("runtime_driver.py"):
+            return 0, {"driver_state": "ABNORMAL_DISAPPEARANCE",
+                       "liveness": "DEAD", "exit_code": ""}
+        return base(env, script, args, **kw)
+    monkeypatch.setattr(native, "_probe", probe)
+    report = native.preflight(_test_env(), episode=native.ROOT / "episodes")
+    assert report["status"] == "READY_TO_START"
+    assert report["driver_state"] == "ABNORMAL_DISAPPEARANCE"
+    assert report["attempt"]["active_attempt_assets"] == []
+
+
+@pytest.mark.parametrize("liveness", ["UNKNOWN", "ALIVE", None])
+def test_crashed_driver_cannot_restart_without_pid_proof(liveness):
+    assert native.resident_restart_permitted(
+        {"driver_state": "ABNORMAL_DISAPPEARANCE",
+         "exit_code": "", "liveness": liveness}
+    ) is False
+
+
+def test_repeated_preflight_is_pure_and_never_spawns(monkeypatch):
+    calls = []
+    monkeypatch.setattr(native, "_probe", lambda *a, **kw: (calls.append((a,kw)) or _proofs()(*a,**kw)))
+    for _ in range(50):
+        report = native.preflight(_test_env(), episode=native.ROOT / "episodes")
+        assert report["status"] == "READY_TO_START"
+        assert report["model_calls"] == report["sql_writes"] == 0
+    assert len(calls) == 50 * 9  # all nine probes are read-only

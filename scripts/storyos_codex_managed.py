@@ -3,8 +3,9 @@
 """Explicit native-Codex-only StoryOS full-auto entrypoint.
 
 This is an admission/transport wrapper, never a second production scheduler.
-`plan` is read-only. `run` and `create` require an explicit real-production
-acknowledgement and delegate to the existing canonical story_os.py workflow.
+`plan` is read-only. `run`, `start` and `create` require explicit acknowledgement.
+`start` delegates to the existing resident runtime_driver; the other commands
+use the canonical story_os.py workflow.
 Existing UNKNOWN Generation Attempts fail closed before any work starts.
 """
 from __future__ import annotations
@@ -76,6 +77,23 @@ def _probe(env: dict[str, str], script: str, args: list[str],
         return 2, {}
 
 
+def resident_restart_permitted(driver: dict) -> bool:
+    """Only resume a clean/yielded or unexpectedly vanished Driver.
+
+    All canonical Episode/Attempt authorities are revalidated by preflight.
+    A nonzero recorded exit is an exhausted/hard stop, not a watchdog retry.
+    """
+    state = str(driver.get("driver_state") or "")
+    if state == "NEVER_STARTED":
+        return True
+    code = str(driver.get("exit_code") or "").strip().split(" ", 1)[0]
+    if state == "ABNORMAL_DISAPPEARANCE":
+        # A killed carrier is recoverable only when the pid is proven gone.
+        # Attempt and owner authority remain independent mandatory gates.
+        return driver.get("liveness") == "DEAD" and not code
+    return state == "EXITED" and code in {"", "0"}
+
+
 def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
     """Read-only gate. No owner acquisition, revision activation or model calls."""
     blockers: list[str] = []
@@ -135,8 +153,10 @@ def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
             blockers.append("GENERATION_ATTEMPT_AUTHORITY_RECONCILIATION_REQUIRED")
         rc, driver = _probe(env, "episodes/_system/runtime_driver.py",
                             ["status", rel, "--json"])
-        if rc != 0 or driver.get("driver_state") not in {"NEVER_STARTED", "EXITED"}:
+        if rc != 0 or not resident_restart_permitted(driver):
             blockers.append("EPISODE_DRIVER_OWNER_NOT_IDLE_OR_UNVERIFIED")
+        if driver.get("driver_state") == "EXITED" and not resident_restart_permitted(driver):
+            blockers.append("EPISODE_DRIVER_EXIT_REQUIRES_REMEDIATION")
         if stage.get("stage") == "STORYBOARD_LOCKED":
             # A DAG may be safe to start without being eligible to finish.
             # This pure read-only advisory must NOT be promoted to image
@@ -199,6 +219,9 @@ def full_auto_command(args: argparse.Namespace, episode: Path | None) -> list[st
     cmd = [sys.executable, str(SYSTEM / "story_os.py")]
     if args.command == "run":
         cmd += ["run", str(episode), "--full-auto", "--resume"]
+    elif args.command == "start":
+        return [sys.executable, str(SYSTEM / "runtime_driver.py"), "start",
+                str(episode), "--resume", "--json"]
     else:
         cmd += ["create", args.request_text, "--full-auto"]
         if args.title:
@@ -211,10 +234,10 @@ def full_auto_command(args: argparse.Namespace, episode: Path | None) -> list[st
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("plan", "run"):
+    for name in ("plan", "run", "start"):
         option = sub.add_parser(name)
         option.add_argument("episode")
-        if name == "run":
+        if name in {"run", "start"}:
             option.add_argument("--ack-real-production", action="store_true")
     create = sub.add_parser("create")
     create.add_argument("request_text")

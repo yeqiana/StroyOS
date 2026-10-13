@@ -12,6 +12,8 @@ python scripts/storyos_codex_managed.py plan "episodes/00_独立篇/06_五十亩
 
 # 只有 plan = READY_TO_START 才能正式自动运行这个 Episode
 python scripts/storyos_codex_managed.py run "episodes/00_独立篇/06_五十亩山地之后" --ack-real-production
+# 2026-10-13 增补：已存在 Episode 的会话外常驻 Driver（需要相同准入）
+python scripts/storyos_codex_managed.py start "episodes/00_独立篇/<剧集>" --ack-real-production
 
 # 从一句话创作一个全新作品并自动推进到图文 PUBLISH_READY
 python scripts/storyos_codex_managed.py create "新作品的故事题材和创作要求" --title "新作品" --ack-real-production
