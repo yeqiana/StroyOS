@@ -41,20 +41,23 @@ test('R17 authentication, CSRF, Host validation and no CORS',async()=>{
  const server=createDraftMutationServer(store,{port,token});
  await listenLocal(server,port);
  const url='http://127.0.0.1:'+port+'/api/v1/draft-vault';
+ const login=await fetch(url+'/session',{method:'POST',headers:{Authorization:'Bearer '+token,Origin:'http://127.0.0.1:3100','X-StoryOS-Draft-Intent':'confirmed'}});
+ assert.equal(login.status,201);
+ const session=(await login.json()).data,auth=session.session_token,csrf=session.csrf_token;
  const send=(method,secret,origin='http://127.0.0.1:3100',intent='confirmed',value)=>fetch(url,{
   method,headers:{...(secret?{Authorization:'Bearer '+secret}:{}),...(origin?{Origin:origin}:{}),
-   ...(intent?{'X-StoryOS-Draft-Intent':intent}:{}),'Content-Type':'application/json'},
+   ...(intent?{'X-StoryOS-Draft-Intent':intent}:{}),'Content-Type':'application/json','X-StoryOS-CSRF':csrf},
   body:value?JSON.stringify(value):undefined});
  try{
   assert.equal((await send('GET',null)).status,401);
   assert.equal((await send('GET','incorrect')).status,401);
-  assert.equal((await send('GET',token,'https://attacker.example')).status,403);
-  assert.equal((await send('POST',token,null,'confirmed',{request_id:'req-1',backup:backup()})).status,403);
-  assert.equal((await send('POST',token,'http://127.0.0.1:3100',null,{request_id:'req-1',backup:backup()})).status,403);
-  assert.equal((await send('DELETE',token)).status,405);
-  const ok=await send('POST',token,'http://127.0.0.1:3100','confirmed',{request_id:'req-1',backup:backup()});
+  assert.equal((await send('GET',auth,'https://attacker.example')).status,403);
+  assert.equal((await send('POST',auth,null,'confirmed',{request_id:'req-1',backup:backup()})).status,403);
+  assert.equal((await send('POST',auth,'http://127.0.0.1:3100',null,{request_id:'req-1',backup:backup()})).status,403);
+  assert.equal((await send('DELETE',auth)).status,405);
+  const ok=await send('POST',auth,'http://127.0.0.1:3100','confirmed',{request_id:'req-1',backup:backup()});
   assert.equal(ok.status,201);assert.equal((await ok.json()).data.production_created,false);
-  const list=await send('GET',token);
+  const list=await send('GET',auth);
   assert.equal(list.status,200);
   assert.equal((await list.json()).data.items.length,1);
   assert.equal(list.headers.get('access-control-allow-origin'),null);

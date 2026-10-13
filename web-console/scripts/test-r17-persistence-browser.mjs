@@ -56,7 +56,7 @@ async function doAction(action,confirm,mode){
  btn.click();
  const confirmation=await wait(()=>[...document.querySelectorAll('.ant-modal-confirm button')].find(b=>b.textContent?.includes(confirm)),'confirm');
  confirmation.click();
- if(mode==='save')await wait(()=>vault.textContent.includes('已保存测试存档'),'saved receipt');
+ if(mode==='save')await wait(()=>vault.textContent.includes('隔离存档'),'saved receipt');
  else await wait(()=>{try{return JSON.parse(localStorage.getItem('storyos_local_story_drafts_v1')||'[]').some(x=>x.id==='ep-home-r17qa001');}catch{return false;}},'restored into independent browser');
  return {mode,drafts:JSON.parse(localStorage.getItem('storyos_local_story_drafts_v1')||'[]').length};
 }
@@ -72,7 +72,7 @@ async function browse(label,mode){
   }
   assert.equal(await c.evaluate('('+focusVault.toString()+')()'),true);
   await c.send('Input.insertText',{text:token});await sleep(450);
-  const action=mode==='save'?'保存测试存档':'读取最新测试存档';
+  const action=mode==='save'?'保存测试存档':'读取选中测试存档';
   const confirm=mode==='save'?'确认测试存档':'确认恢复到浏览器';
   const value=await c.evaluate('('+doAction.toString()+')('+JSON.stringify(action)+','+JSON.stringify(confirm)+','+JSON.stringify(mode)+')');
   assert.equal(value.mode,mode);
