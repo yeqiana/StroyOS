@@ -107,3 +107,27 @@ def test_parallel_same_request_creates_one_workspace(credentials):
             cur.execute("SELECT COUNT(*) AS n FROM WEB_DRAFT_REQUEST WHERE REQUEST_ID=%s",(req,))
             assert cur.fetchone()["n"]==1
     finally:repo.close()
+
+
+def test_durable_identity_claim_records_pending_and_completion(credentials):
+    record=WebDraftRepository(credentials,test_only=True)
+    try:
+        item=backup()
+        saved=record.save("r21_source_"+uuid.uuid4().hex,item)
+        workspace=saved["workspace_id"]
+        did=next(iter(saved["identity_map"]["drafts"].values()))
+        record.reserve_episode_bootstrap(workspace,1,did,"Claimed title")
+        pending=record.read(workspace)["identity_map"]["episode_bootstraps"][did]
+        assert pending["status"]=="PENDING"
+        with pytest.raises(DraftWriteError,match="EPISODE_DRAFT_ALREADY_SUBMITTED"):
+            record.reserve_episode_bootstrap(workspace,1,did,"Changed title")
+        record.complete_episode_bootstrap(workspace,did,"00_独立篇/45_Claimed_title")
+        done=record.read(workspace)["identity_map"]["episode_bootstraps"][did]
+        assert done["status"]=="CREATED"
+        assert done["namespace"]=="00_独立篇/45_Claimed_title"
+        # A browser version update must retain the irreversible WDE mapping.
+        edited={**item,"drafts":[{**item["drafts"][0],"title":"Edited"}]}
+        record.save("r21_edit_"+uuid.uuid4().hex,edited,workspace,1)
+        assert record.read(workspace)["identity_map"]["episode_bootstraps"][did]==done
+    finally:
+        record.close()

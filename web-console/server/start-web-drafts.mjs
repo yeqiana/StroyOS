@@ -15,9 +15,10 @@ const bridge=new WebDraftBridge({
 });
 const server=createWebDraftServer(bridge,{
  token:operatorToken,port,
+ bootstrapToken:(!testOnly&&process.env.STORYOS_WEB_BOOTSTRAP_ENABLE==='1')?process.env.STORYOS_WEB_BOOTSTRAP_OPERATOR_TOKEN:undefined,
  allowedBrowserOrigin:process.env.STORYOS_WEB_DRAFTS_BROWSER_ORIGIN,
  backend:testOnly?'mysql8_draft_canary':'mysql8_web_drafts'
 });
 await listenLocal(server,port);
-console.log('StoryOS Web draft-only writer ready at loopback '+port+'. No canonical Episode or Driver capability.');
+console.log('StoryOS drafts at loopback '+port+'. Bootstrap '+(process.env.STORYOS_WEB_BOOTSTRAP_ENABLE==='1'&&!testOnly?'explicitly armed':'disabled')+'. Driver always disabled.');
 process.on('SIGINT',()=>server.close());

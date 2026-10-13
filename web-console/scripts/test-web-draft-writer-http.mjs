@@ -114,12 +114,17 @@ try{
   assert.equal(readOnlyUnconfigured.status,503);
   assert.equal((await readOnlyUnconfigured.json()).code,'PREFLIGHT_READONLY_DB_NOT_CONFIGURED');
   assert.equal((await fetchIt(url+'/handoff-plan','POST',session2.session_token,session2.csrf_token,{})).status,404);
+  const episodeDenied=await fetchIt(url+'/bootstrap','POST',session2.session_token,session2.csrf_token,
+   {server_draft_id:plan.items[0].server_draft_id,workspace_version:2,
+    source_sha256:plan.source_sha256,ack:'CREATE_EPISODE_WITHOUT_START'});
+  assert.equal(episodeDenied.status,403);
+  assert.equal((await episodeDenied.json()).code,'EPISODE_BOOTSTRAP_DISABLED');
   const index=(await (await fetchIt('','GET',session2.session_token)).json()).data.items;
   assert.ok(index.some(v=>v.workspace_id===created.workspace_id));
   assert.equal((await fetchIt('/session','DELETE',session2.session_token,session2.csrf_token)).status,200);
   assert.equal((await fetchIt('','GET',session2.session_token)).status,401);
  });
- await test('operator can revoke and no production-admission endpoints exist',async()=>{
+ await test('operator can revoke; unauthorized runtime and bootstrap remain unavailable',async()=>{
   assert.equal((await fetchIt('/runtime/start','POST',session.session_token,session.csrf_token,{})).status,404);
   assert.equal((await fetchIt('/session','DELETE',session.session_token,session.csrf_token)).status,200);
   assert.equal((await fetchIt('','GET',session.session_token)).status,401);

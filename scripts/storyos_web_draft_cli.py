@@ -1,4 +1,4 @@
-"""Bounded local-only bridge for Web draft-only MySQL schema; no canonical runtime write."""
+"""Local Web drafts API; optional separate-secret canonical bootstrap, never Driver."""
 from __future__ import annotations
 import json
 import os
@@ -9,11 +9,13 @@ from pathlib import Path
 from platform.repository.mysql.web_draft_repository import WebDraftRepository, DraftWriteError
 from platform.operations.web_draft_handoff_plan import compile_handoff_plan
 from platform.operations.web_draft_execute_preflight import execute_saved_dry_run, PreflightBlocked
+from platform.operations.web_draft_episode_bootstrap import bootstrap_saved_episode, BootstrapBlocked
 
 BASE="/api/v1/web-drafts"
 ITEM=re.compile(r"^/api/v1/web-drafts/(WDW_[a-f0-9-]{36})$")
 HANDOFF=re.compile(r"^/api/v1/web-drafts/(WDW_[a-f0-9-]{36})/handoff-plan$")
 PREFLIGHT=re.compile(r"^/api/v1/web-drafts/(WDW_[a-f0-9-]{36})/preflight$")
+BOOTSTRAP=re.compile(r"^/api/v1/web-drafts/(WDW_[a-f0-9-]{36})/bootstrap$")
 MAX=2_100_000
 
 def main():
@@ -44,7 +46,31 @@ def main():
             match=ITEM.fullmatch(path)
             handoff=HANDOFF.fullmatch(path)
             preflight=PREFLIGHT.fullmatch(path)
-            if method=="POST" and preflight:
+            bootstrap=BOOTSTRAP.fullmatch(path)
+            if method=="POST" and bootstrap:
+                if test_only or os.environ.get("STORYOS_WEB_BOOTSTRAP_ENABLE")!="1":
+                    raise BootstrapBlocked("EPISODE_BOOTSTRAP_DISABLED",403)
+                auth=os.environ.get("STORYOS_WEB_BOOTSTRAP_MYSQL_AUTH","")
+                if not Path(auth).is_absolute():
+                    raise BootstrapBlocked("EPISODE_WRITER_NOT_CONFIGURED",503)
+                writer_file=Path(auth).resolve(strict=True)
+                if (writer_file.name!="bootstrap-mysql-writer.json" or writer_file.parent.name!="web-drafts"
+                    or writer_file.parent.parent.name!=".storyos-tmp" or writer_file.stat().st_size>2048):
+                    raise BootstrapBlocked("EPISODE_WRITER_AUTH_FORBIDDEN",403)
+                writer=json.loads(writer_file.read_text(encoding="utf8"))
+                if (writer.get("database")!="STORY_OS_RUNTIME" or writer.get("host")!="127.0.0.1"
+                    or writer.get("port")!=3307 or not str(writer.get("user","")).startswith("webb_")
+                    or not isinstance(writer.get("password"),str) or len(writer["password"])<32):
+                    raise BootstrapBlocked("EPISODE_WRITER_IDENTITY_FORBIDDEN",403)
+                for key,value in {"STORYOS_MYSQL_HOST":"127.0.0.1","STORYOS_MYSQL_PORT":"3307",
+                                  "STORYOS_MYSQL_DB":"STORY_OS_RUNTIME","STORYOS_MYSQL_USER":writer["user"],
+                                  "STORYOS_MYSQL_PWD":writer["password"],
+                                  "STORYOS_EPISODE_META_STORE_MODE":"mysql"}.items():
+                    os.environ[key]=value
+                result={"status":201,"data":bootstrap_saved_episode(
+                    repo.read(bootstrap.group(1)),body,root=Path(__file__).resolve().parents[1],
+                    admitted=True,claim=repo.reserve_episode_bootstrap,finish=repo.complete_episode_bootstrap)}
+            elif method=="POST" and preflight:
                 result={"status":200,"data":execute_saved_dry_run(
                     repo.read(preflight.group(1)), body, root=Path(__file__).resolve().parents[1])}
             elif method=="GET" and handoff:
@@ -62,6 +88,8 @@ def main():
                 raise DraftWriteError("ROUTE_NOT_FOUND",404)
         finally:
             repo.close()
+    except BootstrapBlocked as exc:
+        result={"status":exc.status,"code":exc.code,"message":exc.code}
     except PreflightBlocked as exc:
         result={"status":exc.status,"code":exc.code,"message":exc.code}
     except DraftWriteError as exc:

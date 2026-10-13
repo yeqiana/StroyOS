@@ -41,3 +41,14 @@
 - R20 只新增一个路由和极少按钮，**没有新表、Writer、调度器、编号、生产任务、Codex 或图片视频生成**。
 - 全部单元/HTTP/浏览器测试依然使用 TEST_ONLY MySQL；正式 CLI 读取预检若发生数据库/脚本错误，直接显示阻断，不可冒充已创建。
 - 必须提醒：单独调用 `story_os.py create`（没有 dry-run）可能进入 Runtime workflow，不能将其当成纯 Episode Bootstrap 暴露给 Web Console。正式创建仍未开放。
+
+## R21：单条受权正式 Episode 初始化
+
+- 复用现有 `story_creator.create_episode` 的跨进程 MySQL 00-XX 编号原子预占、canonical Episode state 和 Runtime Request 初始化，不调用 `production_orchestrator.run_full_auto` 或 Driver。
+- Web Console 每条草稿独立口令和显式确认；后端还需 `STORYOS_WEB_BOOTSTRAP_ENABLE=1`，默认关闭。
+- 创建时重新读取持久化草稿并校验 WDE_、版本、摘要、确认字符串，强制重新执行原生 read-only dry-run（必须 `PLANNED`）。拒绝已存在的同标题或历史 namespace，避免覆盖或重做。
+- 生产 Bootstrap 使用 Git 忽略的 `.storyos-tmp/web-drafts/bootstrap-mysql-writer.json`、`bootstrap-operator-token.txt`；必须是单独 Runtime Writer，不能复用草稿账号。只允许 loopback。
+- 不允许没有原生预检成功的 Episode 创建；不自动启动 Codex、Driver、生图或视频。
+- 实际正式创建只对用户明确选中的真实草稿执行；隔离测试只验证受权控制与纯 Bootstrap 调用合同，不触碰正式 TB_EPISODE。
+
+R21 一次性幂等：直接在现有 WEB_DRAFT_WORKSPACE.IDENTITY_MAP_JSON 内记录 WDE_ 的 PENDING/CREATED 状态，先永久预占原始草稿身份，才调用 canonical creator。失败保留 PENDING，需要人工核对，不允许自动重试和二次创建；无新增数据表。

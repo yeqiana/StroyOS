@@ -20,4 +20,15 @@ process.env.STORYOS_WEB_DRAFTS_OPERATOR_TOKEN=token;
 process.env.STORYOS_WEB_DRAFTS_PYTHON=readFileSync(pythonPath,'utf8').trim();
 const readonly=join(dir,'preflight-mysql-readonly.json');
 if(existsSync(readonly))process.env.STORYOS_WEB_DRAFTS_PREFLIGHT_AUTH=readonly;
+// Production bootstrap remains OFF unless explicitly armed in the host process.
+if(process.env.STORYOS_WEB_BOOTSTRAP_ENABLE==='1'){
+ const key=join(dir,'bootstrap-operator-token.txt');
+ const writer=join(dir,'bootstrap-mysql-writer.json');
+ if(!existsSync(key)||!existsSync(writer)||!existsSync(readonly))throw Error('Missing isolated bootstrap credentials and read-only preflight');
+ const secret=readFileSync(key,'utf8').trim();
+ if(secret.length<32)throw Error('Weak bootstrap operator credential');
+ process.env.STORYOS_WEB_BOOTSTRAP_OPERATOR_TOKEN=secret;
+ process.env.STORYOS_WEB_BOOTSTRAP_MYSQL_AUTH=writer;
+}
+
 await import('../web-console/server/start-web-drafts.mjs');

@@ -2,7 +2,7 @@ import React, {useRef, useState} from 'react';
 import {Button, Modal, Input, Select} from 'antd';
 import {saveTestBackup,listTestBackups,getTestBackup,saveWorkspace,listWorkspaces,getWorkspace} from '../../api/isolatedDraftVault';
 import type {SavedWorkspaceItem} from '../../api/isolatedDraftVault';
-import {saveWebDraft,listWebDrafts,readWebDraft,inspectWebDraftHandoff,runWebDraftDryRun} from '../../api/webDraftApi';
+import {saveWebDraft,listWebDrafts,readWebDraft,inspectWebDraftHandoff,runWebDraftDryRun,bootstrapWebDraftEpisode} from '../../api/webDraftApi';
 import type {HandoffPlan,HandoffItem} from '../../api/webDraftApi';
 import type {Episode,ProjectItem} from '../../types';
 import {createDraftBackup,MAX_BACKUP_CHARS,reviewDraftRestore} from '../../api/localDraftBackup';
@@ -13,6 +13,7 @@ type Props={
 };
 export const LocalDraftSafetyPanel:React.FC<Props>=({episodes,projects,onRestore})=>{
   const fileRef=useRef<HTMLInputElement>(null);
+  const productionSecret=useRef('');
   const [status,setStatus]=useState<string|null>(null);
   const [operatorToken,setOperatorToken]=useState('');
   const [testBusy,setTestBusy]=useState(false);
@@ -91,6 +92,41 @@ export const LocalDraftSafetyPanel:React.FC<Props>=({episodes,projects,onRestore
   };
 
 
+
+  const authorizeEpisodeBootstrap=(plan:HandoffPlan,item:HandoffItem)=>{
+    if(!item.preflight_available)return;
+    productionSecret.current='';
+    Modal.confirm({
+      title:'授权创建正式 Episode（不启动生产）',
+      width:560,
+      content:<div className="text-[12px]">
+        <p>只创建「{item.title}」的 canonical Episode 和初始化资产。会再次运行只读预检；不能修改其他作品，不启动 Driver、Codex 或图片生成。</p>
+        <Input.Password size="small" aria-label="独立正式创建口令"
+          placeholder="输入独立生产创建口令" autoComplete="off"
+          onChange={event=>{productionSecret.current=event.target.value;}}/>
+      </div>,
+      okText:'确认只创建 Episode',cancelText:'取消',
+      onOk:async()=>{
+        if(productionSecret.current.length<32)throw new Error('需要独立生产创建口令');
+        setWebBusy(true);
+        try{
+          const result=await bootstrapWebDraftEpisode(webSecret,productionSecret.current,plan,item);
+          if(!result.canonical_episode_created||result.production_started||
+             result.driver_started||result.model_calls!==0)
+            throw new Error('Episode 回执不符合安全边界');
+          setStatus('正式 Episode 已创建：'+result.episode_namespace+'；Driver 未启动');
+          Modal.info({title:'正式 Episode 创建成功',
+            content:'身份：'+result.episode_namespace+'。已进入 canonical 初始化，尚未启动 Driver 或生图，继续生产需通过原有 Gate。',
+            okText:'关闭'});
+        }catch(e){
+          setStatus('正式 Episode 未创建：'+(e instanceof Error?e.message:'未知错误'));
+          throw e;
+        }finally{productionSecret.current='';setWebBusy(false);}
+      },
+      afterClose:()=>{productionSecret.current='';},
+    });
+  };
+
   const runCanonicalPreflight=(plan:HandoffPlan,item:HandoffItem)=>{
     if(!item.preflight_available)return;
     Modal.confirm({
@@ -130,11 +166,12 @@ export const LocalDraftSafetyPanel:React.FC<Props>=({episodes,projects,onRestore
           <p>服务端工作区 v{plan.workspace_version} · {plan.items.length} 部草稿。可对单条草稿执行原生 create --dry-run，只读检查，不创建正式 Episode、不启动生产。</p>
           {plan.items.map(item=><div key={item.server_draft_id} className="mt-2 border-t border-[var(--border-subtle)] pt-2">
             <strong>{item.title||item.source_draft_id}</strong>
-            <span className="ml-2">{item.preflight_available?'可执行只读预检':'资料待补：'+item.reason}</span>
+            <span className="ml-2">{item.bootstrap_status?('Episode '+item.bootstrap_status+(item.episode_namespace?' · '+item.episode_namespace:'')):(item.preflight_available?'可执行只读预检':'资料待补：'+item.reason)}</span>
             {item.preflight_argv&&<pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap break-all text-[11px]">{JSON.stringify(item.preflight_argv)}</pre>}
             {item.preflight_available&&<Button size="small" disabled={webBusy} onClick={()=>runCanonicalPreflight(plan,item)}>执行真实只读预检</Button>}
+            {item.preflight_available&&<Button size="small" danger disabled={webBusy} onClick={()=>authorizeEpisodeBootstrap(plan,item)}>授权创建 Episode</Button>}
           </div>)}
-          <p className="mt-2">执行正式创建和 Driver 仍需要单独授权，不能通过本按钮启动。</p>
+          <p className="mt-2">正式创建需要独立生产口令；创建成功后仍不会启动 Driver。</p>
         </div>,
         okText:'关闭',
       });

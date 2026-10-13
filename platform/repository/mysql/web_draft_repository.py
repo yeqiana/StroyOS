@@ -1,4 +1,4 @@
-"""StoryOS authorized Web draft writer — separate schema, NO canonical Episode admission.
+"""StoryOS draft workspace persistence with guarded, one-time Episode origin claim.
 
 A Project/Draft server identity here cannot be submitted as TB_EPISODE.EPISODE_ID.
 No route executes production Drivers, Runtime Requests, Attempts, or Provider calls.
@@ -166,3 +166,56 @@ class WebDraftRepository:
         return {"items":[{"workspace_id":r["WORKSPACE_ID"],"version":r["VERSION"],
                           "updated_at":r["UPDATE_TIME"].isoformat()} for r in rows],
                 "canonical_episode_created":False,"production_started":False}
+
+
+    def reserve_episode_bootstrap(self, workspace_id: str, expected_version: int,
+                                  server_draft_id: str, title: str):
+        """Consume a WDE once using the existing workspace identity JSON."""
+        try:
+            self.db.begin()
+            with self.db.cursor() as cur:
+                cur.execute("SELECT VERSION,IDENTITY_MAP_JSON FROM WEB_DRAFT_WORKSPACE "
+                            "WHERE WORKSPACE_ID=%s FOR UPDATE", (workspace_id,))
+                row=cur.fetchone()
+                if not row or row["VERSION"] != expected_version:
+                    fail("EPISODE_DRAFT_STALE",409)
+                raw=row["IDENTITY_MAP_JSON"]
+                mapping=raw if isinstance(raw,dict) else json.loads(raw)
+                if server_draft_id not in mapping.get("drafts",{}).values():
+                    fail("EPISODE_DRAFT_IDENTITY_MISSING",409)
+                claims=mapping.setdefault("episode_bootstraps",{})
+                if server_draft_id in claims:
+                    fail("EPISODE_DRAFT_ALREADY_SUBMITTED",409)
+                claims[server_draft_id]={"status":"PENDING","title":title}
+                cur.execute("UPDATE WEB_DRAFT_WORKSPACE SET IDENTITY_MAP_JSON=%s "
+                            "WHERE WORKSPACE_ID=%s AND VERSION=%s",
+                            (canonical(mapping),workspace_id,expected_version))
+                if cur.rowcount != 1:
+                    fail("EPISODE_DRAFT_STALE",409)
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def complete_episode_bootstrap(self, workspace_id: str,
+                                   server_draft_id: str, namespace: str):
+        try:
+            self.db.begin()
+            with self.db.cursor() as cur:
+                cur.execute("SELECT IDENTITY_MAP_JSON FROM WEB_DRAFT_WORKSPACE "
+                            "WHERE WORKSPACE_ID=%s FOR UPDATE", (workspace_id,))
+                row=cur.fetchone()
+                if not row:
+                    fail("EPISODE_DRAFT_NOT_FOUND",404)
+                raw=row["IDENTITY_MAP_JSON"]
+                mapping=raw if isinstance(raw,dict) else json.loads(raw)
+                claim=mapping.get("episode_bootstraps",{}).get(server_draft_id)
+                if not isinstance(claim,dict) or claim.get("status")!="PENDING":
+                    fail("EPISODE_BOOTSTRAP_CLAIM_MISSING",409)
+                claim.update(status="CREATED",namespace=namespace)
+                cur.execute("UPDATE WEB_DRAFT_WORKSPACE SET IDENTITY_MAP_JSON=%s "
+                            "WHERE WORKSPACE_ID=%s",(canonical(mapping),workspace_id))
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise

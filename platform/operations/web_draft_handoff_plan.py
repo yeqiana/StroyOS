@@ -57,7 +57,13 @@ def compile_handoff_plan(record: dict) -> dict:
             "canonical_episode_created": False,
             "production_started": False,
         }
-        if reason is None:
+        existing = identity_map.get("episode_bootstraps", {}).get(server_id)
+        if isinstance(existing, dict) and existing.get("status") in ("PENDING", "CREATED"):
+            item["preflight_available"] = False
+            item["reason"] = "EPISODE_ALREADY_SUBMITTED"
+            item["bootstrap_status"] = existing["status"]
+            item["episode_namespace"] = existing.get("namespace")
+        if reason is None and item["preflight_available"]:
             item["preflight_argv"] = [
                 "python", "episodes/_system/story_os.py", "create",
                 synopsis.strip(), "--title", title.strip(), "--dry-run", "--json"

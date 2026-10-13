@@ -15,12 +15,13 @@ export class WebDraftBridge {
  }
  execute(method,path,body={}){
   if(this.inflight>=6)return Promise.reject(Object.assign(Error('草稿库繁忙'),{status:429,code:'DRAFT_BUSY'}));
-  if(!['GET','POST','PUT'].includes(method)||!/^\/api\/v1\/web-drafts(?:\/WDW_[a-f0-9-]{36}(?:\/handoff-plan|\/preflight)?)?$/.test(path))
+  if(!['GET','POST','PUT'].includes(method)||!/^\/api\/v1\/web-drafts(?:\/WDW_[a-f0-9-]{36}(?:\/handoff-plan|\/preflight|\/bootstrap)?)?$/.test(path))
     return Promise.reject(Object.assign(Error('路由无效'),{status:404,code:'ROUTE_NOT_FOUND'}));
   const json=JSON.stringify({method,path,body});
   if(Buffer.byteLength(json)>2_100_000)
     return Promise.reject(Object.assign(Error('内容过大'),{status:413,code:'BODY_TOO_LARGE'}));
   this.inflight++;
+  const operationTimeout=path.endsWith('/bootstrap')?75000:path.endsWith('/preflight')?40000:13000;
   return new Promise((resolveResult,reject)=>{
    const env={...process.env,STORYOS_WEB_DRAFTS_AUTH:this.authFile,
      STORYOS_WEB_DRAFTS_TEST_ONLY:this.testOnly?'1':'0',
@@ -29,7 +30,7 @@ export class WebDraftBridge {
      {cwd:this.root,env,windowsHide:true,stdio:['pipe','pipe','pipe']});
    let output='',done=false;
    const end=(err,value)=>{if(done)return;done=true;clearTimeout(timer);this.inflight--;err?reject(err):resolveResult(value);};
-   const timer=setTimeout(()=>{processChild.kill();end(Object.assign(Error('草稿库超时'),{status:503,code:'DRAFT_TIMEOUT'}));},13000);
+   const timer=setTimeout(()=>{processChild.kill();end(Object.assign(Error('草稿库超时'),{status:503,code:'DRAFT_TIMEOUT'}));},operationTimeout);
    processChild.stdout.setEncoding('utf8');
    processChild.stdout.on('data',d=>{output+=d;if(output.length>2_300_000)processChild.kill();});
    processChild.stderr.resume();

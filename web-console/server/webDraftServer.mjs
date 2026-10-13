@@ -26,7 +26,7 @@ async function readJson(req){
   return object;
  }catch{throw fail(400,'INVALID_JSON');}
 }
-export function createWebDraftServer(store,{token,port=19119,allowedBrowserOrigin,backend='mysql8_web_drafts'}={}){
+export function createWebDraftServer(store,{token,port=19119,allowedBrowserOrigin,backend='mysql8_web_drafts',bootstrapToken}={}){
  if((process.env.STORYOS_WEB_DRAFTS_ENABLE!=='1'&&process.env.STORYOS_WEB_DRAFTS_TEST_ONLY!=='1')||typeof token!=='string'||token.length<32)
   throw Error('Explicit authorized draft-only mode and strong operator secret required');
  if(!Number.isSafeInteger(port)||port<1024||port>65535)throw Error('Invalid local port');
@@ -34,6 +34,7 @@ export function createWebDraftServer(store,{token,port=19119,allowedBrowserOrigi
   throw Error('Only loopback browser origins are permitted');
  const origins=new Set([...BASE_ORIGINS,...(allowedBrowserOrigin?[allowedBrowserOrigin]:[])]);
  const sessions=new Map();
+ let bootstrapBusy=false;
  return createServer(async(req,res)=>{
   const host=req.headers.host,origin=req.headers.origin,site=req.headers['sec-fetch-site'];
   if(host!=='127.0.0.1:'+port&&host!=='localhost:'+port){send(res,403,'HOST_FORBIDDEN');return;}
@@ -76,10 +77,22 @@ export function createWebDraftServer(store,{token,port=19119,allowedBrowserOrigi
    if(path===SESSION_ROUTE&&method==='DELETE'){
     sessions.delete(bearer);send(res,200,'OK',{revoked:true});return;
    }
+   const isBootstrap=path.endsWith('/bootstrap');
+   if(isBootstrap){
+    if(method!=='POST')throw fail(405,'METHOD_FORBIDDEN');
+    if(process.env.STORYOS_WEB_DRAFTS_TEST_ONLY==='1'||process.env.STORYOS_WEB_BOOTSTRAP_ENABLE!=='1'
+      ||typeof bootstrapToken!=='string'||bootstrapToken.length<32)throw fail(403,'EPISODE_BOOTSTRAP_DISABLED');
+    if(!equal(req.headers['x-storyos-production-authorization'],bootstrapToken)
+      ||req.headers['x-storyos-production-intent']!=='create-episode-only')throw fail(403,'EPISODE_CREATE_AUTH_REQUIRED');
+   }
    if(method==='DELETE')throw fail(405,'METHOD_FORBIDDEN');
+   if(bootstrapBusy&&(isBootstrap||method==='PUT'))throw fail(409,'EPISODE_BOOTSTRAP_BUSY');
    const body=write?await readJson(req):{};
-   const [status,data]=await store.execute(method,path,body);
-   send(res,status,'OK',data);
+   if(isBootstrap)bootstrapBusy=true;
+   try{
+    const [status,data]=await store.execute(method,path,body);
+    send(res,status,'OK',data);
+   }finally{if(isBootstrap)bootstrapBusy=false;}
   }catch(error){
    const status=Number.isInteger(error.status)&&error.status>=400&&error.status<600?error.status:500;
    send(res,status,error.code||'INTERNAL_ERROR',null,status>=500?'服务内部错误':error.message);
