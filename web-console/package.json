@@ -59,7 +59,8 @@
     "test:r37": "node scripts/test-r37-authority-browser.mjs",
     "test:responsive": "node scripts/test-r17-responsive-browser.mjs",
     "test:r17:persistence": "node scripts/test-r17-persistence-p0.mjs",
-    "test:r17:browser": "node scripts/test-r17-persistence-browser.mjs"
+    "test:r17:browser": "node scripts/test-r17-persistence-browser.mjs",
+    "test:r17:mysql-http": "node scripts/test-r17-real-mysql-api.mjs"
   },
   "dependencies": {
     "@rc-component/motion": "1.3.3",

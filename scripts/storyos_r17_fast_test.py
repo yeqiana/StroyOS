@@ -26,7 +26,7 @@ def run(command: list[str], env: dict[str, str], cwd: Path = ROOT) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="R17 isolated contract fast/stress tests")
-    parser.add_argument("--slot", choices=("mysql", "readonly", "browser-contract", "all"), default="all")
+    parser.add_argument("--slot", choices=("mysql", "readonly", "browser-contract", "http", "all"), default="all")
     parser.add_argument("--stress", action="store_true", help="repeat isolated MySQL concurrency checks")
     args = parser.parse_args()
     env = dict(os.environ)
@@ -37,6 +37,13 @@ def main() -> int:
         for _ in range(5 if args.stress else 1):
             run([sys.executable, "-m", "pytest", "-q",
                  str(TESTS / "test_r17_mysql_test_only_draft.py")], env)
+    if args.slot in ("http", "all"):
+        if not AUTH.is_file():
+            parser.error("Dedicated TEST_ONLY MySQL credential file absent")
+        env["STORYOS_R17_MYSQL_TEST_AUTH"] = str(AUTH)
+        env["STORYOS_R17_PYTHON"] = sys.executable
+        for _ in range(3 if args.stress else 1):
+            run([str(NODE), str(WEB / "scripts" / "test-r17-real-mysql-api.mjs")], env, ROOT)
     if args.slot in ("readonly", "all"):
         run([sys.executable, "-m", "pytest", "-q",
              str(TESTS / "test_r16_readonly_persistence_boundary.py")], env)

@@ -9,6 +9,7 @@ export class TestMysqlBridge {
   if(!credentialFile||!isAbsolute(credentialFile)||basename(credentialFile)!=='mysql-auth.json'
     ||basename(dirname(credentialFile))!=='r17-test-only')throw Error('Explicit test-only auth file required');
   if(!existsSync(credentialFile))throw Error('Test-only MySQL credentials missing');
+  if(!existsSync(resolve(root,'scripts/storyos_r17_vault_cli.py')))throw Error('R17 isolated bridge must run from a valid StoryOS checkout root');
   this.pythonExe=pythonExe;this.credentialFile=credentialFile;this.root=resolve(root);
   this.inflight=0;
  }
