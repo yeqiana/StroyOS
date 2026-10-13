@@ -77,6 +77,18 @@ def build_bundle(frame: str, *, repo: Path = ROOT,
     if shot.get("anchor") != prior or shot.get("frame_id") != "C02-" + frame:
         raise ValueError("M00_R7_SEQUENCE_DEPENDENCY_INVALID")
     anchor, previous = _anchor_image(root, prior)
+    predecessor_review_sha = None
+    if slot == 1:
+        # An artifact/returncode only proves that pixels exist. A bad preceding
+        # visual pair must not automatically unlock further costly generation.
+        prior_review = (root / ".storyos/user-visual-references/test-only-calibration"
+                        / "C02-S01" / "pair-review.json")
+        if not prior_review.is_file():
+            raise ValueError("M00_R7_PREDECESSOR_PAIR_REVIEW_MISSING")
+        verdict = review_pair("S01", repo=root, review=_read(prior_review))
+        if verdict["pixel_review_status"] != "ADVISORY_PAIR_PASS":
+            raise ValueError("M00_R7_PREDECESSOR_PAIR_REVIEW_NOT_PASSED")
+        predecessor_review_sha = r2.digest(prior_review)
     if previous.get("capture_profile") != "CP02":
         raise ValueError("M00_R7_ANCHOR_DEVICE_DRIFT")
     # One scene-content/character reference plus one style-only reference.
@@ -133,6 +145,7 @@ def build_bundle(frame: str, *, repo: Path = ROOT,
         "test_only": True, "sequence_id": cfg["sequence_id"], "frame_id": shot["frame_id"],
         "sequence_config_sha256": r2.digest(config_path), "previous_frame_id": prior,
         "previous_image_sha256": r2.digest(anchor),
+        "predecessor_review_sha256": predecessor_review_sha,
         "device_profile_sha256": physical["sha256"], "capture_device": physical["profile_id"],
         "scene_prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
         "visual_contract_sha256": hashlib.sha256(visual.encode("utf-8")).hexdigest(),

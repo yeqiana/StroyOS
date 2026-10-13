@@ -90,15 +90,48 @@ def test_slot2_story_does_not_replace_production_or_static_contract(workspace):
     assert b["case"]["new_frame_id"] == "C02-S01"
 
 
-def test_second_frame_cannot_dispatch_before_verified_predecessor(workspace):
+def _pass_first_pair_review(workspace):
+    first = _bundle(workspace, "S01")
+    folder = workspace / ".storyos/user-visual-references/test-only-calibration/C02-S01"
+    receipt = folder / "test-only-record.json"
+    data = json.loads(receipt.read_text("utf-8"))
+    data["request_fingerprint"] = first["fingerprint"]
+    data["request_identity"] = first["identity"]
+    receipt.write_text(json.dumps(data), encoding="utf-8")
+    state = seq.review_pair("S01", repo=workspace)
+    review = {
+        "reviewer": "Full-image test fixture", "reviewed_with": "both_full_images",
+        "anchor_sha256": state["anchor_sha256"],
+        "current_sha256": state["current_sha256"],
+        "observations": "Fixture reviewer checked person, camera, bicycle and motion differences in both originals.",
+        "checks": {key: "PASS" for key in seq.CHECKS},
+    }
+    (folder / "pair-review.json").write_text(json.dumps(review), encoding="utf-8")
+    return folder / "pair-review.json"
+
+
+def test_second_frame_needs_verified_previous_image_and_passed_pair_review(workspace):
     with pytest.raises((FileNotFoundError, ValueError)):
         _bundle(workspace, "S02")
     _make_anchor(workspace, "C02-S01")
+    with pytest.raises(ValueError, match="PAIR_REVIEW_MISSING"):
+        _bundle(workspace, "S02")
+    review_path = _pass_first_pair_review(workspace)
     second = _bundle(workspace, "S02")
     assert second["identity"]["previous_frame_id"] == "C02-S01"
+    assert second["identity"]["predecessor_review_sha256"] == hashlib.sha256(review_path.read_bytes()).hexdigest()
     assert "街巷中间" in second["request"]["scene_prompt"]
-    assert "REQUIRED" not in second["fingerprint"]
     assert second["fingerprint"] != _bundle(workspace, "S01")["fingerprint"]
+
+
+def test_failed_previous_pair_blocks_future_generation_even_if_png_is_valid(workspace):
+    _make_anchor(workspace, "C02-S01")
+    review_path = _pass_first_pair_review(workspace)
+    review = json.loads(review_path.read_text("utf-8"))
+    review["checks"]["contact_balance_and_motion_progression"] = "FAIL"
+    review_path.write_text(json.dumps(review), encoding="utf-8")
+    with pytest.raises(ValueError, match="PREDECESSOR_PAIR_REVIEW_NOT_PASSED"):
+        _bundle(workspace, "S02")
 
 
 def test_source_image_tamper_fails_before_model(workspace):
