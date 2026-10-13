@@ -2,6 +2,7 @@ import React, {useRef, useState} from 'react';
 import {Button, Modal, Input, Select} from 'antd';
 import {saveTestBackup,listTestBackups,getTestBackup,saveWorkspace,listWorkspaces,getWorkspace} from '../../api/isolatedDraftVault';
 import type {SavedWorkspaceItem} from '../../api/isolatedDraftVault';
+import {saveWebDraft,listWebDrafts,readWebDraft} from '../../api/webDraftApi';
 import type {Episode,ProjectItem} from '../../types';
 import {createDraftBackup,MAX_BACKUP_CHARS,reviewDraftRestore} from '../../api/localDraftBackup';
 
@@ -23,6 +24,71 @@ export const LocalDraftSafetyPanel:React.FC<Props>=({episodes,projects,onRestore
   });
   const [workspaceItems,setWorkspaceItems]=useState<SavedWorkspaceItem[]>([]);
   const [selectedWorkspaceId,setSelectedWorkspaceId]=useState<string|undefined>();
+
+  const [webSecret,setWebSecret]=useState('');
+  const [webBusy,setWebBusy]=useState(false);
+  const [webItems,setWebItems]=useState<Array<{workspace_id:string;version:number;updated_at:string}>>([]);
+  const [webSelected,setWebSelected]=useState<string|undefined>();
+  const [webCurrent,setWebCurrent]=useState<{workspace_id:string;version:number}|undefined>(()=>{
+    try{
+      const value=JSON.parse(localStorage.getItem('storyos_web_draft_workspace')||'null');
+      if(value&&/^WDW_[a-f0-9-]{36}$/.test(value.workspace_id)
+        &&Number.isSafeInteger(value.version)&&value.version>0)return value;
+    }catch{}
+    return undefined;
+  });
+  const saveOfficialDraft=()=>{
+    Modal.confirm({
+      title:'保存服务端草稿？',
+      content:'将当前浏览器的自建项目和故事草稿存入独立草稿数据库；不创建正式生产 Episode，不启动图片生成。',
+      okText:'保存草稿',cancelText:'取消',
+      onOk:async()=>{
+        setWebBusy(true);
+        try{
+          const result=await saveWebDraft(webSecret,createDraftBackup(episodes,projects),webCurrent);
+          const next={workspace_id:result.workspace_id,version:result.version};
+          localStorage.setItem('storyos_web_draft_workspace',JSON.stringify(next));
+          setWebCurrent(next);
+          setStatus('服务端草稿已保存（v'+result.version+'），未创建正式生产 Episode');
+        }catch(e){setStatus('服务端草稿未保存：'+(e instanceof Error?e.message:'未知错误'));}
+        finally{setWebBusy(false);}
+      }
+    });
+  };
+  const viewOfficialDrafts=async()=>{
+    setWebBusy(true);
+    try{
+      const result=await listWebDrafts(webSecret);
+      setWebItems(result.items);
+      setWebSelected(result.items[0]?.workspace_id);
+      setStatus('服务端共有 '+result.items.length+' 份草稿工作区；未启动生产');
+    }catch(e){setStatus('草稿列表不可用：'+(e instanceof Error?e.message:'未知错误'));}
+    finally{setWebBusy(false);}
+  };
+  const restoreOfficialDraft=async()=>{
+    if(!webSelected)return;
+    setWebBusy(true);
+    try{
+      const record=await readWebDraft(webSecret,webSelected);
+      const raw=JSON.stringify(record.backup);
+      const check=reviewDraftRestore(raw,episodes,projects);
+      if(!check.ok){setStatus(check.reason);return;}
+      Modal.confirm({
+        title:'将服务端草稿恢复到此浏览器？',
+        content:'新增 '+check.projectCount+' 个项目、'+check.draftCount+' 部草稿；已存在的 ID 一律拒绝覆盖。',
+        okText:'确认恢复',cancelText:'取消',
+        onOk:()=>{
+          onRestore(raw);
+          const next={workspace_id:record.workspace_id,version:record.version};
+          setWebCurrent(next);
+          localStorage.setItem('storyos_web_draft_workspace',JSON.stringify(next));
+          setStatus('已从服务端恢复草稿（v'+record.version+'），未触发生产');
+        }
+      });
+    }catch(e){setStatus('服务端草稿恢复失败：'+(e instanceof Error?e.message:'未知错误'));}
+    finally{setWebBusy(false);}
+  };
+
   const drafts=episodes.filter(x=>/^ep-(home|proj)-/.test(x.id));
 
   // Isolated SQLite test vault only; never creates a canonical Project/Episode.
@@ -193,6 +259,24 @@ export const LocalDraftSafetyPanel:React.FC<Props>=({episodes,projects,onRestore
       <Button size="small" disabled={testBusy||!selectedWorkspaceId||operatorToken.trim().length<32}
         onClick={()=>void restoreWorkspace()}>恢复选中工作区</Button>
       {savedWorkspace&&<span className="text-[11px] text-[var(--text-tertiary)]">本机正在编辑 v{savedWorkspace.version}</span>}
+    </div>
+
+    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[var(--border-subtle)] pt-3">
+      <span className="text-[11px] text-[var(--text-tertiary)]">服务端草稿 · 正式保存，不启动生产</span>
+      <Input.Password size="small" aria-label="服务端草稿操作口令" placeholder="草稿操作口令"
+        className="!w-[200px]" autoComplete="off" value={webSecret}
+        onChange={event=>setWebSecret(event.target.value)}/>
+      <Button size="small" disabled={webBusy||webSecret.trim().length<32}
+        onClick={saveOfficialDraft}>保存到服务端</Button>
+      <Button size="small" disabled={webBusy||webSecret.trim().length<32}
+        onClick={()=>void viewOfficialDrafts()}>查看服务端草稿</Button>
+      {webItems.length>0&&<Select size="small" aria-label="选择正式服务端草稿"
+        value={webSelected} className="!w-[210px]" onChange={setWebSelected}
+        options={webItems.map(item=>({value:item.workspace_id,
+          label:item.workspace_id.slice(0,18)+' · v'+item.version}))}/>}
+      <Button size="small" disabled={webBusy||!webSelected||webSecret.trim().length<32}
+        onClick={()=>void restoreOfficialDraft()}>恢复选中草稿</Button>
+      {webCurrent&&<span className="text-[11px] text-[var(--text-tertiary)]">当前 v{webCurrent.version}</span>}
     </div>
     {status&&<p role="status" className="mt-2 text-[11px] text-[var(--text-secondary)]">{status}</p>}
     <p className="mt-2 text-[11px] text-[var(--text-tertiary)]">
