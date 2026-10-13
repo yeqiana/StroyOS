@@ -25,16 +25,24 @@ def _provider_generate_with_capacity(ep, lease: dict | None, fencing_token: int 
         raise authority.AttemptDenied("GENERATION_ATTEMPT_LEASE_REQUIRED")
     committed = authority.commit_dispatch(ep, lease, int(fencing_token), provider=provider)
     lease["_phase"] = "DISPATCH_COMMITTED"
+    provider_returned = False
     try:
         # A newer Writer/Attempt fence may have appeared after the irreversible
         # dispatch commit but BEFORE any paid Provider operation.
         authority.validate_committed_dispatch(ep, committed, int(fencing_token))
         result = call()
+        provider_returned = True
         authority.mark_observed(ep, committed, int(fencing_token))
         return result
     except BaseException as exc:
         try:
-            authority.fail_after_dispatch(ep, committed, int(fencing_token), type(exc).__name__)
+            if provider_returned:
+                # Provider returned success; only recording its receipt failed.
+                # Calling this FAILED would invite a paid duplicate retry.
+                authority.mark_outcome_unknown(
+                    ep, committed, int(fencing_token), "PROVIDER_RECEIPT_PERSISTENCE_FAILED")
+            else:
+                authority.fail_after_dispatch(ep, committed, int(fencing_token), type(exc).__name__)
         except Exception:
             # The durable dispatch-commit already consumed this slot. A failure
             # to record the terminal classification must never refund it.
@@ -63,19 +71,25 @@ def _provider_generate_many_with_capacity(ep, leases: list[dict] | None, provide
     if len(keys) != len(leases):
         raise authority.AttemptDenied("GENERATION_ATTEMPT_DUPLICATE_ASSET_IN_BATCH")
     committed = []
+    provider_returned = False
     try:
         committed = authority.commit_dispatch_many(ep, leases, provider=provider)
         for lease in leases:
             lease["_phase"] = "DISPATCH_COMMITTED"
         authority.validate_committed_dispatch_many(ep, committed)
         result = call()
+        provider_returned = True
         for lease in committed:
             authority.mark_observed(ep, lease, lease["fencing_token"])
         return result
     except BaseException as exc:
         for lease in committed:
             try:
-                authority.fail_after_dispatch(ep, lease, lease["fencing_token"], type(exc).__name__)
+                if provider_returned:
+                    authority.mark_outcome_unknown(
+                        ep, lease, lease["fencing_token"], "BATCH_PROVIDER_RECEIPT_PERSISTENCE_FAILED")
+                else:
+                    authority.fail_after_dispatch(ep, lease, lease["fencing_token"], type(exc).__name__)
             except Exception:
                 pass
             lease["_phase"] = "TERMINAL"

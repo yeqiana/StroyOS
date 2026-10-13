@@ -49,6 +49,13 @@
 - Frame01 Canary 需要双次只读 Native Preflight 与 Episode 证据身份一致，不可把 EVIDENCE_ONLY 当作生图权限。
 - 每槽需 RED→GREEN 极速测试：`python scripts/storyos_autonomy_fast_test.py --slot dispatch-fence|carrier-integrity|frame01-fence|r4-integration`；合并 `--slot all`、完成 `--slot all --stress`，见 `docs/StoryOS_R4_四槽自治二次Fence与极速验收_20261013.md`。
 
+## R5 原生 Codex、历史治理、回执 UNKNOWN 与极速测试
+
+- 退役清理仅可用 `scripts/storyos_retired_worktree_gc.py` 先 `plan`/ `branches-plan`，再明确 `--ack-retired-cleanup` 执行；历史 Worktree 须合并到本地+远端主线、无未追踪/未提交文件、72h 以上、无运行进程、来源于受控直接子目录。严禁 force、`git branch -D`、误删 archive、跨库目录和非本仓数据。
+- Provider 已返回但持久化回执失败时归类 `OUTCOME_UNKNOWN` 而非可重复普通失败，Generation Attempt 已消耗绝不退款；原生单帧和批量一致。
+- `scripts/storyos_autonomy_native_ready.py` 只读检查本机 Codex CLI 参数和交互账号 Runner 授权上下文；`NATIVE_AUTH_CONTEXT_READY` **不能作为真实模型调用能力或生产授权**。
+- 第五轮各槽每推进一次必须跑 `python scripts/storyos_autonomy_fast_test.py --slot retirement|provider-receipt|native-login|r5-integrated`，最后跑 `--slot all` 和 `--slot all --stress`；见 `docs/StoryOS_R5_四槽治理_原生Codex与极速验收_20261013.md`。
+
 ## Story OS 当前执行入口
 
 涉及 `story` 分支的选题、分镜、出图、字幕、审核、发布、复盘任务，Codex 必须先读取仓库根目录 `START_HERE.md`，再读取 `SKILL.md`。

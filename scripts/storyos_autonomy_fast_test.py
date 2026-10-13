@@ -35,6 +35,12 @@ SLOTS = {
     "carrier-integrity": ["tests/system/test_storyos_autonomy_r4_carrier.py"],
     "frame01-fence": ["tests/system/test_storyos_autonomy_r4_canary.py"],
     "r4-integration": ["tests/system/test_storyos_autonomy_r4_integration.py"],
+    # R5 four-slot delivery: Git governance, receipt authority, native login,
+    # and cross-boundary integration. No task runs a paid image Provider.
+    "retirement": ["tests/system/test_storyos_autonomy_r5_retirement.py"],
+    "provider-receipt": ["tests/system/test_storyos_autonomy_r5_provider_receipt.py"],
+    "native-login": ["tests/system/test_storyos_autonomy_r5_native_login.py"],
+    "r5-integrated": ["tests/system/test_storyos_autonomy_r5_integration.py"],
 }
 FULL_STRESS = [
     "tests/platform/test_runtime_state_store.py",
