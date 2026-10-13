@@ -53,6 +53,25 @@ export interface RecordedReviewEvidence {
 }
 
 // GET /api/v1/runtime/status?episode=... -> data (detail 投影)
+/** SELECT-only observed database rows; never task-dispatch or Worker authority. */
+export interface LocalMySqlMonitor {
+  scope: 'MYSQL_EPISODE_READ_ONLY';
+  read_only: true;
+  available: boolean;
+  reason: string | null;
+  observed_at: string | null;
+  database_identity_verified: boolean;
+  read_only_grants_verified: boolean;
+  records_limit_per_table: number;
+  may_be_truncated: boolean;
+  task_records: Array<{task_type: string | null; status: string | null; frame: number | null; attempt_no: number | null; updated_at: string | null}>;
+  production_attempt_records: Array<{frame: number | null; attempt_no: number | null; kind: string | null; status: string | null; error_code: string | null; elapsed_ms: number | null; recorded_at: string | null}>;
+  generation_attempt_records: Array<{frame: number | null; attempt_index: number | null; status: string | null; failure_class: string | null; dispatch_recorded_at: string | null; terminal_recorded_at: string | null}>;
+  writer_owner_verified: false;
+  worker_execution_verified: false;
+  production_authorization: false;
+}
+
 export interface RuntimeStatusDetail {
   schema_version?: number;
   observed_at?: string | null;
@@ -66,6 +85,8 @@ export interface RuntimeStatusDetail {
   monitoring_scope?: 'RECORDED_FILES_ONLY' | string;
   read_only?: boolean;
   frame_records?: RecordedFrameEvidence[];
+  mysql_monitor?: LocalMySqlMonitor;
+  writer_owner_observation?: {status: string; reason: string; read_only: true};
   queue_summary?: {recorded_items: number; status_counts: Record<string, number>; recorded_at?: string | null} | null;
   checkpoint_steps?: RecordedCheckpointStep[];
   review_records?: Record<string, RecordedReviewEvidence>;

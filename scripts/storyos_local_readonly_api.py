@@ -23,6 +23,7 @@ from platform.api.controllers import RuntimeStatusApiController, RuntimeAuthorit
 from platform.operations.runtime_authority_evidence import RuntimeAuthorityEvidenceService
 from platform.api.http_server import PlatformApiDispatcher, PlatformApiRequestHandler, build_http_server
 from platform.operations.local_episode_monitoring import read_recorded_production
+from platform.operations.local_mysql_monitor_readonly import observe_mysql_episode, empty as empty_mysql_monitor
 from platform.operations.local_worker_heartbeat_readonly import observe_local_redis_heartbeats
 
 SOURCE = "local_workspace_episode_state_file"
@@ -101,6 +102,7 @@ class LocalEpisodeFileStatuses:
         if item is None:
             return None
         recorded = {}
+        mysql_snapshot = empty_mysql_monitor("EPISODE_IDENTITY_UNVERIFIED")
         for state_file in self.episodes.glob("*/**/meta/episode-state.json"):
             try:
                 if state_file.is_symlink() or not state_file.is_file():
@@ -112,6 +114,10 @@ class LocalEpisodeFileStatuses:
                 candidate_ref = "LOCAL_" + hashlib.sha256(relative.encode("utf-8")).hexdigest()[:24]
                 if candidate_ref == episode:
                     recorded = read_recorded_production(resolved.parent)
+                    mysql_snapshot = observe_mysql_episode(
+                        resolved.parent.parent.relative_to(self.episodes).as_posix(),
+                        str(item.get("business_episode_id") or ""),
+                    )
                     break
             except OSError:
                 continue
@@ -126,6 +132,12 @@ class LocalEpisodeFileStatuses:
             "needs_user": None,
             "auto_recoverable": None,
             "heartbeat": {"health": "unknown"},
+            "mysql_monitor": mysql_snapshot,
+            "writer_owner_observation": {
+                "status": "UNVERIFIED",
+                "reason": "OS_LOCK_HOLDER_UNAVAILABLE_WITHOUT_AUTHORITY_OPERATION",
+                "read_only": True,
+            },
             **recorded,
         }
 

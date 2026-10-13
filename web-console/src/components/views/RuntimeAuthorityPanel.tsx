@@ -179,6 +179,70 @@ export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMor
         </section>
       )}
 
+      {detailIsCurrent && visibleDetail?.mysql_monitor && (
+        <section aria-label="MySQL真实生产任务只读监控" className="space-y-3 border-t border-[var(--border-subtle)] pt-4">
+          <h4 className="font-medium">MySQL Task / Attempt 只读证据</h4>
+          {!visibleDetail.mysql_monitor.available ? (
+            <p role="status" className="text-xs text-[var(--text-tertiary)]">
+              专用 MySQL 只读连接尚未证实：{visibleDetail.mysql_monitor.reason === 'READ_ONLY_MYSQL_NOT_ENABLED'
+                ? '未授权开启'
+                : visibleDetail.mysql_monitor.reason === 'DEDICATED_SELECT_ONLY_ACCOUNT_NOT_CONFIGURED'
+                  ? '未配置专用 SELECT 账号'
+                  : visibleDetail.mysql_monitor.reason === 'EPISODE_IDENTITY_MISMATCH'
+                    ? '作品身份未匹配，已禁止查询'
+                    : visibleDetail.mysql_monitor.reason === 'SELECT_ONLY_GRANTS_NOT_VERIFIED'
+                      ? '账号最小权限未核实'
+                      : '数据源不可用或身份未核验'}。以下不假设数据库里没有任务。
+            </p>
+          ) : <>
+            <p className="text-xs text-[var(--text-secondary)]">
+              数据库身份与只读事务已核验 · 每类最多 {visibleDetail.mysql_monitor.records_limit_per_table} 条记录 · 不保证完整历史。
+              <span className="ml-2 text-[var(--warning)]">数据库显示 RUNNING 也不是 Worker 在线证明。</span>
+            </p>
+            <div className="flex flex-wrap gap-4 text-xs text-[var(--text-secondary)]">
+              <span>Task 记录 {visibleDetail.mysql_monitor.task_records.length}</span>
+              <span>Production Attempt {visibleDetail.mysql_monitor.production_attempt_records.length}</span>
+              <span>Generation Attempt {visibleDetail.mysql_monitor.generation_attempt_records.length}</span>
+            </div>
+            <h5 className="text-xs font-medium">最近 Task</h5>
+            <Table size="small" pagination={false} rowKey={(_,i)=>String(i)} scroll={{x:550,y:225}}
+              dataSource={visibleDetail.mysql_monitor.task_records}
+              locale={{emptyText:'已授权查询，但当前作品无匹配 Task 记录'}}
+              columns={[
+                {title:'任务类型',dataIndex:'task_type',render:(v:string|null)=>v||'未知'},
+                {title:'帧',dataIndex:'frame',width:52,render:(v:number|null)=>v??'—'},
+                {title:'保存的状态',dataIndex:'status',render:(v:string|null)=>v||'未知'},
+                {title:'尝试编号',dataIndex:'attempt_no',width:90,render:(v:number|null)=>v??'—'}
+              ]}/>
+            <h5 className="text-xs font-medium">逐帧生产 Attempt</h5>
+            <Table size="small" pagination={false} rowKey={(_,i)=>String(i)} scroll={{x:620,y:225}}
+              dataSource={visibleDetail.mysql_monitor.production_attempt_records}
+              locale={{emptyText:'没有匹配的逐帧生产 Attempt 记录'}}
+              columns={[
+                {title:'帧',dataIndex:'frame',width:52,render:(v:number|null)=>v??'—'},
+                {title:'序号',dataIndex:'attempt_no',width:62,render:(v:number|null)=>v??'—'},
+                {title:'类型',dataIndex:'kind',render:(v:string|null)=>v||'—'},
+                {title:'结果',dataIndex:'status',render:(v:string|null)=>v||'—'},
+                {title:'错误码',dataIndex:'error_code',render:(v:string|null)=>v||'未记录'},
+                {title:'耗时(ms)',dataIndex:'elapsed_ms',width:98,render:(v:number|null)=>v??'—'}
+              ]}/>
+            <h5 className="text-xs font-medium">真实调度 Generation Attempt</h5>
+            <Table size="small" pagination={false} rowKey={(_,i)=>String(i)} scroll={{x:590,y:225}}
+              dataSource={visibleDetail.mysql_monitor.generation_attempt_records}
+              locale={{emptyText:'没有匹配的真实 Generation Attempt 记录'}}
+              columns={[
+                {title:'帧',dataIndex:'frame',width:52,render:(v:number|null)=>v??'—'},
+                {title:'序号',dataIndex:'attempt_index',width:68,render:(v:number|null)=>v??'—'},
+                {title:'记录状态',dataIndex:'status',render:(v:string|null)=>v||'—'},
+                {title:'失败类别',dataIndex:'failure_class',render:(v:string|null)=>v||'未记录'}
+              ]}/>
+          </>}
+          <p className="text-[11px] text-[var(--text-tertiary)]">
+            Writer 执行权：未验证。不会通过探测或占用生产 OS 文件锁来判断 Writer 是否在线。
+          </p>
+        </section>
+      )}
+
       <RuntimeRecoveryInsight episodeRef={ref || ""} detail={visibleDetail} source={selected.state_source} detailLoaded={detailIsCurrent} />
     </section></Drawer>}
   </section>;
