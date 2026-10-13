@@ -449,6 +449,7 @@ export default function App() {
                   setCurrentTab('workbench');
                 }}
                 onGoToWorkbench={() => setCurrentTab('workbench')}
+                onGoToMonitor={() => setCurrentTab('production_monitor')}
                 onNewStoryClick={() => handleCreateStoryFromHome()}
               /></AntdSurface>
             </div>
