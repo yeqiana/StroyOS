@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {Button, Drawer, Pagination, Segmented, Select} from 'antd';
-import { AlertCircle, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock3, ExternalLink, Image as ImageIcon, Pin, PinOff, ShieldAlert, SlidersHorizontal } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock3, Copy, ExternalLink, Image as ImageIcon, Pin, PinOff, ShieldAlert, SlidersHorizontal } from 'lucide-react';
 import { Episode } from '../types';
 import {useLocalApprovedMedia} from '../api/localApprovedMedia';
 
@@ -15,7 +15,15 @@ interface ActivityStreamProps {
 const hasVerifiedPreview=(url?:string)=>Boolean(url && !url.startsWith('data:image/svg+xml') && !url.includes('/placeholder'));
 const verdictColor: Record<string,string> = { PASS: 'text-[var(--success)]', WARN: 'text-[var(--warning)]', FAIL: 'text-[var(--danger)]' };
 type FrameSelection = {frame:number;kind:'approved'|'batch'};
-export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode }) => {
+export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode, onShowToast }) => {
+  const copyBatchPrompt = async (prompt: string) => {
+    try {
+      await navigator.clipboard.writeText(prompt);
+      onShowToast('已复制当前批次的历史 Prompt');
+    } catch {
+      onShowToast('复制失败，请在分镜详情中手动选择 Prompt');
+    }
+  };
   const [expanded, setExpanded] = useState(false);
   const [reviewPage, setReviewPage] = useState(1);
   const [reviewVerdict, setReviewVerdict] = useState<'ALL'|'PASS'|'WARN'|'FAIL'|'NEEDS_ATTENTION'>('ALL');
@@ -140,10 +148,15 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode })
         {activeCanvasMode==='approved' && approved?.frames.length ? <>
           <p className="mb-3 text-[11px] text-[var(--text-tertiary)]">本机 media/approved · 已批准图片 · 点击分镜查看检视详情</p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 2xl:grid-cols-4">
-            {approved.frames.map(frame=><button type="button" key={frame.frame} onClick={()=>setSelectedFrame({frame:frame.frame,kind:'approved'})} aria-label={'检视已批准 Frame '+frame.frame} aria-pressed={selectedFrame?.kind==='approved'&&selectedFrame.frame===frame.frame} className={`group min-w-0 overflow-hidden rounded-[5px] border bg-[var(--bg-elevated)] text-left hover:border-[var(--info)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus)] ${selectedFrame?.kind==='approved'&&selectedFrame.frame===frame.frame?'border-[var(--info)]':'border-[var(--border-subtle)]'}`}>
+            {approved.frames.map(frame=><div key={frame.frame} className="group relative min-w-0"><button type="button" onClick={()=>setSelectedFrame({frame:frame.frame,kind:'approved'})} aria-label={'检视已批准 Frame '+frame.frame} aria-pressed={selectedFrame?.kind==='approved'&&selectedFrame.frame===frame.frame} className={`group min-w-0 overflow-hidden rounded-[5px] border bg-[var(--bg-elevated)] text-left hover:border-[var(--info)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus)] ${selectedFrame?.kind==='approved'&&selectedFrame.frame===frame.frame?'border-[var(--info)]':'border-[var(--border-subtle)]'}`}>
               <div className="aspect-[4/5] overflow-hidden"><img loading="lazy" src={frame.url} alt={'已批准 Frame '+frame.frame} className="h-full w-full object-cover"/></div>
               <div className="flex items-center justify-between gap-2 px-2 py-1.5 text-[11px]"><span className="font-medium">Frame {String(frame.frame).padStart(2,'0')}</span><span className="text-[var(--text-tertiary)]">{pinnedFrame?.kind==='approved'&&pinnedFrame.frame===frame.frame?'对照固定':'已批准'}</span></div>
-            </button>)}
+            </button>
+            {hasVerifiedPreview(frame.url)&&<button type="button" aria-label={'固定已批准 Frame '+frame.frame+' 以对照'} title={'固定 Frame '+frame.frame+' 以对照'} onClick={()=>setPinnedFrame({frame:frame.frame,kind:'approved'})}
+              className="absolute right-2 top-2 z-10 inline-flex min-h-8 items-center gap-1 rounded-[4px] border border-[var(--border-normal)] bg-[var(--bg-elevated)] px-2 text-[11px] text-[var(--text-primary)] opacity-100 hover:border-[var(--info)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus)] md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+              <Pin size={12}/>固定对照
+            </button>}
+            </div>)}
           </div>
         </> : <>
         {!batch?.items.length ? <div className="flex items-center gap-2 py-5 text-[13px] text-[var(--text-secondary)]"><ImageIcon size={18}/> 暂无可预览的批次帧，生成操作需使用已授权的 Runtime。</div> :
@@ -212,8 +225,15 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode })
           <div className="grid grid-cols-[100px_minmax(0,1fr)] gap-3 py-3"><dt className="text-[var(--text-tertiary)]">帧编号</dt><dd className="tabular-nums">{selectedFrame.frame}</dd></div>
           <div className="grid grid-cols-[100px_minmax(0,1fr)] gap-3 py-3"><dt className="text-[var(--text-tertiary)]">证据状态</dt><dd>{selectedFrame.kind==='approved'?'approved':selectedBatchFrame?.status||'未提供'}</dd></div>
           {selectedReview&&<div className="grid grid-cols-[100px_minmax(0,1fr)] gap-3 py-3"><dt className="text-[var(--text-tertiary)]">审核结论</dt><dd><span className={`font-medium ${verdictColor[selectedReview.verdict]}`}>{selectedReview.verdict}</span><p className="mt-1 whitespace-pre-wrap break-words leading-5 text-[var(--text-secondary)]">{selectedReview.comment||selectedReview.issueTags?.join('、')||'未记录审核备注'}</p></dd></div>}
-          {selectedBatchFrame?.prompt&&<div className="grid grid-cols-[100px_minmax(0,1fr)] gap-3 py-3"><dt className="text-[var(--text-tertiary)]">历史 Prompt</dt><dd className="whitespace-pre-wrap break-words leading-5">{selectedBatchFrame.prompt}</dd></div>}
+          {selectedBatchFrame?.prompt&&<div className="grid grid-cols-[100px_minmax(0,1fr)] gap-3 py-3"><dt className="text-[var(--text-tertiary)]">历史 Prompt</dt><dd className="min-w-0"><div className="mb-2 flex justify-end"><Button size="small" icon={<Copy size={12}/>} onClick={()=>void copyBatchPrompt(selectedBatchFrame.prompt)}>复制 Prompt</Button></div><p className="whitespace-pre-wrap break-words leading-5">{selectedBatchFrame.prompt}</p></dd></div>}
         </dl>
+        <details aria-label="作品级参考素材" className="border-y border-[var(--border-subtle)] py-3 text-[12px]">
+          <summary className="cursor-pointer font-medium text-[var(--text-primary)]">作品参考 · {activeEpisode.characters.length} 人物 · {activeEpisode.visualLocks.length} 视觉锚点</summary>
+          <p className="mt-2 text-[11px] leading-5 text-[var(--text-tertiary)]">仅展示当前作品快照中的参考信息；不代表素材已绑定此 Frame，也不构成正式生产授权。</p>
+          {activeEpisode.characters.length>0&&<p className="mt-2 break-words text-[var(--text-secondary)]">人物：{activeEpisode.characters.map(character=>character.name).join('、')}</p>}
+          {activeEpisode.visualLocks.length>0&&<p className="mt-2 break-words text-[var(--text-secondary)]">视觉锚点：{activeEpisode.visualLocks.map(lock=>lock.title).join('、')}</p>}
+          {activeEpisode.characters.length===0&&activeEpisode.visualLocks.length===0&&<p className="mt-2 text-[var(--text-tertiary)]">当前快照未提供人物或视觉锚点。</p>}
+        </details>
         {selectedImageUrl&&<a href={selectedImageUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-[12px] text-[var(--info)]">查看图片原始证据 <ExternalLink size={14}/></a>}
         <p className="border-t border-[var(--border-subtle)] pt-3 text-[11px] text-[var(--text-tertiary)]">本检视器只读。正式重绘、审核、生成与返修须由有权限的 Runtime 接口执行。</p>
       </section>}
