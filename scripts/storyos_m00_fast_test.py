@@ -12,6 +12,9 @@ GENRE_TEST = ROOT / "episodes" / "_system" / "test_m00_genre_neutral.py"
 PIXEL_TEST = ROOT / "tests" / "system" / "test_m00_pixel_audit.py"
 REFERENCE_TEST = ROOT / "tests" / "system" / "test_m00_user_reference_staging.py"
 TRANSPORT_TEST = ROOT / "tests" / "system" / "test_m00_style_reference_transport.py"
+DEVICE_TEST = ROOT / "tests" / "system" / "test_m00_capture_profile_projection.py"
+EVENT_MOTION_TEST = ROOT / "tests" / "system" / "test_m00_event_motion_fidelity.py"
+RECOVERY_TEST = ROOT / "tests" / "system" / "test_m00_calibration_receipts.py"
 
 if __name__ == "__main__":
     print("M00_FAST_TEST (contracts + actual-pixel safety, no provider, no image attempts)", flush=True)
@@ -20,6 +23,9 @@ if __name__ == "__main__":
         [sys.executable, str(PIXEL_TEST), "-v"],
         [sys.executable, "-m", "pytest", "-q", str(REFERENCE_TEST)],
         [sys.executable, "-m", "pytest", "-q", str(TRANSPORT_TEST)],
+        [sys.executable, "-m", "pytest", "-q", str(DEVICE_TEST)],
+        [sys.executable, "-m", "pytest", "-q", str(EVENT_MOTION_TEST)],
+        [sys.executable, "-m", "pytest", "-q", str(RECOVERY_TEST)],
     )
     for argv in commands:
         rc = subprocess.call(argv, cwd=ROOT)

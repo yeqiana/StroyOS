@@ -44,6 +44,23 @@ _PROJECT = (
     "defects_must_have_physical_cause",
     "lock_texture_not_scene",
     "anti_homogeneity_rule",
+    "capture_device_id",
+    "capture_device_source",
+    "capture_device_sha256",
+    "capture_device_era_hint",
+    "capture_device_dynamic_range",
+    "capture_device_low_light",
+    "capture_device_motion",
+    "capture_device_focus",
+    "capture_device_white_balance",
+    "capture_device_compression",
+    "capture_device_edge_behavior",
+    "capture_device_simulated_capture_encoding",
+    "capture_device_fake_vintage_noise",
+    "capture_device_fake_low_resolution",
+    "capture_device_physical_interpretation",
+    "capture_device_priority",
+    "capture_device_defect_policy",
 )
 
 
@@ -67,6 +84,12 @@ def locked_capture_projection(visual_contract: str) -> str:
             missing.append(key)
     if missing:
         raise ValueError("M00_STYLE_GUARD_SOURCE_INVALID:" + ",".join(missing))
+    # New compiled contracts must carry a complete bounded device identity;
+    # older frozen M00 receipts remain replayable without silent substitution.
+    if any(k.startswith("capture_device_") for k in fields):
+        for key in ("capture_device_id", "capture_device_sha256", "capture_device_priority"):
+            if not fields.get(key):
+                raise ValueError("M00_CAPTURE_DEVICE_PROJECTION_INCOMPLETE:" + key)
     return "\n".join(f"{key}={fields[key]}" for key in _PROJECT if key in fields)
 
 

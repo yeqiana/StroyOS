@@ -4,6 +4,7 @@ import hashlib, json
 from pathlib import Path
 import visual_profile as base
 import capture_grammar_v228
+import m00_capture_profile_contract
 
 ROOT = base.ROOT
 META_REL = Path("meta/visual-profile.json")
@@ -128,6 +129,11 @@ def compile_prompt_contract(ep: Path) -> dict:
             lines.append("anti_homogeneity_rule=" + str(neutrality["rule"]))
 
     capture = capture_grammar_v228.compile_capture_contract(ep)
+    # Device selection is Episode-scoped; preserve the original profile SHA.
+    # Never turn M00 into a globally locked old-digital/phone-era preset.
+    device = m00_capture_profile_contract.compile_device_contract(profile.get("capture_profile") or "auto")
+    lines += ["----- LOCKED DEVICE CAPTURE PHYSICS -----", device["text"],
+              "----- END LOCKED DEVICE CAPTURE PHYSICS -----"]
     lines += [
         "----- GLOBAL CAPTURE GRAMMAR -----",
         capture["text"],
@@ -138,6 +144,7 @@ def compile_prompt_contract(ep: Path) -> dict:
     return {
         **profile,
         "profile_sha256": sha256_file(p),
+        "capture_device_contract": {k: device[k] for k in ("profile_id", "path", "sha256")},
         "capture_grammar": {
             "grammar_id": capture["grammar_id"],
             "grammar_path": capture["grammar_path"],

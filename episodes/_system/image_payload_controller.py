@@ -17,6 +17,7 @@ from typing import Any
 import codex_critic_runner
 import image_payload_request
 import m00_style_guard
+import m00_scene_fidelity_guard
 import logical_asset_identity
 import model_policy
 import runtime_observability
@@ -209,6 +210,17 @@ def _build_validated_request(*, ep: Path, identity: dict, fields: dict,
     # The effective prompt is part of the canonical Payload SHA/fingerprint.
     effective_scene_prompt = m00_style_guard.enforce(
         scene_prompt=controller_output["scene_prompt"],
+        visual_contract=str(controller_input.get("visual_contract") or ""),
+    )
+    # The controller may omit the event when polishing style. Keep the original
+    # Story-owned event observable without inventing content or forcing motion.
+    effective_scene_prompt = m00_scene_fidelity_guard.enforce_event(
+        scene_prompt=effective_scene_prompt,
+        source_scene_prompt=str(controller_input.get("source_scene_prompt") or ""),
+        visual_contract=str(controller_input.get("visual_contract") or ""),
+    )
+    effective_scene_prompt = m00_scene_fidelity_guard.enforce_motion(
+        scene_prompt=effective_scene_prompt,
         visual_contract=str(controller_input.get("visual_contract") or ""),
     )
     request = image_payload_request.build_request(
