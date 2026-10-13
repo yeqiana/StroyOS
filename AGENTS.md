@@ -92,6 +92,13 @@
 - `storyos_story_review_readonly.py` 是原生环境、MySQL Stage 与真实审核请求的双核验只读诊断；`storyos_autonomy_production_probe.py` 的 `NEVER_STARTED` 只能解释为丢失 Driver runtime 证据，不能推断首次启动未发生。`unverified_status_assets` 与 UNKNOWN paid receipts 必须人工/权威对账。
 - R10 四槽独立极速：`--slot story-critic-authority|driver-lifecycle|paid-attempt-proof|r10-integrated`；最终 `--slot all --stress`；详情 `docs/StoryOS_R10_真实StoryCritic权威与四槽闭环_20261013.md`。
 
+## R11 真实生产：原字节迁移可修复，rubric SHA 漂移禁止旧 PASS 冒充新审核
+
+- `storyos_manifest_relocation.py` 对旧 Episode 文件路径修复必须匹配 69e7a2a8 Git blob old/new 身份，以及独立 Critic 请求冻结 story/board SHA。生产版只允许在无活跃 Driver/用户明确授权后修复 release-manifest.artifacts 三个原字节路径，不能改动 Reviewer、故事、分镜、MySQL 或图片。
+- 旧 `story-semantic` 官方 Review 文件即使存在且原 payload/provenance 校验通过，如果第 2 次冻结来源（例如制作规范）SHA 不同于当前正式规范，`storyos_relocated_review_recovery.py` 必须返回 `CRITIC_SOURCE_SHA_DRIFT`，不能从历史 FINALIZED 拼装新的 PASS；需独立真实审核与当前 Policy Authority。
+- `storyos_autonomy_resume_admission.py` 要同时核对 MySQL Attempt/Driver Stage、Review 生命周期与迁移证据；任意 UNKNOWN 或正式 Critic 缺失不得重复付费或自动声明准入。M00 像素和首帧生图仍须 canonical Gateway/Attempt + 五图额度许可。
+- 四槽 RED-GREEN 秒速回归：`--slot review-relocation|review-restore-guard|frame01-after-review|r11-closure`，最终 `--slot all --stress`。见 `docs/StoryOS_R11_真实迁移证据与四槽验收_20261013.md`。
+
 ## Story OS 当前执行入口
 
 涉及 `story` 分支的选题、分镜、出图、字幕、审核、发布、复盘任务，Codex 必须先读取仓库根目录 `START_HERE.md`，再读取 `SKILL.md`。

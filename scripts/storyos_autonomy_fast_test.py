@@ -79,6 +79,14 @@ SLOTS = {
     "paid-attempt-proof": ["tests/system/test_storyos_autonomy_r10_driver_paid.py",
                            "tests/system/test_storyos_autonomy_r9_probe.py"],
     "r10-integrated": ["tests/system/test_storyos_autonomy_r10_integration.py"],
+    # R11: Git-verified source rename and exactly preserved independent Critic
+    # provenance, no imitation PASS or automatic image authorization.
+    "review-relocation": ["tests/system/test_storyos_autonomy_r11_relocation.py",
+                           "tests/system/test_storyos_autonomy_r11_manifest.py"],
+    "review-restore-guard": ["tests/system/test_storyos_autonomy_r11_restore.py",
+                             "tests/system/test_storyos_autonomy_r11_resume.py"],
+    "frame01-after-review": ["tests/system/test_storyos_autonomy_r11_frame01.py"],
+    "r11-closure": ["tests/system/test_storyos_autonomy_r11_closure.py"],
 }
 FULL_STRESS = [
     "tests/platform/test_runtime_state_store.py",

@@ -28,6 +28,7 @@
 **R8 Frame01 真正准入**：正常新作品不再误用旧剧集的 UNKNOWN 回收预检；M00 四帧选择改为角色固定、作品级动态帧号；`production_admission` 清楚区分可启动 DAG 与付费图片准入。MySQL/本地 Stage 漂移可通过 `scripts/storyos_stage_drift_readonly.py` 只读核查。四槽极速 `--slot frame01-real|native-image-readiness|stage-drift|r8-integration`，最终 `--slot all --stress`；详见 `docs/StoryOS_R8_四槽Frame01真实准入与极限验收_20261013.md`。
 **R9 真实生产诊断**：原生 Codex 生产首次启动获得真实 Driver+心跳，尚未获得图片 Attempt 成功凭证；修复 CODEX_MANAGED 下旧 WORK critic-shadow 阻塞、Windows Watchdog principal SID 规范化、引入 `storyos_autonomy_production_probe.py` 真 MySQL/Driver/Attempt 只读状态。各槽 `--slot real-canary|watchdog-user|mysql-receipt|r9-integrated`，最终 `--slot all --stress`。详见 `docs/StoryOS_R9_授权生产直连与四槽回归_20261013.md`。
 **R10 真实生产 Review 权威**：正式 Episode 存在 DAG 161 次 REUSED，却无合法第 162 次 Critic 许可；第 2 次已 FINALIZED 请求无真实审核权威，不能重复生成模型答案。新增 `scripts/storyos_story_review_readonly.py` 和 Story Critic attempt admission，在模型调度前阻断异常；Driver/Attempt 探针不再误将历史运行与历史付费计数抹掉。四槽 `--slot story-critic-authority|driver-lifecycle|paid-attempt-proof|r10-integrated`，完工 `--slot all --stress`；详见 `docs/StoryOS_R10_真实StoryCritic权威与四槽闭环_20261013.md`。
+**R11 真实生产审核迁移**：Git 已证明《天界普通女生的一天》三份源 docs 是原字节搬迁，`storyos_manifest_relocation.py` 可以带生产授权受限修复三处 manifest 路径；但旧审核冻结《制作规范_正式版.md》 SHA 与当前不同，禁止旧 FINALIZED Review 自动成为 MySQL 新 PASS。新增 `storyos_relocated_review_recovery.py` 全来源哈希检查和 `storyos_autonomy_resume_admission.py` 不重复付费的强门禁。每槽极速 `--slot review-relocation|review-restore-guard|frame01-after-review|r11-closure`，最终 `--slot all --stress`。见 `docs/StoryOS_R11_真实迁移证据与四槽验收_20261013.md`。
 默认 `COLLABORATIVE` 配置保持不变。
 
 ```text
