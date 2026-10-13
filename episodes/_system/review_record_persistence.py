@@ -174,6 +174,57 @@ def load_latest(
     return None
 
 
+def load_attempt(
+    ep: Path,
+    review_type: str,
+    attempt_no: int,
+    *,
+    legacy_path: str | Path | None = None,
+) -> dict | None:
+    """Load an immutable historical review attempt without changing latest authority."""
+    ep = Path(ep).resolve()
+    mode = _mode()
+    attempt_no = int(attempt_no)
+    if attempt_no < 1:
+        raise ValueError("attempt_no must be >= 1")
+    if mode in {"dual", "mysql"}:
+        connection = None
+        try:
+            connection, repository = _repository()
+            row = next((item for item in repository.list_attempts(
+                episode_identity.storage_episode_id(ep), _safe_type(review_type)
+            ) if int(item.get("attempt_no") or 0) == attempt_no), None)
+            if row and isinstance(row.get("payload"), dict):
+                payload = row["payload"]
+                document = (
+                    payload.get("document")
+                    if payload.get("projection_type") == "EPISODE_REVIEW_REF"
+                    else None
+                )
+                if isinstance(document, dict):
+                    full = runtime_workspace.read_json(ep, document.get("rel"), default=None)
+                    if (isinstance(full, dict)
+                            and payload_sha256(full) == str(document.get("sha256") or "").lower()):
+                        return full
+                    return None
+                return payload
+        except Exception:
+            if mode == "mysql":
+                raise
+        finally:
+            if connection is not None:
+                connection.close()
+        if mode == "mysql":
+            return None
+    if legacy_path is not None:
+        path = Path(legacy_path)
+        if path.is_file():
+            data = story_json.read_json(path, default=None)
+            provenance = (data or {}).get("critic_provenance") or {}
+            return data if isinstance(data, dict) and provenance.get("attempt") == attempt_no else None
+    return None
+
+
 def authority_sha256(
     ep: Path,
     review_type: str,

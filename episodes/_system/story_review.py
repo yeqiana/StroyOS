@@ -304,6 +304,54 @@ def validate_payload(data: dict, *, story_sha: str, storyboard_sha: str, version
         and provenance.get("previous_storyboard_sha256") != storyboard_sha
         and data.get("subtitle_source_sha256") == provenance.get("subtitle_source_sha256")
     )
+    concept_selection_revision = (
+        attempt == 3
+        and provenance.get("direct_user_continuation_review") is True
+        and provenance.get("review_scope") == "CONCEPT_SELECTION_SOURCE_REVISION"
+        and provenance.get("review_epoch") == 2
+        and provenance.get("epoch_attempt") == 1
+        and all(isinstance(provenance.get(k), str) and len(provenance[k]) == 64
+                and all(ch in "0123456789abcdef" for ch in provenance[k].lower())
+                for k in ("previous_review_sha256", "previous_story_sha256",
+                          "previous_storyboard_sha256", "concept_candidates_sha256",
+                          "concept_review_sha256", "current_rubric_sha256",
+                          "subtitle_source_sha256"))
+        and provenance.get("previous_story_sha256") != story_sha
+        and provenance.get("previous_storyboard_sha256") != storyboard_sha
+        and data.get("subtitle_source_sha256") == provenance.get("subtitle_source_sha256")
+    )
+    concept_selection_source_repair = (
+        attempt == 4
+        and provenance.get("direct_user_continuation_review") is True
+        and provenance.get("review_scope") == "CONCEPT_SELECTION_SOURCE_REPAIR_AFTER_FAIL"
+        and provenance.get("review_epoch") == 3
+        and provenance.get("epoch_attempt") == 1
+        and all(isinstance(provenance.get(k), str) and len(provenance[k]) == 64
+                and all(ch in "0123456789abcdef" for ch in provenance[k].lower())
+                for k in ("previous_review_sha256", "previous_story_sha256",
+                          "previous_storyboard_sha256", "concept_candidates_sha256",
+                          "concept_review_sha256", "current_rubric_sha256",
+                          "subtitle_source_sha256"))
+        and provenance.get("previous_story_sha256") != story_sha
+        and provenance.get("previous_storyboard_sha256") != storyboard_sha
+        and data.get("subtitle_source_sha256") == provenance.get("subtitle_source_sha256")
+    )
+    concept_selection_source_repair_a5 = (
+        attempt == 5
+        and provenance.get("direct_user_continuation_review") is True
+        and provenance.get("review_scope") == "CONCEPT_SELECTION_SOURCE_REPAIR_AFTER_FAIL_A5"
+        and provenance.get("review_epoch") == 4
+        and provenance.get("epoch_attempt") == 1
+        and all(isinstance(provenance.get(k), str) and len(provenance[k]) == 64
+                and all(ch in "0123456789abcdef" for ch in provenance[k].lower())
+                for k in ("previous_review_sha256", "previous_story_sha256",
+                          "previous_storyboard_sha256", "concept_candidates_sha256",
+                          "concept_review_sha256", "current_rubric_sha256",
+                          "subtitle_source_sha256"))
+        and provenance.get("previous_story_sha256") != story_sha
+        and provenance.get("previous_storyboard_sha256") != storyboard_sha
+        and data.get("subtitle_source_sha256") == provenance.get("subtitle_source_sha256")
+    )
     migrated_rubric_epoch = (
         attempt == 9
         and provenance.get("direct_user_continuation_review") is True
@@ -320,10 +368,14 @@ def validate_payload(data: dict, *, story_sha: str, storyboard_sha: str, version
     )
     if attempt not in {1, 2} and not (
         continuation or source_revision or symbolic_remediation or paired_caption
-        or photo_text_repair or character_source_repair or migrated_rubric_epoch
+        or photo_text_repair or character_source_repair or concept_selection_revision
+        or concept_selection_source_repair or concept_selection_source_repair_a5 or migrated_rubric_epoch
     ):
         errors.append("critic attempt must be 1 or 2 unless explicitly authorized policy continuation or SHA-bound source/caption revision")
     revisions = ({8} if migrated_rubric_epoch else
+                 {0, 1, 2, 3, 4} if concept_selection_source_repair_a5 else
+                 {0, 1, 2, 3} if concept_selection_source_repair else
+                 {0, 1, 2} if concept_selection_revision else
                  {0, 1, 2, 3, 4, 5, 6, 7} if character_source_repair else
                  {0, 1, 2, 3, 4, 5, 6} if photo_text_repair else
                  {0, 1, 2, 3, 4, 5} if paired_caption else
@@ -436,6 +488,12 @@ def verify(ep: Path) -> list[str]:
         provenance = data["critic_provenance"]
         scope = provenance.get("review_scope")
         manifest_by_scope = {
+            "CONCEPT_SELECTION_SOURCE_REVISION":
+                "meta/runtime/story-review-concept-selection-source-revision-a3.json",
+            "CONCEPT_SELECTION_SOURCE_REPAIR_AFTER_FAIL":
+                "meta/runtime/story-review-concept-selection-source-repair-after-fail-a4.json",
+            "CONCEPT_SELECTION_SOURCE_REPAIR_AFTER_FAIL_A5":
+                "meta/runtime/story-review-concept-selection-source-repair-after-fail-a5.json",
             "LOCKED_DOCUMENTARY_POLICY_REVISION":
                 "meta/runtime/story-review-policy-continuation-a3.json",
             "LOCKED_DOCUMENTARY_SOURCE_REVISION":
@@ -462,6 +520,8 @@ def verify(ep: Path) -> list[str]:
                     "LOCKED_DOCUMENTARY_SYMBOLIC_REMEDIATION",
                     "PHOTO_TEXT_SOURCE_REPAIR_AFTER_FAIL",
                     "CHARACTER_STORY_SOURCE_REPAIR_AFTER_FAIL",
+                    "CONCEPT_SELECTION_SOURCE_REPAIR_AFTER_FAIL",
+                    "CONCEPT_SELECTION_SOURCE_REPAIR_AFTER_FAIL_A5",
                 }
                 old_rubric = scope in {
                     "LOCKED_DOCUMENTARY_SYMBOLIC_REMEDIATION",
@@ -471,8 +531,15 @@ def verify(ep: Path) -> list[str]:
                     "LOCKED_PHOTO_TEXT_CAPTION_REVIEW",
                     "PHOTO_TEXT_SOURCE_REPAIR_AFTER_FAIL",
                     "CHARACTER_STORY_SOURCE_REPAIR_AFTER_FAIL",
+                    "CONCEPT_SELECTION_SOURCE_REPAIR_AFTER_FAIL",
+                    "CONCEPT_SELECTION_SOURCE_REPAIR_AFTER_FAIL_A5",
                 }
                 story_revised = scope == "CHARACTER_STORY_SOURCE_REPAIR_AFTER_FAIL"
+                concept_revised = scope in {
+                    "CONCEPT_SELECTION_SOURCE_REVISION",
+                    "CONCEPT_SELECTION_SOURCE_REPAIR_AFTER_FAIL",
+                    "CONCEPT_SELECTION_SOURCE_REPAIR_AFTER_FAIL_A5",
+                }
                 if (evidence.get("global_review_attempt") != provenance.get("attempt")
                         or evidence.get("review_scope") != scope
                         or evidence.get("review_epoch") != provenance.get("review_epoch")
@@ -489,8 +556,58 @@ def verify(ep: Path) -> list[str]:
                         or (story_revised and evidence.get("previous_story_sha256") != provenance.get("previous_story_sha256"))
                         or (story_revised and evidence.get("new_character_authority_sha256") != provenance.get("new_character_authority_sha256"))
                         or (story_revised and evidence.get("character_attestation_sha256") != provenance.get("character_attestation_sha256"))
+                        or (concept_revised and evidence.get("previous_story_sha256") != provenance.get("previous_story_sha256"))
+                        or (concept_revised and evidence.get("previous_storyboard_sha256") != provenance.get("previous_storyboard_sha256"))
+                        or (concept_revised and evidence.get("concept_candidates_sha256") != provenance.get("concept_candidates_sha256"))
+                        or (concept_revised and evidence.get("concept_review_sha256") != provenance.get("concept_review_sha256"))
+                        or (concept_revised and evidence.get("selected_id") != provenance.get("selected_concept_id"))
+                        or (concept_revised and evidence.get("subtitle_source_sha256") != provenance.get("subtitle_source_sha256"))
                         or evidence.get("current_rubric_sha256") != _review_rubric_digest(Path(__file__).read_text(encoding="utf-8-sig"))):
                     errors.append("policy continuation authority or current rubric SHA mismatch")
+                if concept_revised:
+                    import concept_ambition
+                    concept_path = ep / concept_ambition.REVIEW_REL
+                    candidates_path = ep / concept_ambition.CANDIDATES_REL
+                    if (concept_ambition.verify(ep)
+                            or not concept_path.is_file() or not candidates_path.is_file()
+                            or evidence.get("concept_review_sha256") != sha256_file(concept_path)
+                            or evidence.get("concept_candidates_sha256") != sha256_file(candidates_path)
+                            or evidence.get("subtitle_source_sha256") != sha256_file(ep / "docs/subtitles.yaml")
+                            or evidence.get("previous_review_sha256") != provenance.get("previous_review_sha256")
+                            or evidence.get("story_sha256") != sha256_file(story)
+                            or evidence.get("storyboard_sha256") != sha256_file(storyboard)):
+                        errors.append("concept-selection source revision binding stale or invalid")
+                if scope == "CONCEPT_SELECTION_SOURCE_REPAIR_AFTER_FAIL":
+                    previous = review_record_persistence.load_attempt(
+                        Path(ep).resolve(), REVIEW_TYPE, 3, legacy_path=Path(ep) / REVIEW_REL
+                    )
+                    previous_provenance = (previous or {}).get("critic_provenance") or {}
+                    previous_digest = (review_record_persistence._payload_content_sha(previous)
+                                       if isinstance(previous, dict) else None)
+                    if (not isinstance(previous, dict)
+                            or previous_provenance.get("attempt") != 3
+                            or (previous.get("summary") or {}).get("passed") is not False
+                            or previous_digest != evidence.get("previous_review_sha256")
+                            or evidence.get("previous_story_sha256") != previous.get("story_sha256")
+                            or evidence.get("previous_storyboard_sha256") != previous.get("storyboard_sha256")
+                            or evidence.get("previous_issue_codes") != previous.get("issue_codes")):
+                        errors.append("attempt 4 continuation is not bound to the immutable failed attempt 3")
+                if scope == "CONCEPT_SELECTION_SOURCE_REPAIR_AFTER_FAIL_A5":
+                    previous = review_record_persistence.load_attempt(
+                        Path(ep).resolve(), REVIEW_TYPE, 4, legacy_path=Path(ep) / REVIEW_REL
+                    )
+                    previous_provenance = (previous or {}).get("critic_provenance") or {}
+                    previous_digest = (review_record_persistence._payload_content_sha(previous)
+                                       if isinstance(previous, dict) else None)
+                    if (not isinstance(previous, dict)
+                            or previous_provenance.get("attempt") != 4
+                            or previous_provenance.get("review_scope") != "CONCEPT_SELECTION_SOURCE_REPAIR_AFTER_FAIL"
+                            or (previous.get("summary") or {}).get("passed") is not False
+                            or previous_digest != evidence.get("previous_review_sha256")
+                            or evidence.get("previous_story_sha256") != previous.get("story_sha256")
+                            or evidence.get("previous_storyboard_sha256") != previous.get("storyboard_sha256")
+                            or evidence.get("previous_issue_codes") != previous.get("issue_codes")):
+                        errors.append("attempt 5 continuation is not bound to the immutable failed attempt 4")
             except (OSError, ValueError, KeyError, RuntimeError):
                 errors.append("policy continuation manifest missing or invalid")
     if ((data.get("critic_provenance") or {}).get("review_scope")
@@ -543,12 +660,33 @@ ORDINARY-LIFE OVERRIDE (takes precedence over anomaly-specific rules below):
 - ending_recontextualization may pay off at least three earlier ordinary-life facts, objects, or relationship beats; it does not need a twist.
 - V2.5 anomaly propagation_core is NOT required for this explicitly ordinary-life Episode. Omit it rather than fabricating an abnormal_response.
 """
+    concept_context = ""
+    if attempt in {3, 4}:
+        authority = ep / (
+            "meta/runtime/story-review-concept-selection-source-revision-a3.json"
+            if attempt == 3 else
+            "meta/runtime/story-review-concept-selection-source-repair-after-fail-a4.json"
+        )
+        if authority.is_file():
+            selection = read_json(authority)
+            if attempt == 3:
+                concept_context = f"""
+AUTHORIZED CONCEPT-SELECTION SOURCE REVISION:
+Concept Ambition selected {selection.get('selected_id')} ({selection.get('selected_title')}). The prior Story Critic PASS belongs to a different source SHA and must not influence this decision. Review the current story and storyboard independently; passing the separate concept gate does not imply this story passes.
+"""
+            else:
+                issues = ", ".join(selection.get("previous_issue_codes") or []) or "(none recorded)"
+                concept_context = f"""
+AUTHORIZED POST-FAIL CONCEPT-SELECTION SOURCE REPAIR:
+Concept Ambition selected {selection.get('selected_id')} ({selection.get('selected_title')}). This is one fresh review after the preserved Story Critic attempt 3 FAIL. Its issue codes were: {issues}. Review the current story, storyboard, and matching captions independently against the rubric, with special attention to whether these failures were actually repaired. The prior PASS and failed review belong to different source SHAs; neither decides this review. This one-time attempt cannot be retried.
+"""
     prompt = f"""You are an adversarial Story Critic in a fresh isolated session.
 Do NOT rewrite the story. Do NOT score it politely. Your job is to find reasons it should NOT enter production.
+{concept_context}
 Read:
 - {rel_story}
 - {rel_board}
-- {rel_captions} (authoritative user subtitles by frame number; evaluate each scene WITH its matching caption)
+- {rel_captions} (current authored caption source by frame number; evaluate each scene WITH its matching caption, and do not infer user approval or a subtitle lock)
 - standards/制作规范_正式版.md
 - standards/创作执行强制规范_V2.0.3.2.md
 - standards/story_regressions/cases.json
@@ -1133,10 +1271,244 @@ def _authorize_character_source_repair(ep: Path, *, attempt: int) -> dict:
     return binding
 
 
-def run_critic(ep: Path, *, attempt: int, codex_raw: str | None, timeout: int | None = None, direct_user_continuation: bool = False, prior_rubric_ref: str | None = None, direct_user_source_revision: bool = False, direct_user_symbolic_remediation: bool = False, direct_user_paired_caption: bool = False, direct_user_photo_text_repair: bool = False, direct_user_character_source_repair: bool = False, direct_user_migrated_rubric: bool = False) -> int:
+def _authorize_concept_selection_source_revision(ep: Path, *, attempt: int) -> dict:
+    """Authorize one independent Story review after verified concept selection rewrites source."""
+    if attempt != 3:
+        raise RuntimeError("concept-selection source revision is only attempt 3")
+    target = ep / "meta/runtime/story-review-concept-selection-source-revision-a3.json"
+    if target.exists():
+        raise RuntimeError("concept-selection source revision #3 already authorized; no redispatch")
+    import concept_ambition
+    errors = concept_ambition.verify(ep)
+    if errors:
+        raise RuntimeError("Concept Ambition must verify first: " + "; ".join(errors[:5]))
+    concept_review_path = ep / concept_ambition.REVIEW_REL
+    concept_review = read_json(concept_review_path)
+    candidates_path = ep / concept_ambition.CANDIDATES_REL
+    if not candidates_path.is_file():
+        raise RuntimeError("verified Concept Ambition candidate pool missing")
+    selected_id = str(concept_review.get("selected_id") or "")
+    selected = next((row for row in concept_review.get("candidates", [])
+                     if isinstance(row, dict) and row.get("id") == selected_id), None)
+    if not selected:
+        raise RuntimeError("verified selected concept is missing")
+    previous = load_review(ep)
+    if (not isinstance(previous, dict)
+            or (previous.get("critic_provenance") or {}).get("attempt") != 2
+            or (previous.get("summary") or {}).get("passed") is not True):
+        raise RuntimeError("requires preserved Story Critic #2 PASS for the previous source")
+    story, board = story_paths(ep)
+    captions = ep / "docs/subtitles.yaml"
+    if not captions.is_file():
+        raise RuntimeError("current authored subtitles are required")
+    story_sha, board_sha = sha256_file(story), sha256_file(board)
+    if story_sha == previous.get("story_sha256") or board_sha == previous.get("storyboard_sha256"):
+        raise RuntimeError("both story and storyboard must change from the previously reviewed source")
+    previous_review_sha = review_authority_sha256(ep)
+    if not previous_review_sha:
+        raise RuntimeError("previous immutable Story Review Authority SHA missing")
+    binding = {
+        "schema": "storyos.story_critic_concept_selection_source_revision.v1",
+        "authorization": "direct_user_continuation",
+        "review_scope": "CONCEPT_SELECTION_SOURCE_REVISION",
+        "global_review_attempt": 3,
+        "review_epoch": 2,
+        "epoch_attempt": 1,
+        "previous_review_attempt": 2,
+        "previous_review_passed": True,
+        "previous_review_sha256": previous_review_sha,
+        "previous_story_sha256": previous.get("story_sha256"),
+        "previous_storyboard_sha256": previous.get("storyboard_sha256"),
+        "story_sha256": story_sha,
+        "storyboard_sha256": board_sha,
+        "subtitle_source_sha256": sha256_file(captions),
+        "concept_candidates_sha256": sha256_file(candidates_path),
+        "concept_review_sha256": sha256_file(concept_review_path),
+        "selected_id": selected_id,
+        "selected_title": selected.get("title"),
+        "current_rubric_sha256": _review_rubric_digest(
+            Path(__file__).read_text(encoding="utf-8-sig")
+        ),
+        "reason": "Direct user authorization to review the rewritten source selected by verified Concept Ambition",
+    }
+    target.parent.mkdir(parents=True, exist_ok=True)
+    write_json(target, binding)
+    return binding
+
+
+def _authorize_concept_selection_source_repair_after_fail(ep: Path, *, attempt: int) -> dict:
+    """Authorize exactly one fresh Story review after repairing concept-selected source post-FAIL."""
+    if attempt != 4:
+        raise RuntimeError("concept-selection source repair after FAIL is only attempt 4")
+    target = ep / "meta/runtime/story-review-concept-selection-source-repair-after-fail-a4.json"
+    if target.exists():
+        raise RuntimeError("concept-selection source repair #4 already authorized; no redispatch")
+    import concept_ambition
+    errors = concept_ambition.verify(ep)
+    if errors:
+        raise RuntimeError("Concept Ambition must still verify: " + "; ".join(errors[:5]))
+    previous = review_record_persistence.load_attempt(
+        Path(ep).resolve(), REVIEW_TYPE, 3, legacy_path=Path(ep) / REVIEW_REL
+    )
+    prior_manifest_path = ep / "meta/runtime/story-review-concept-selection-source-revision-a3.json"
+    if not prior_manifest_path.is_file():
+        raise RuntimeError("the consumed attempt 3 SHA authority is missing")
+    prior_manifest = read_json(prior_manifest_path)
+    if (not isinstance(previous, dict)
+            or (previous.get("critic_provenance") or {}).get("attempt") != 3
+            or (previous.get("critic_provenance") or {}).get("review_scope") != "CONCEPT_SELECTION_SOURCE_REVISION"
+            or (previous.get("summary") or {}).get("passed") is not False):
+        raise RuntimeError("requires the immutable failed Concept Selection Story Review #3")
+    previous_digest = review_record_persistence._payload_content_sha(previous)
+    if (prior_manifest.get("global_review_attempt") != 3
+            or prior_manifest.get("previous_review_sha256") != (previous.get("critic_provenance") or {}).get("previous_review_sha256")
+            or prior_manifest.get("story_sha256") != previous.get("story_sha256")
+            or prior_manifest.get("storyboard_sha256") != previous.get("storyboard_sha256")):
+        raise RuntimeError("attempt 3 source authority does not match its preserved Review record")
+    story, board = story_paths(ep)
+    captions = ep / "docs/subtitles.yaml"
+    if not captions.is_file():
+        raise RuntimeError("current authored subtitles are required")
+    story_sha, board_sha = sha256_file(story), sha256_file(board)
+    if (story_sha == previous.get("story_sha256")
+            or board_sha == previous.get("storyboard_sha256")
+            or sha256_file(captions) == previous.get("subtitle_source_sha256")):
+        raise RuntimeError("story, storyboard and subtitles must all be revised after failed attempt 3")
+    concept_review_path = ep / concept_ambition.REVIEW_REL
+    candidates_path = ep / concept_ambition.CANDIDATES_REL
+    concept_review = read_json(concept_review_path)
+    selected_id = str(concept_review.get("selected_id") or "")
+    selected = next((row for row in concept_review.get("candidates", [])
+                     if isinstance(row, dict) and row.get("id") == selected_id), None)
+    if not selected:
+        raise RuntimeError("verified selected concept is missing")
+    binding = {
+        "schema": "storyos.story_critic_concept_selection_source_repair_after_fail.v1",
+        "authorization": "direct_user_continuation",
+        "review_scope": "CONCEPT_SELECTION_SOURCE_REPAIR_AFTER_FAIL",
+        "global_review_attempt": 4,
+        "review_epoch": 3,
+        "epoch_attempt": 1,
+        "previous_review_attempt": 3,
+        "previous_review_passed": False,
+        "previous_review_sha256": previous_digest,
+        "previous_issue_codes": list(previous.get("issue_codes") or []),
+        "previous_story_sha256": previous.get("story_sha256"),
+        "previous_storyboard_sha256": previous.get("storyboard_sha256"),
+        "story_sha256": story_sha,
+        "storyboard_sha256": board_sha,
+        "subtitle_source_sha256": sha256_file(captions),
+        "concept_candidates_sha256": sha256_file(candidates_path),
+        "concept_review_sha256": sha256_file(concept_review_path),
+        "selected_id": selected_id,
+        "selected_title": selected.get("title"),
+        "current_rubric_sha256": _review_rubric_digest(
+            Path(__file__).read_text(encoding="utf-8-sig")
+        ),
+        "reason": "Direct user request to progress after revising the source following independent Story Review #3 FAIL",
+    }
+    target.parent.mkdir(parents=True, exist_ok=True)
+    write_json(target, binding)
+    return binding
+
+
+def _authorize_concept_selection_source_repair_after_fail_a5(ep: Path, *, attempt: int) -> dict:
+    """Authorize one fresh source-SHA-bound Story review after the repaired attempt 4 still failed."""
+    if attempt != 5:
+        raise RuntimeError("concept-selection source repair after FAIL is only attempt 5")
+    target = ep / "meta/runtime/story-review-concept-selection-source-repair-after-fail-a5.json"
+    if target.exists():
+        raise RuntimeError("concept-selection source repair #5 already authorized; no redispatch")
+    import concept_ambition
+    errors = concept_ambition.verify(ep)
+    if errors:
+        raise RuntimeError("Concept Ambition must still verify: " + "; ".join(errors[:5]))
+    previous = review_record_persistence.load_attempt(
+        Path(ep).resolve(), REVIEW_TYPE, 4, legacy_path=Path(ep) / REVIEW_REL
+    )
+    prior_manifest_path = ep / "meta/runtime/story-review-concept-selection-source-repair-after-fail-a4.json"
+    if not prior_manifest_path.is_file():
+        raise RuntimeError("the consumed attempt 4 SHA authority is missing")
+    prior_manifest = read_json(prior_manifest_path)
+    previous_provenance = (previous or {}).get("critic_provenance") or {}
+    if (not isinstance(previous, dict)
+            or previous_provenance.get("attempt") != 4
+            or previous_provenance.get("review_scope") != "CONCEPT_SELECTION_SOURCE_REPAIR_AFTER_FAIL"
+            or (previous.get("summary") or {}).get("passed") is not False):
+        raise RuntimeError("requires the immutable failed Concept Selection Story Review #4")
+    previous_digest = review_record_persistence._payload_content_sha(previous)
+    attempt3 = review_record_persistence.load_attempt(
+        Path(ep).resolve(), REVIEW_TYPE, 3, legacy_path=Path(ep) / REVIEW_REL
+    )
+    attempt3_provenance = (attempt3 or {}).get("critic_provenance") or {}
+    attempt3_digest = (review_record_persistence._payload_content_sha(attempt3)
+                       if isinstance(attempt3, dict) else None)
+    if (prior_manifest.get("global_review_attempt") != 4
+            or prior_manifest.get("review_scope") != previous_provenance.get("review_scope")
+            or prior_manifest.get("previous_review_sha256") != previous_provenance.get("previous_review_sha256")
+            or prior_manifest.get("current_rubric_sha256") != previous_provenance.get("current_rubric_sha256")
+            or prior_manifest.get("story_sha256") != previous.get("story_sha256")
+            or prior_manifest.get("storyboard_sha256") != previous.get("storyboard_sha256")
+            or prior_manifest.get("subtitle_source_sha256") != previous.get("subtitle_source_sha256")
+            or not isinstance(attempt3, dict)
+            or attempt3_provenance.get("attempt") != 3
+            or (attempt3.get("summary") or {}).get("passed") is not False
+            or attempt3_digest != prior_manifest.get("previous_review_sha256")
+            or attempt3.get("story_sha256") != prior_manifest.get("previous_story_sha256")
+            or attempt3.get("storyboard_sha256") != prior_manifest.get("previous_storyboard_sha256")
+            or attempt3.get("issue_codes") != prior_manifest.get("previous_issue_codes")):
+        raise RuntimeError("attempt 4 source authority does not match its preserved Review record")
+    story, board = story_paths(ep)
+    captions = ep / "docs/subtitles.yaml"
+    if not captions.is_file():
+        raise RuntimeError("current authored subtitles are required")
+    story_sha, board_sha, captions_sha = sha256_file(story), sha256_file(board), sha256_file(captions)
+    if (story_sha == previous.get("story_sha256")
+            or board_sha == previous.get("storyboard_sha256")
+            or captions_sha == previous.get("subtitle_source_sha256")):
+        raise RuntimeError("story, storyboard and subtitles must all be revised after failed attempt 4")
+    concept_review_path = ep / concept_ambition.REVIEW_REL
+    candidates_path = ep / concept_ambition.CANDIDATES_REL
+    concept_review = read_json(concept_review_path)
+    selected_id = str(concept_review.get("selected_id") or "")
+    selected = next((row for row in concept_review.get("candidates", [])
+                     if isinstance(row, dict) and row.get("id") == selected_id), None)
+    if not selected:
+        raise RuntimeError("verified selected concept is missing")
+    binding = {
+        "schema": "storyos.story_critic_concept_selection_source_repair_after_fail_a5.v1",
+        "authorization": "direct_user_continuation",
+        "review_scope": "CONCEPT_SELECTION_SOURCE_REPAIR_AFTER_FAIL_A5",
+        "global_review_attempt": 5,
+        "review_epoch": 4,
+        "epoch_attempt": 1,
+        "previous_review_attempt": 4,
+        "previous_review_passed": False,
+        "previous_review_sha256": previous_digest,
+        "previous_issue_codes": list(previous.get("issue_codes") or []),
+        "previous_story_sha256": previous.get("story_sha256"),
+        "previous_storyboard_sha256": previous.get("storyboard_sha256"),
+        "story_sha256": story_sha,
+        "storyboard_sha256": board_sha,
+        "subtitle_source_sha256": captions_sha,
+        "concept_candidates_sha256": sha256_file(candidates_path),
+        "concept_review_sha256": sha256_file(concept_review_path),
+        "selected_id": selected_id,
+        "selected_title": selected.get("title"),
+        "current_rubric_sha256": _review_rubric_digest(
+            Path(__file__).read_text(encoding="utf-8-sig")
+        ),
+        "reason": "Direct user request to progress after repairing the current story following independent Story Review #4 FAIL",
+    }
+    target.parent.mkdir(parents=True, exist_ok=True)
+    write_json(target, binding)
+    return binding
+
+
+def run_critic(ep: Path, *, attempt: int, codex_raw: str | None, timeout: int | None = None, direct_user_continuation: bool = False, prior_rubric_ref: str | None = None, direct_user_source_revision: bool = False, direct_user_symbolic_remediation: bool = False, direct_user_paired_caption: bool = False, direct_user_photo_text_repair: bool = False, direct_user_character_source_repair: bool = False, direct_user_concept_selection_source_revision: bool = False, direct_user_concept_selection_source_repair_after_fail: bool = False, direct_user_concept_selection_source_repair_after_fail_a5: bool = False, direct_user_migrated_rubric: bool = False) -> int:
     if timeout is None:
         timeout = runtime_timeout_policy.seconds("review_critic")
-    if attempt not in {1, 2} and not (attempt == 3 and direct_user_continuation) and not (attempt == 4 and direct_user_source_revision) and not (attempt == 5 and direct_user_symbolic_remediation) and not (attempt == 6 and direct_user_paired_caption) and not (attempt == 7 and direct_user_photo_text_repair) and not (attempt == 8 and direct_user_character_source_repair) and not (attempt == 9 and direct_user_migrated_rubric):
+    if attempt not in {1, 2} and not (attempt == 3 and direct_user_continuation) and not (attempt == 3 and direct_user_concept_selection_source_revision) and not (attempt == 4 and direct_user_concept_selection_source_repair_after_fail) and not (attempt == 5 and direct_user_concept_selection_source_repair_after_fail_a5) and not (attempt == 4 and direct_user_source_revision) and not (attempt == 5 and direct_user_symbolic_remediation) and not (attempt == 6 and direct_user_paired_caption) and not (attempt == 7 and direct_user_photo_text_repair) and not (attempt == 8 and direct_user_character_source_repair) and not (attempt == 9 and direct_user_migrated_rubric):
         raise RuntimeError("attempts above 2 require explicit direct-user, SHA-bound continuation")
     if direct_user_continuation and (attempt != 3 or direct_user_source_revision):
         raise RuntimeError("policy continuation is only attempt 3")
@@ -1157,6 +1529,27 @@ def run_critic(ep: Path, *, attempt: int, codex_raw: str | None, timeout: int | 
         or direct_user_photo_text_repair
     ):
         raise RuntimeError("Character story source repair is only attempt 8")
+    if direct_user_concept_selection_source_revision and (
+        attempt != 3 or direct_user_continuation or direct_user_source_revision
+        or direct_user_symbolic_remediation or direct_user_paired_caption
+        or direct_user_photo_text_repair or direct_user_character_source_repair
+    ):
+        raise RuntimeError("concept-selection source revision is only attempt 3")
+    if direct_user_concept_selection_source_repair_after_fail and (
+        attempt != 4 or direct_user_continuation or direct_user_source_revision
+        or direct_user_symbolic_remediation or direct_user_paired_caption
+        or direct_user_photo_text_repair or direct_user_character_source_repair
+        or direct_user_concept_selection_source_revision
+    ):
+        raise RuntimeError("concept-selection source repair after FAIL is only attempt 4")
+    if direct_user_concept_selection_source_repair_after_fail_a5 and (
+        attempt != 5 or direct_user_continuation or direct_user_source_revision
+        or direct_user_symbolic_remediation or direct_user_paired_caption
+        or direct_user_photo_text_repair or direct_user_character_source_repair
+        or direct_user_concept_selection_source_revision
+        or direct_user_concept_selection_source_repair_after_fail
+    ):
+        raise RuntimeError("concept-selection source repair after FAIL is only attempt 5")
     if direct_user_migrated_rubric:
         # This is the REAL text Provider path. The standalone read-only audit
         # is not sufficient; repeat all MySQL/Attempt/Driver/native CLI checks
@@ -1173,7 +1566,10 @@ def run_critic(ep: Path, *, attempt: int, codex_raw: str | None, timeout: int | 
     if direct_user_migrated_rubric and (attempt!=9 or any((
         direct_user_continuation,direct_user_source_revision,
         direct_user_symbolic_remediation,direct_user_paired_caption,
-        direct_user_photo_text_repair,direct_user_character_source_repair))):
+        direct_user_photo_text_repair,direct_user_character_source_repair,
+        direct_user_concept_selection_source_revision,
+        direct_user_concept_selection_source_repair_after_fail,
+        direct_user_concept_selection_source_repair_after_fail_a5))):
         raise RuntimeError("migrated rubric revalidation is exclusive attempt 9")
     continuation = (_authorize_policy_continuation(ep, attempt=attempt, prior_rubric_ref=prior_rubric_ref)
                     if direct_user_continuation else _authorize_source_revision(ep, attempt=attempt)
@@ -1181,7 +1577,10 @@ def run_critic(ep: Path, *, attempt: int, codex_raw: str | None, timeout: int | 
                     if direct_user_symbolic_remediation else _authorize_paired_caption_revision(ep, attempt=attempt)
                     if direct_user_paired_caption else _authorize_photo_text_source_repair(ep, attempt=attempt)
                     if direct_user_photo_text_repair else _authorize_character_source_repair(ep, attempt=attempt)
-                    if direct_user_character_source_repair else
+                    if direct_user_character_source_repair else _authorize_concept_selection_source_revision(ep, attempt=attempt)
+                    if direct_user_concept_selection_source_revision else _authorize_concept_selection_source_repair_after_fail(ep, attempt=attempt)
+                    if direct_user_concept_selection_source_repair_after_fail else _authorize_concept_selection_source_repair_after_fail_a5(ep, attempt=attempt)
+                    if direct_user_concept_selection_source_repair_after_fail_a5 else
                     story_review_rubric_migration.authorize(
                         ep, attempt=attempt,
                         current_rubric_sha256=_review_rubric_digest(
@@ -1277,6 +1676,18 @@ no Markdown fences and no status summary. The parent process persists it.
             "previous_review_sha256": continuation["previous_review_sha256"],
             "current_rubric_sha256": continuation["current_rubric_sha256"],
         })
+        if continuation.get("review_scope") in {
+            "CONCEPT_SELECTION_SOURCE_REVISION",
+            "CONCEPT_SELECTION_SOURCE_REPAIR_AFTER_FAIL",
+            "CONCEPT_SELECTION_SOURCE_REPAIR_AFTER_FAIL_A5",
+        }:
+            provenance.update({
+                "previous_story_sha256": continuation["previous_story_sha256"],
+                "previous_storyboard_sha256": continuation["previous_storyboard_sha256"],
+                "concept_candidates_sha256": continuation["concept_candidates_sha256"],
+                "concept_review_sha256": continuation["concept_review_sha256"],
+                "selected_concept_id": continuation["selected_id"],
+            })
         for key in ("previous_rubric_sha256", "previous_storyboard_sha256",
                     "previous_story_sha256", "new_character_authority_sha256",
                     "character_attestation_sha256", "previous_review_request_sha256",
@@ -1326,7 +1737,59 @@ def project_verified_story_gate(ep: Path) -> dict:
     }
     old_binding = (gates.get("review_authority_bindings") or {}).get("story")
     if reviews.get("story") == "passed" and old_binding != binding:
-        raise ValueError("existing Story Gate PASS binding drift")
+        provenance = result.get("critic_provenance") or {}
+        scope = provenance.get("review_scope")
+        if scope == "CONCEPT_SELECTION_SOURCE_REVISION":
+            continuation_path = ep / "meta/runtime/story-review-concept-selection-source-revision-a3.json"
+            expected_previous = {
+                "attempt": 2,
+                "review_scope": "STANDARD",
+            }
+        elif scope == "CONCEPT_SELECTION_SOURCE_REPAIR_AFTER_FAIL":
+            continuation_path = ep / "meta/runtime/story-review-concept-selection-source-repair-after-fail-a4.json"
+            chain_path = ep / "meta/runtime/story-review-concept-selection-source-revision-a3.json"
+            if not chain_path.is_file():
+                raise ValueError("attempt 4 continuation is missing its authorized attempt 3 predecessor")
+            chain = read_json(chain_path)
+            expected_previous = {
+                "authority_sha256": chain.get("previous_review_sha256"),
+                "story_sha256": chain.get("previous_story_sha256"),
+                "storyboard_sha256": chain.get("previous_storyboard_sha256"),
+                "attempt": 2,
+                "review_scope": "STANDARD",
+            }
+        elif scope == "CONCEPT_SELECTION_SOURCE_REPAIR_AFTER_FAIL_A5":
+            continuation_path = ep / "meta/runtime/story-review-concept-selection-source-repair-after-fail-a5.json"
+            chain_path = ep / "meta/runtime/story-review-concept-selection-source-revision-a3.json"
+            if not chain_path.is_file():
+                raise ValueError("attempt 5 continuation is missing its authorized concept-selection predecessor")
+            chain = read_json(chain_path)
+            expected_previous = {
+                "authority_sha256": chain.get("previous_review_sha256"),
+                "story_sha256": chain.get("previous_story_sha256"),
+                "storyboard_sha256": chain.get("previous_storyboard_sha256"),
+                "attempt": 2,
+                "review_scope": "STANDARD",
+            }
+        else:
+            continuation_path = None
+            expected_previous = None
+        if continuation_path is None or not continuation_path.is_file():
+            raise ValueError("existing Story Gate PASS binding drift")
+        continuation = read_json(continuation_path)
+        if scope == "CONCEPT_SELECTION_SOURCE_REVISION":
+            expected_previous = {
+                "authority_sha256": continuation.get("previous_review_sha256"),
+                "story_sha256": continuation.get("previous_story_sha256"),
+                "storyboard_sha256": continuation.get("previous_storyboard_sha256"),
+                **expected_previous,
+            }
+        if old_binding != expected_previous:
+            raise ValueError("previous Story Gate PASS does not match the authorized predecessor")
+        gates.setdefault("review_authority_bindings", {})["story"] = binding
+        reviews["story"] = "passed"
+        write_json(path, gates)
+        return binding
     if reviews.get("story") == "passed":
         return binding
     gates.setdefault("review_authority_bindings", {})["story"] = binding
@@ -1380,6 +1843,9 @@ def main() -> int:
     p.add_argument("--direct-user-paired-caption", action="store_true")
     p.add_argument("--direct-user-photo-text-repair", action="store_true")
     p.add_argument("--direct-user-character-source-repair", action="store_true")
+    p.add_argument("--direct-user-concept-selection-source-revision", action="store_true")
+    p.add_argument("--direct-user-concept-selection-source-repair-after-fail", action="store_true")
+    p.add_argument("--direct-user-concept-selection-source-repair-after-fail-a5", action="store_true")
     p.add_argument("--direct-user-migrated-rubric", action="store_true")
     p.add_argument("--prior-rubric-ref")
     p = sub.add_parser("finalize-review")
@@ -1411,6 +1877,9 @@ def main() -> int:
                               direct_user_paired_caption=args.direct_user_paired_caption,
                               direct_user_photo_text_repair=args.direct_user_photo_text_repair,
                               direct_user_character_source_repair=args.direct_user_character_source_repair,
+                              direct_user_concept_selection_source_revision=args.direct_user_concept_selection_source_revision,
+                              direct_user_concept_selection_source_repair_after_fail=args.direct_user_concept_selection_source_repair_after_fail,
+                              direct_user_concept_selection_source_repair_after_fail_a5=args.direct_user_concept_selection_source_repair_after_fail_a5,
                               direct_user_migrated_rubric=args.direct_user_migrated_rubric)
         except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
             print("STORY SEMANTIC REVIEW ERROR:", exc)

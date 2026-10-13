@@ -263,6 +263,15 @@ def _finalize_review(ep, review, before, provenance):
     review["candidates_sha256"]=before
     review["critic_provenance"]=provenance
     final=ep/REVIEW_REL
+    if final.is_file():
+        prior=read_json(final)
+        prior_sha=text(prior.get("candidates_sha256")).lower() if isinstance(prior,dict) else ""
+        if prior_sha and prior_sha != str(before).lower():
+            history=ep/"meta"/"review-history"/f"concept-ambition-review-{prior_sha}.json"
+            history.parent.mkdir(parents=True,exist_ok=True)
+            if history.exists():
+                raise RuntimeError(f"refusing to overwrite archived concept review: {history}")
+            shutil.copy2(final,history)
     write_json(final,review)
     (ep/CANDIDATE_REVIEW_REL).unlink(missing_ok=True)
     errs=validate_review(ep,review)
@@ -303,7 +312,7 @@ def run_critic(ep, attempt, codex_raw, timeout=None):
         return product_review_adapter.HOST_ACTION_REQUIRED_RC
     codex=resolve_codex(codex_raw)
     cmd=prefix(codex)+["exec","--skip-git-repo-check","--ephemeral","-c",'model_reasoning_effort="medium"'," -s".strip(),"workspace-write","-C",str(ROOT),"--json","-"]
-    log=ep/"meta"/f"concept-ambition-critic-attempt-{attempt}.jsonl"
+    log=ep/"meta"/f"concept-ambition-critic-{before}-attempt-{attempt}.jsonl"
     with log.open("w",encoding="utf-8",newline="\n") as h:
         # The user-mode Runner's inherited ~/.codex/tmp/arg0 can carry stale
         # Windows ACLs. Codex then fails to initialize its app-server before

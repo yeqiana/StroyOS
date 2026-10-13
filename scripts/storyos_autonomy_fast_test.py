@@ -94,6 +94,13 @@ SLOTS = {
     "r12-frame01-proof": ["tests/system/test_storyos_autonomy_r12_text_pixel.py",
                           "tests/system/test_storyos_autonomy_r12_entrypoint.py"],
     "r12-integrated": ["tests/system/test_storyos_autonomy_r12_closure.py"],
+    # R13: integration of R12 independently bounded native Critic with
+    # pending Concept Selection A3/A4/A5 and immutable history lookup.
+    "r13-critic-merge": ["tests/system/test_storyos_autonomy_r13_critic_merge.py",
+                          "tests/system/test_concept_ambition_rereview_plan.py"],
+    "r13-attempt-history": ["tests/system/test_storyos_autonomy_r13_attempt_history.py"],
+    "r13-frame01": ["tests/system/test_storyos_autonomy_r13_frame01.py"],
+    "r13-integrated": ["tests/system/test_storyos_autonomy_r13_integrated.py"],
 }
 FULL_STRESS = [
     "tests/platform/test_runtime_state_store.py",
