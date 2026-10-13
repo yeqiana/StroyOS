@@ -68,8 +68,18 @@ def registered_task(task_name: str) -> dict | None:
         "$ErrorActionPreference='Stop';"
         f"$task=Get-ScheduledTask -TaskName {_ps(task_name)} -ErrorAction SilentlyContinue;"
         "if($null -eq $task){'null'}else{"
+        "$triggers=@($task.Triggers);"
+        "$actions=@($task.Actions);"
+        "$isLogon=($triggers.Count -eq 1 -and "
+        "$triggers[0].CimClass.CimClassName -eq 'MSFT_TaskLogonTrigger');"
         "[pscustomobject]@{principal=$task.Principal.UserId;"
-        "executable=$task.Actions[0].Execute;arguments=$task.Actions[0].Arguments;"
+        "executable=$(if($actions.Count -eq 1){$actions[0].Execute}else{''});"
+        "arguments=$(if($actions.Count -eq 1){$actions[0].Arguments}else{''});"
+        "working_directory=$(if($actions.Count -eq 1){$actions[0].WorkingDirectory}else{''});"
+        "trigger=$(if($isLogon){'AT_USER_LOGON'}else{'UNVERIFIED'});"
+        "trigger_user=$(if($isLogon){$triggers[0].UserId}else{''});"
+        "multiple_instances=[string]$task.Settings.MultipleInstances;"
+        "enabled=[bool]$task.Settings.Enabled;"
         "task_name=$task.TaskName} | ConvertTo-Json -Compress}"
     )
     rc,out=_powershell(script)
@@ -114,7 +124,12 @@ def register_task(plan: dict) -> bool:
 def _task_matches(plan: dict, record: dict) -> bool:
     return (record.get("principal","").casefold()==plan["principal"].casefold()
             and Path(record.get("executable","")).resolve()==Path(plan["executable"]).resolve()
-            and record.get("arguments")==plan["arguments"])
+            and record.get("arguments")==plan["arguments"]
+            and record.get("working_directory")==plan["working_directory"]
+            and record.get("trigger")=="AT_USER_LOGON"
+            and record.get("trigger_user","").casefold()==plan["principal"].casefold()
+            and record.get("multiple_instances")=="IgnoreNew"
+            and record.get("enabled") is True)
 
 
 def _primary_checkout() -> bool:

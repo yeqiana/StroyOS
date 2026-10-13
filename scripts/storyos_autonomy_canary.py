@@ -25,6 +25,9 @@ def decide(native_report: dict, baseline: dict, *, episode: str) -> dict:
     ep=native_report.get("episode")
     if ep is not None and ep!=episode:
         return {**result,"reason":"EPISODE_IDENTITY_MISMATCH"}
+    source_episode=baseline.get("episode")
+    if source_episode is not None and source_episode!=episode:
+        return {**result,"reason":"FRAME01_EPISODE_IDENTITY_MISMATCH"}
     if (native_report.get("status")!="READY_TO_START"
             or native_report.get("read_only") is not True
             or native_report.get("production_authorization") is not False
@@ -65,7 +68,14 @@ def plan(episode: str) -> dict:
         rc,baseline=native._probe(env,"scripts/storyos_native_frame01_preflight.py",[ref])
         if rc not in (0,2):
             baseline={}
-        return decide(primary,baseline,episode=ref)
+        # Frame01 MySQL/Attempt/Driver can change while its read-only baseline
+        # assessment runs. Recheck the entire canonical scope, not just Stage.
+        fresh=native.preflight(env,episode=ep)
+        if primary != fresh:
+            return {"status":"BLOCKED","reason":"CANARY_AUTHORITY_CHANGED",
+                    "can_dispatch_image":False,"production_authorization":False,
+                    "model_calls":0,"sql_writes":0,"frame":1}
+        return decide(fresh,baseline,episode=ref)
     except (ValueError,OSError):
         return {"status":"BLOCKED","reason":"ENVIRONMENT_UNVERIFIED",
                 "can_dispatch_image":False,"model_calls":0,"sql_writes":0}

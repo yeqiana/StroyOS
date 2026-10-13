@@ -42,6 +42,13 @@
 - 正式单帧 Canary 先走 `storyos_autonomy_canary.py plan` 和已有 Frame01 证据入口；EVIDENCE_ONLY 绝不构成生图授权，不得追加独立图像 Provider 派发。
 - **每槽修复须有 RED → GREEN 极速验证**：`--slot carrier|writer|canary|autonomy-integration`；四槽联合 `--slot all`；完整验收 `--slot all --stress`。详见 `docs/StoryOS_R3_四槽自治Carrier_Writer_Canary_极速验收_20261013.md`。
 
+## R4 生产派发前二次 Fence / 四槽极速验收
+
+- 原生 Codex 真实图片派发在 canonical Generation Attempt `DISPATCH_COMMITTED` 后、Provider 网络调用前，必须通过新的 MySQL lease/fencing read-only 复核；批量每帧验证，过期不执行付费调用、不退款已消费 Attempt，不另开 Provider/视频链路。
+- Watchdog 的两次准入必须比较 Codex 运行路由与正式 MySQL、创作、视觉权威；任何漂移 fail-closed。Windows 持久载体的工作目录、登录触发器/账号、单实例设置及启用状态必须验证，不能把同名任务视为可信。
+- Frame01 Canary 需要双次只读 Native Preflight 与 Episode 证据身份一致，不可把 EVIDENCE_ONLY 当作生图权限。
+- 每槽需 RED→GREEN 极速测试：`python scripts/storyos_autonomy_fast_test.py --slot dispatch-fence|carrier-integrity|frame01-fence|r4-integration`；合并 `--slot all`、完成 `--slot all --stress`，见 `docs/StoryOS_R4_四槽自治二次Fence与极速验收_20261013.md`。
+
 ## Story OS 当前执行入口
 
 涉及 `story` 分支的选题、分镜、出图、字幕、审核、发布、复盘任务，Codex 必须先读取仓库根目录 `START_HERE.md`，再读取 `SKILL.md`。

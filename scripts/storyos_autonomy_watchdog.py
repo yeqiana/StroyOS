@@ -291,7 +291,11 @@ def tick(episode: str, *, acknowledged: bool, data_root: Path | None = None,
                     before.get("driver_evidence") != after.get("driver_evidence") or
                     before.get("attempt") != after.get("attempt") or
                     before.get("episode_stage") != after.get("episode_stage") or
-                    before.get("blockers") != after.get("blockers")):
+                    before.get("blockers") != after.get("blockers") or
+                    before.get("codex") != after.get("codex") or
+                    before.get("mysql") != after.get("mysql") or
+                    before.get("visual_lock_admission") != after.get("visual_lock_admission") or
+                    before.get("creative_story_recovery") != after.get("creative_story_recovery")):
                 return {"status": "AUTHORITY_CHANGED", "dispatched": False}
             reservation = reserve_recovery(
                 journal, ref, now_ts=now, max_attempts=max_attempts, cooldown=cooldown)

@@ -91,6 +91,9 @@ def test_gateway_dispatch_commit_is_the_payload_handoff_boundary(monkeypatch, tm
         return committed
 
     monkeypatch.setattr(generation_attempt_authority, "commit_dispatch", commit)
+    # Simulated commit must also simulate the *read-only* post-commit Fence.
+    monkeypatch.setattr(generation_attempt_authority, "validate_committed_dispatch",
+                        lambda *_args, **_kwargs: True)
     monkeypatch.setattr(
         generation_attempt_authority,
         "mark_observed",

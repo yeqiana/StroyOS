@@ -397,6 +397,44 @@ def commit_dispatch_many(ep: str | Path, leases: list[dict], *, provider: str | 
         connection.close()
 
 
+def validate_committed_dispatch(ep: str | Path, lease: dict, fencing_token: int) -> bool:
+    """Read-only final fence check immediately before the paid Provider call.
+
+    The attempt has already been irreversibly committed; a newer owner might
+    fence it before the actual native image dispatch. In that case NEVER call
+    the Provider, and never refund/release the consumed attempt.
+    """
+    connection = _connect()
+    try:
+        with connection.transaction():
+            _state, row = _locked_lease(connection, lease, int(fencing_token))
+            if row.get("STATUS") != "DISPATCH_COMMITTED":
+                raise AttemptDenied("STALE_GENERATION_ATTEMPT_FENCE")
+        return True
+    finally:
+        connection.close()
+
+
+def validate_committed_dispatch_many(ep: str | Path, leases: list[dict]) -> bool:
+    """Check every committed image from one native batch under one DB transaction."""
+    if not isinstance(leases, list) or not leases:
+        raise AttemptDenied("GENERATION_ATTEMPT_LEASE_REQUIRED")
+    if len({(x.get("episode_id"), x.get("logical_asset_key")) for x in leases
+            if isinstance(x, dict)}) != len(leases):
+        raise AttemptDenied("GENERATION_ATTEMPT_DUPLICATE_ASSET_IN_BATCH")
+    connection = _connect()
+    try:
+        with connection.transaction():
+            for lease in sorted(leases, key=lambda x: (
+                    str(x.get("episode_id")), str(x.get("logical_asset_key")))):
+                _state, row = _locked_lease(connection, lease, int(lease["fencing_token"]))
+                if row.get("STATUS") != "DISPATCH_COMMITTED":
+                    raise AttemptDenied("STALE_GENERATION_ATTEMPT_FENCE")
+        return True
+    finally:
+        connection.close()
+
+
 def release_pre_dispatch(ep: str | Path, lease: dict, fencing_token: int, reason: str = "") -> dict:
     connection = _connect()
     try:

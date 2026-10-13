@@ -269,12 +269,14 @@ def test_gateway_uses_outer_worker_slot_without_double_counting(tmp_path):
     with (
         patch.object(capacity, "shared_directory", return_value=tmp_path),
         patch.object(gateway.authority, "commit_dispatch", return_value={"attempt_index": 1}) as committed,
+        patch.object(gateway.authority, "validate_committed_dispatch", return_value=True) as fenced,
         patch.object(gateway.authority, "mark_observed") as observed,
     ):
         with capacity.image_permits(capacity.CAPACITY, shared_dir=tmp_path):
             assert gateway.provider_generate(tmp_path, lease, 1, "codex_subscription", lambda: "raw") == "raw"
             committed.assert_called_once()
             observed.assert_called_once()
+            fenced.assert_called_once()
 
 
 def test_nested_provider_batch_weight_must_not_exceed_outer_reservation(tmp_path):

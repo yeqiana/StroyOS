@@ -21,6 +21,7 @@
 已有 Episode 需要在会话退出后继续生产，优先使用 `python scripts/storyos_codex_managed.py start <episode> --ack-real-production`；`start` 调用已有常驻 Driver，仍先执行全部只读 Attempt / Owner / Stage 准入，不代表可以越过审核。四槽极速测试：`python scripts/storyos_autonomy_fast_test.py --slot all`；改造完成再用 `--stress`。详见 `docs/StoryOS_原生Codex自治生产与四槽极速验收_20261013.md`。
 **自治续跑 R2（显式授权）**：已有 Episode 的恢复 Watchdog 使用 `python scripts/storyos_autonomy_watchdog.py plan <episode>` 先只读诊断；需要持久监控时，由可信用户态 Carrier 显式运行 `watch <episode> --ack-real-production`，绝不自动首次启动、清理 UNKNOWN 或绕过人工门禁。新增四槽测试 `--slot watchdog|budget|authority|e2e`，整体仍为 `python scripts/storyos_autonomy_fast_test.py --slot all --stress`。见 `docs/StoryOS_R2_自治Watchdog_四槽极速验收_20261013.md`。
 **R3 四槽自治升级**：只读单帧证据 `python scripts/storyos_autonomy_canary.py plan <episode>`；Windows 登录载体先 `python scripts/storyos_autonomy_carrier.py plan <episode>`，安装/卸载必须显式生产授权且仅从主工作区运行。原子 Writer Token 只代表基础锁安全，跨主机生产仍禁止；每槽执行 `python scripts/storyos_autonomy_fast_test.py --slot carrier|writer|canary|autonomy-integration`，整轮执行 `--slot all --stress`。见 `docs/StoryOS_R3_四槽自治Carrier_Writer_Canary_极速验收_20261013.md`。
+**R4 完整生产二次权威校验**：官方图片 Provider 发起前增加 MySQL Generation Attempt live Fence 复查，Windows Watchdog 加入实际 Task Scheduler 触发/单实例验真，原生单帧 Canary 双次对齐 Episode/Attempt/模型路由证据；全部 fail-closed，不替代真实生图 Canary。单槽极速命令 `python scripts/storyos_autonomy_fast_test.py --slot dispatch-fence|carrier-integrity|frame01-fence|r4-integration`；整轮 `--slot all --stress`。详见 `docs/StoryOS_R4_四槽自治二次Fence与极速验收_20261013.md`。
 默认 `COLLABORATIVE` 配置保持不变。
 
 ```text

@@ -26,6 +26,9 @@ def _provider_generate_with_capacity(ep, lease: dict | None, fencing_token: int 
     committed = authority.commit_dispatch(ep, lease, int(fencing_token), provider=provider)
     lease["_phase"] = "DISPATCH_COMMITTED"
     try:
+        # A newer Writer/Attempt fence may have appeared after the irreversible
+        # dispatch commit but BEFORE any paid Provider operation.
+        authority.validate_committed_dispatch(ep, committed, int(fencing_token))
         result = call()
         authority.mark_observed(ep, committed, int(fencing_token))
         return result
@@ -64,6 +67,7 @@ def _provider_generate_many_with_capacity(ep, leases: list[dict] | None, provide
         committed = authority.commit_dispatch_many(ep, leases, provider=provider)
         for lease in leases:
             lease["_phase"] = "DISPATCH_COMMITTED"
+        authority.validate_committed_dispatch_many(ep, committed)
         result = call()
         for lease in committed:
             authority.mark_observed(ep, lease, lease["fencing_token"])
@@ -75,6 +79,9 @@ def _provider_generate_many_with_capacity(ep, leases: list[dict] | None, provide
             except Exception:
                 pass
             lease["_phase"] = "TERMINAL"
+        if committed:
+            for lease in leases:
+                lease["_phase"] = "TERMINAL"
         raise
 
 

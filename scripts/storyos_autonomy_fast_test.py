@@ -28,6 +28,13 @@ SLOTS = {
                "tests/platform/test_worker_lock_state.py"],
     "canary": ["tests/system/test_storyos_autonomy_r3_canary.py"],
     "autonomy-integration": ["tests/system/test_storyos_autonomy_r3_integration.py"],
+    # R4: paid-dispatch fence / user carrier / Frame01 evidence / integrated gate.
+    "dispatch-fence": ["tests/system/test_storyos_autonomy_r4_dispatch_fence.py",
+                       "tests/system/test_image_payload_attempt_boundary.py",
+                       "-k", "gateway or fence"],
+    "carrier-integrity": ["tests/system/test_storyos_autonomy_r4_carrier.py"],
+    "frame01-fence": ["tests/system/test_storyos_autonomy_r4_canary.py"],
+    "r4-integration": ["tests/system/test_storyos_autonomy_r4_integration.py"],
 }
 FULL_STRESS = [
     "tests/platform/test_runtime_state_store.py",
