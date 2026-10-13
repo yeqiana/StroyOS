@@ -89,7 +89,7 @@ export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMor
           ['更新时间', text(selected.updated_at || selected.observed_at)],
           ...(detailIsCurrent ? [
             ['执行状态', text(visibleDetail?.execution_status)],
-            ['当前动作', text(visibleDetail?.current_action || detail?.next_step)],
+            ['当前动作', text(visibleDetail?.current_action || visibleDetail?.next_step)],
             ['阻塞原因', text(visibleDetail?.blocking_reason)],
             ['需要人工', text(visibleDetail?.needs_user)],
             ['心跳健康', text(visibleDetail?.heartbeat?.health)],

@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {selectCurrentRuntimeDetail} from '../src/api/runtimeRecoveryAssessment.ts';
+const former={episode_ref:'story/A',execution_status:'FAILED',next_step:'请立即重试A'};
+const current={episode_ref:'story/B',execution_status:'UNKNOWN',next_step:null};
+assert.equal(selectCurrentRuntimeDetail('story/B',former),null);
+assert.equal(selectCurrentRuntimeDetail('story/B',current),current);
+assert.equal(selectCurrentRuntimeDetail('story/B',null),null);
+assert.equal(selectCurrentRuntimeDetail('story/B',{execution_status:'FAILED'}),null);
+assert.equal(selectCurrentRuntimeDetail('',current),null);
+const source=await import('node:fs/promises').then(fs=>fs.readFile(new URL('../src/components/views/RuntimeAuthorityPanel.tsx',import.meta.url),'utf8'));
+assert.equal(source.includes('detail?.next_step'),false,'unscoped stale detail fallback may leak across episode');
+assert.equal(source.includes('visibleDetail?.next_step'),true);
+console.log('ROUND5_EPISODE_RUNTIME_DETAIL_NO_STALE_7_OF_7_PASS');
