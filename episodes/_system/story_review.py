@@ -841,8 +841,11 @@ def _finalize_review(ep: Path, data: dict, *, attempt: int, before_story: str, b
         f"{before_story}|{before_board}".encode("utf-8")
     ).hexdigest()
     save_review(ep, data, decision=decision, source_sha256=source_sha)
-    (ep / (story_review_a10_source_revision.CANDIDATE_REL
-           if attempt == 10 else CANDIDATE_REL)).unlink(missing_ok=True)
+    # Preserve A10's immutable model candidate on FAIL. A subsequent
+    # source repair must cite its exact bytes; never erase paid evidence.
+    if attempt != 10 or decision == "PASS":
+        (ep / (story_review_a10_source_revision.CANDIDATE_REL
+               if attempt == 10 else CANDIDATE_REL)).unlink(missing_ok=True)
     if propagation_core_gate.required(ep):
         errors.extend(propagation_core_gate.verify(ep))
     if errors:
@@ -1752,9 +1755,14 @@ def run_critic(ep: Path, *, attempt: int, codex_raw: str | None, timeout: int | 
             "review_scope": continuation["review_scope"],
             "review_epoch": continuation["review_epoch"],
             "epoch_attempt": continuation["epoch_attempt"],
-            "previous_review_sha256": continuation["previous_review_sha256"],
             "current_rubric_sha256": continuation["current_rubric_sha256"],
         })
+        # A10 is the first independent review after a timed-out A9, not
+        # a successor to a finalized Review Authority record. Its immutable
+        # predecessor is the A9 ticket+candidate SHA pair, not an invented
+        # previous_review_sha256.
+        if "previous_review_sha256" in continuation:
+            provenance["previous_review_sha256"] = continuation["previous_review_sha256"]
         if continuation.get("review_scope") in {
             "CONCEPT_SELECTION_SOURCE_REVISION",
             "CONCEPT_SELECTION_SOURCE_REPAIR_AFTER_FAIL",

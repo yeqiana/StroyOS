@@ -131,6 +131,14 @@ SLOTS = {
         "tests/system/test_storyos_r17_a10_new_source.py::test_a10_success_cannot_be_borrowed_from_a9_or_legacy_history",
         "tests/system/test_storyos_r17_a10_new_source.py::test_a10_full_story_review_payload_has_to_verify_real_new_source",
         "tests/system/test_storyos_r17_a10_new_source.py::test_canonical_a10_pass_can_replace_only_unbound_historical_gate"],
+    "r18-receipt": ["tests/system/test_storyos_r18_a10_reconciliation.py::test_runner_proof_requires_sha_and_success"],
+    "r18-no-replay": [
+        "tests/system/test_storyos_r18_a10_reconciliation.py::test_complete_provider_json_cannot_be_replayed_from_partial",
+        "tests/system/test_storyos_r18_a10_reconciliation.py::test_reconciliation_refuses_untrusted_episode_without_writes"],
+    "r18-failure": [
+        "tests/system/test_storyos_r18_a10_reconciliation.py::test_a10_past_review_sha_optional_preserves_candidate_on_fail",
+        "tests/system/test_storyos_r18_a10_reconciliation.py::test_fenced_record_fail_uses_existing_payload_never_model"],
+    "r18-content": ["tests/system/test_storyos_r18_a10_reconciliation.py::test_two_frame_concrete_fix_is_only_a_draft"],
 }
 FULL_STRESS = [
     "tests/platform/test_runtime_state_store.py",
