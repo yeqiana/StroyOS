@@ -16,6 +16,7 @@ from typing import Any
 
 import codex_critic_runner
 import image_payload_request
+import m00_style_guard
 import logical_asset_identity
 import model_policy
 import runtime_observability
@@ -204,6 +205,12 @@ def _build_validated_request(*, ep: Path, identity: dict, fields: dict,
     _validate_frame_age(controller_input=controller_input,
                         scene_prompt=controller_output["scene_prompt"])
     output_sha = _sha256_bytes(_canonical_bytes(controller_output))
+    # Retain documentary capture constraints even when Controller compresses them.
+    # The effective prompt is part of the canonical Payload SHA/fingerprint.
+    effective_scene_prompt = m00_style_guard.enforce(
+        scene_prompt=controller_output["scene_prompt"],
+        visual_contract=str(controller_input.get("visual_contract") or ""),
+    )
     request = image_payload_request.build_request(
         **identity,
         controller_receipt_id=call_id,
@@ -212,7 +219,7 @@ def _build_validated_request(*, ep: Path, identity: dict, fields: dict,
         payload_quality=payload["quality"],
         canvas=fields["canvas"],
         references=fields["references"],
-        scene_prompt=controller_output["scene_prompt"],
+        scene_prompt=effective_scene_prompt,
         model_policy_version=binding.get("policy_version"),
         model_policy_sha256=binding["model_policy_sha256"],
     )

@@ -179,6 +179,7 @@ def critic_prompt(ep):
 Inspect the attached baseline image itself. This PASS unlocks the parallel-three Visual Lock images and may create the provisional character pixel master, so fail closed on visible identity/capture/style problems.
 Required checks: {list(CHECKS)}
 The target is an ordinary believable phone/photo baseline: reality-first, unposed, non-cinematic, usable identity, distinct group members where applicable.
+Capture/style review is genre/action neutral: judge the actual locked story and frame; never demand any example action, location, prop, cast size, or motion intensity. Stillness can be authentic. Motion blur and camera defects require physical causes. Reject forced drama, invented action, director-blocked staging, and excessive cinematic polish.
 If this Episode is an explicit pure daily-life / no-anomaly story, ordinary_life_density means believable resident/friend life (breakfast, walking, chatting, errands, rest). Do NOT require a visible job workflow merely because a reusable celestial visual profile also supports worker stories.
 For core characters, this baseline is also Frame01 Character Identity Anchor evidence. The image must be usable as a later identity reference: clear face visibility, recognizable person, not only back view, not too distant, and suitable for Character Master creation.
 Write ONLY JSON to {repo_rel(candidate)}:
@@ -200,6 +201,7 @@ Do NOT search the filesystem, do NOT call shell/tools, and do NOT modify any sou
 This PASS unlocks the parallel-three Visual Lock images and may create the provisional character pixel master, so fail closed on visible identity/capture/style problems.
 Required checks: {list(CHECKS)}
 The target is an ordinary believable phone/photo baseline: reality-first, unposed, non-cinematic, usable identity, distinct group members where applicable.
+Capture/style review is genre/action neutral: judge the actual locked story and frame; never demand any example action, location, prop, cast size, or motion intensity. Stillness can be authentic. Motion blur and camera defects require physical causes. Reject forced drama, invented action, director-blocked staging, and excessive cinematic polish.
 If this Episode is an explicit pure daily-life / no-anomaly story, ordinary_life_density means believable resident/friend life (breakfast, walking, chatting, errands, rest). Do NOT require a visible job workflow merely because a reusable celestial visual profile also supports worker stories.
 For core characters, this baseline is also Frame01 Character Identity Anchor evidence. The image must be usable as a later identity reference: clear face visibility, recognizable person, not only back view, not too distant, and suitable for Character Master creation.
 Face boxes use normalized 0..1 coordinates and must cover every primary cast member when pixel master is required.

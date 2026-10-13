@@ -120,6 +120,13 @@ def compile_prompt_contract(ep: Path) -> dict:
     if data.get("forbidden"):
         lines.append("forbidden=" + _fmt(data["forbidden"]))
 
+    # Compile M00's existing genre neutrality; do not mutate its frozen SHA.
+    neutrality = data.get("anti_homogeneity") or {}
+    if profile.get("profile_id") == "M00" and neutrality.get("lock_texture_not_scene") is True:
+        lines.append("lock_texture_not_scene=true")
+        if neutrality.get("rule"):
+            lines.append("anti_homogeneity_rule=" + str(neutrality["rule"]))
+
     capture = capture_grammar_v228.compile_capture_contract(ep)
     lines += [
         "----- GLOBAL CAPTURE GRAMMAR -----",
