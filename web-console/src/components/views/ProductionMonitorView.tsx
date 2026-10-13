@@ -159,7 +159,12 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
       setApiState(data.errors?.length ? 'partial' : 'ok');
       if (data.errors?.length) onShowToast('下一页返回部分错误，阶段记录可能不完整');
     } catch {
-      if (requestGate.current.isCurrent(generation)) onShowToast('下一页读取失败，已保留成功加载的记录');
+      if (requestGate.current.isCurrent(generation)) {
+        // Preserve loaded rows, but never continue to label partial evidence as complete.
+        setApiState('partial');
+        setApiWarning('下一页阶段摘要读取失败，已保留当前记录；完整范围尚未核验。');
+        onShowToast('下一页读取失败，已保留成功加载的记录');
+      }
     } finally {
       if (requestGate.current.finish(generation)) setRuntimeLoadingMore(false);
     }
