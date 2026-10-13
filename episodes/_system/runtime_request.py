@@ -263,7 +263,7 @@ def compile_request(text):
         if story["mode"]=="auto_create":raise ValueError("EMPTY_REQUEST: no topic/title/story seed found")
         title="AUTO_TITLE"; raw_topic=None
     branch,branch_source=parse_branch(text)
-    full_auto=contains_any(text,FULL_AUTO_SIGNALS)
+    full_auto=contains_any(text,FULL_AUTO_SIGNALS) or mode in {"full_auto","preproduction_only","image_continue","resume","repair_only","release_only","data_review"}
     image=parse_image_model(text)
     intent=request_intent.resolve(text)
     expected_intent=request_intent.expected_intent_for_mode(mode)

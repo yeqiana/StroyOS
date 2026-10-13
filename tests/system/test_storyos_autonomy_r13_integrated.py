@@ -22,6 +22,14 @@ def test_integrated_review_has_both_verified_authority_validation_scopes():
     assert "CONCEPT_SELECTION_SOURCE_REPAIR_AFTER_FAIL_A5" in source
     assert "MIGRATED_EPISODE_RUBRIC_REVALIDATION" in source or "story_review_rubric_migration.REVIEW_SCOPE" in source
 
+def test_full_auto_mode_semantics_not_changed_by_review_integration():
+    # Unrelated uncommitted runtime_request parser changes remain in the
+    # owner's primary checkout; reviewer integration must not silently import.
+    import runtime_request
+    source=inspect.getsource(runtime_request.compile_request)
+    assert 'or mode in {"full_auto"' in source
+
+
 def test_gc_is_a_plan_not_force_delete():
     import inspect
     assert "merged" in inspect.getsource(gc.classify).lower()

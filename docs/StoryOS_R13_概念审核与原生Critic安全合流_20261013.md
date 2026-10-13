@@ -10,14 +10,15 @@ R12 PR #73 的 `story_review.py` 新审核纪元与主工作区未提交的 Conc
 - Concept Selection 源修复审查：attempt 3／4／5，对应特定已冻结 Concept Ambition／Story Review 来源哈希和修订版本；
 - 迁移目录／制作规范变化的真正新 Codex Story Critic：attempt 9，独立一次性 SHA 绑定审核纪元。**不得**把 attempt 3/4/5 的回执借给 9，也不能将 R12 的新纪元回执用作 Concept Selection PASS。
 
-集成快照另外精确保留主工作区的 `concept_ambition.py`、`review_record_persistence.py`、`runtime_request.py` 三份跟审核源修复相关且尚未提交的源文件。主 checkout 的四份系统源文件在复制时的 Git blob ID：
+集成快照另外精确保留主工作区的 `concept_ambition.py`、`review_record_persistence.py` 两份跟审核源修复相关且尚未提交的源文件。主 checkout 的三份 Concept/Story 系统源文件在复制时的 Git blob ID：
 
 ```text
 episodes/_system/story_review.py          acdc50ff1eceb05a61a2735f9a3bf057120c650a
 episodes/_system/concept_ambition.py      c2a36a037d45ed475a18bc535e3f0ee5678fb124
 episodes/_system/review_record_persistence.py ddc3e5b64f8a4632e9febd9ba8ee34b435f09dd6
-episodes/_system/runtime_request.py       61dbf95de4b414fa71691d24afec16cf9c20cdbd
 ```
+
+**R13 范围收紧**：主 checkout 尚未提交的 `episodes/_system/runtime_request.py` 仅改变了 full_auto 推断逻辑，与 Story Critic 合流无直接依赖，且可能影响正式无人值守入口。因此本 PR 特意恢复该文件在主线 `5bba90da` 的原始内容，**不提交这条未经专项论证的调度语义变更**；主 checkout 中用户原始修改仍原样保留。
 
 ## 四槽独立极速
 
