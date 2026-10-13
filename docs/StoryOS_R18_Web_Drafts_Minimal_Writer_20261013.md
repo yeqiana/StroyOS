@@ -24,3 +24,10 @@
 ## 不做
 - 不直接插入 TB_EPISODE；不领取 BUSINESS_EPISODE_ID；不创建 Runtime Request；不启动 Driver、图片或视频。
 - 草稿进入生产需单独经正式 Episode Bootstrap 和权限门禁。
+
+## R19：最小生产交接预检（只读）
+
+- 新增 GET `/api/v1/web-drafts/{workspace_id}/handoff-plan`，只读取当前已保存的草稿版本与 WDE_ 身份映射，生成候选清单和既有 `story_os.py create --dry-run --json` 命令数组。
+- Web Console「生产交接预检（只读）」仅显示建议命令，不执行 Python、Codex 或 Driver；没有新数据表、调度器或任务队列。
+- 结果包含工作区版本与快照 SHA，用于识别后续编辑；`admission_granted=false`，`canonical_episode_created=false`，`production_started=false`。
+- 真实 Episode 创建、编号领取与付费生产仍须后续独立人工确认并通过已有 canonical Bootstrap 和 Gate。不要把预检计划当作生产准入批准。
