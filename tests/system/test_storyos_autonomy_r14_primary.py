@@ -9,8 +9,10 @@ import story_review
 import story_review_rubric_migration as migration
 import storyos_autonomy_r12_critic_preflight as check
 
-def test_current_isolated_worktree_cannot_issue_live_model_admission(monkeypatch):
-    assert (ROOT/".git").is_file()
+def test_current_isolated_worktree_cannot_issue_live_model_admission(tmp_path,monkeypatch):
+    # Hermetic: the same test must pass in a feature Worktree and primary CI.
+    (tmp_path/".git").write_text("gitdir: elsewhere")
+    monkeypatch.setattr(check.native,"ROOT",tmp_path)
     monkeypatch.setattr(check.native,"native_environment",
         lambda: (_ for _ in ()).throw(AssertionError("credential read")))
     result=check.inspect("episodes/demo")
