@@ -8,6 +8,7 @@ from pathlib import Path
 import episode_runner
 import runner_state_store
 import writer_owner_observation
+import provider_inflight_observation
 import runtime_trace
 
 
@@ -23,13 +24,16 @@ def run(episode: Path, interval: int = 10, resume: bool = False, codex: str | No
             try:
                 runner_state_store.save(episode, pid=os.getpid())
                 writer_owner_observation.emit(episode, epoch, held=True)
+                provider_inflight_observation.heartbeat(episode, epoch)
             except Exception as exc:
                 heartbeat_error.append(str(exc))
                 return
     thread = threading.Thread(target=heartbeat, name="storyos-heartbeat", daemon=True)
     try:
         runner_state_store.save(episode, status="RUNNING", pid=os.getpid(), resume_enabled=resume)
-        writer_owner_observation.emit(episode, epoch, held=True)
+        owner_reported = writer_owner_observation.emit(episode, epoch, held=True)
+        if owner_reported:
+            provider_inflight_observation.attach(episode, epoch)
         runtime_trace.emit(episode, {"event": "RUNNER_STARTED", "resume_enabled": resume,
                                      "codex": codex or ""})
         thread.start()
@@ -45,6 +49,7 @@ def run(episode: Path, interval: int = 10, resume: bool = False, codex: str | No
         stop.set()
         if thread.is_alive():
             thread.join(timeout=5)
+        provider_inflight_observation.detach(episode, epoch)
         writer_owner_observation.emit(episode, epoch, held=False)
         runner_state_store.release_lock(episode)
 

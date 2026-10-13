@@ -27,6 +27,7 @@ from platform.operations.local_mysql_monitor_readonly import observe_mysql_episo
 from platform.operations.local_worker_heartbeat_readonly import observe_local_redis_heartbeats
 from platform.operations.local_writer_owner_readonly import observe_writer_owner, unknown as unknown_writer_owner
 from platform.operations.local_production_progress_readonly import summarize_production_progress
+from platform.operations.local_provider_call_readonly import observe_provider_calls, unknown as unknown_provider_calls
 
 SOURCE = "local_workspace_episode_state_file"
 
@@ -124,6 +125,7 @@ class LocalEpisodeFileStatuses:
         recorded = {}
         mysql_snapshot = empty_mysql_monitor("EPISODE_IDENTITY_UNVERIFIED")
         writer_owner = unknown_writer_owner("NO_CANONICAL_DRIVER_OWNER_EVIDENCE")
+        provider_calls = unknown_provider_calls("PROVIDER_OBSERVATION_MISSING")
         for state_file in self._production_state_files():
             try:
                 resolved = state_file
@@ -136,6 +138,7 @@ class LocalEpisodeFileStatuses:
                         resolved.parent.parent.relative_to(self.episodes).as_posix(),
                         str(item.get("business_episode_id") or ""),
                     )
+                    provider_calls = observe_provider_calls(resolved.parent.parent, mysql_snapshot)
                     break
             except OSError:
                 continue
@@ -152,6 +155,7 @@ class LocalEpisodeFileStatuses:
             "heartbeat": {"health": "unknown"},
             "mysql_monitor": mysql_snapshot,
             "writer_owner_observation": writer_owner,
+            "provider_call_observation": provider_calls,
             "recorded_production_progress": summarize_production_progress(mysql_snapshot, writer_owner),
             **recorded,
         }

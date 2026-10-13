@@ -109,6 +109,24 @@ export interface RecordedFrameAttemptSummary {
   age_seconds: number | null;
 }
 
+export interface LocalProviderCallObservation {
+  scope: 'CANONICAL_PROVIDER_CALL_WINDOW_READ_ONLY';
+  read_only: true;
+  status: 'UNKNOWN' | 'FRESH_PROVIDER_CALL_EVIDENCE';
+  reason: string | null;
+  verified_current_frames: number[];
+  verified_current_image_attempts: Array<{
+    frame: number;
+    attempt_index: number;
+    provider_call_age_seconds: number;
+  }>;
+  provider_call_verified: boolean;
+  kernel_lock_verified: false;
+  task_id_verified: false;
+  stalled_verified: false;
+  observed_at: string;
+}
+
 export interface RuntimeStatusDetail {
   schema_version?: number;
   observed_at?: string | null;
@@ -124,6 +142,7 @@ export interface RuntimeStatusDetail {
   frame_records?: RecordedFrameEvidence[];
   mysql_monitor?: LocalMySqlMonitor;
   recorded_production_progress?: RecordedProductionProgress;
+  provider_call_observation?: LocalProviderCallObservation;
   writer_owner_observation?: {status: string; reason: string | null; read_only: true; fresh_seconds?: number | null; producer_process_verified?: boolean; kernel_lock_verified?: false; provider_inflight_verified?: false};
   queue_summary?: {recorded_items: number; status_counts: Record<string, number>; recorded_at?: string | null} | null;
   checkpoint_steps?: RecordedCheckpointStep[];

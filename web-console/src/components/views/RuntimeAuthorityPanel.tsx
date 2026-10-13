@@ -207,6 +207,37 @@ export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMor
         </section>
       )}
 
+      {detailIsCurrent && visibleDetail?.provider_call_observation && (
+        <section aria-label="当前Provider调用只读核验证据" className="space-y-2 border-t border-[var(--border-subtle)] pt-4">
+          <h4 className="font-medium">当前图片生成调用 · 可信执行窗口</h4>
+          {visibleDetail.provider_call_observation.provider_call_verified ? <>
+            <p role="status" className="text-xs text-[var(--text-secondary)]">
+              近期观测到原生 Gateway 已进入 Provider 调用，且 Driver 进程身份、执行周期与 MySQL Generation Attempt 派发记录一致。
+              观测帧：{visibleDetail.provider_call_observation.verified_current_frames.map(n => '第 '+n+' 帧').join('、')}。
+            </p>
+            <Table size="small" pagination={false} rowKey={item=>item.frame+'-'+item.attempt_index}
+              dataSource={visibleDetail.provider_call_observation.verified_current_image_attempts}
+              columns={[
+                {title:'调用帧',dataIndex:'frame',render:(v:number)=>'第 '+v+' 帧'},
+                {title:'Attempt',dataIndex:'attempt_index'},
+                {title:'进入调用以来',dataIndex:'provider_call_age_seconds',render:(v:number)=>v+' 秒'}
+              ]}/>
+            <p className="text-xs text-[var(--text-tertiary)]">
+              该信息是有时效的执行窗口采样，不保证页面显示瞬间调用仍在持续。
+            </p>
+          </> : (
+            <p role="status" className="text-xs text-[var(--text-tertiary)]">
+              当前没有能同时通过 Driver 执行周期、Provider 进程调用窗口和 MySQL 派发记录核验的生图任务
+              （{visibleDetail.provider_call_observation.reason || 'UNKNOWN'}）。
+            </p>
+          )}
+          <p className="text-[11px] text-[var(--text-tertiary)]">
+            Task ID 和是否卡死仍未核验；不以数据库旧 RUNNING、DISPATCH_COMMITTED 或进程 PID 单独推断在线。
+            不检测、争抢 OS 锁，也不触发重试。
+          </p>
+        </section>
+      )}
+
       {detailIsCurrent && visibleDetail?.recorded_production_progress && (
         <section aria-label="真实制作进度只读关联" className="space-y-3 border-t border-[var(--border-subtle)] pt-4">
           <h4 className="font-medium">制作进度 · Task / 逐帧记录关联</h4>

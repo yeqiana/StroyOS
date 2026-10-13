@@ -7,6 +7,7 @@ import subprocess
 
 import generation_attempt_authority as authority
 import global_image_capacity
+import provider_inflight_observation
 
 
 def _provider_outcome_uncertain(error: BaseException) -> bool:
@@ -43,7 +44,8 @@ def _provider_generate_with_capacity(ep, lease: dict | None, fencing_token: int 
         if authority.validate_committed_dispatch(ep, committed, int(fencing_token)) is not True:
             raise authority.AttemptDenied("STALE_GENERATION_ATTEMPT_FENCE")
         provider_entered = True
-        result = call()
+        with provider_inflight_observation.provider_span(ep, [committed]):
+            result = call()
         provider_returned = True
         authority.mark_observed(ep, committed, int(fencing_token))
         return result
@@ -99,7 +101,8 @@ def _provider_generate_many_with_capacity(ep, leases: list[dict] | None, provide
         if authority.validate_committed_dispatch_many(ep, committed) is not True:
             raise authority.AttemptDenied("STALE_GENERATION_ATTEMPT_FENCE")
         provider_entered = True
-        result = call()
+        with provider_inflight_observation.provider_span(ep, committed):
+            result = call()
         provider_returned = True
         for lease in committed:
             authority.mark_observed(ep, lease, lease["fencing_token"])
