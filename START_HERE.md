@@ -26,6 +26,7 @@
 **R6 原生 Codex 与生产结果安全**：本地已登录的 Codex CLI 通过 `storyos_autonomy_native_ready.py` 仅证明 CLI/Runner 授权上下文，Frame01 只读准入额外双检；Provider 网络/CLI 超时应按 UNKNOWN 保护已消耗 Attempt，禁止自动重试。清理前先 `storyos_retired_worktree_gc.py plan`，仅删除可二次验证的退役对象。各槽极速 `--slot gc-fence|provider-timeout|codex-frame01|r6-e2e`，全轮 `--slot all --stress`。详见 `docs/StoryOS_R6_四槽续推与极限测试_20261013.md`。
 **R7 安全续推**：原生 Codex CLI 与交互 Runner 除授权上下文外还须证明同一版本/执行文件指纹，Frame01 只读门禁 fail-closed；Provider post-commit Fence 的返回值必须显式 `True`，批量提交完整才能发起真实生图。历史分支改用 Git ref 原子 CAS 安全退役，仍需避免活动 Worktree。各槽极速入口 `--slot gc-atomic|gateway-proof|native-route|r7-closure`，整体 `--slot all --stress`。见 `docs/StoryOS_R7_四槽原子退役与Codex同路由验收_20261013.md`。
 **R8 Frame01 真正准入**：正常新作品不再误用旧剧集的 UNKNOWN 回收预检；M00 四帧选择改为角色固定、作品级动态帧号；`production_admission` 清楚区分可启动 DAG 与付费图片准入。MySQL/本地 Stage 漂移可通过 `scripts/storyos_stage_drift_readonly.py` 只读核查。四槽极速 `--slot frame01-real|native-image-readiness|stage-drift|r8-integration`，最终 `--slot all --stress`；详见 `docs/StoryOS_R8_四槽Frame01真实准入与极限验收_20261013.md`。
+**R9 真实生产诊断**：原生 Codex 生产首次启动获得真实 Driver+心跳，尚未获得图片 Attempt 成功凭证；修复 CODEX_MANAGED 下旧 WORK critic-shadow 阻塞、Windows Watchdog principal SID 规范化、引入 `storyos_autonomy_production_probe.py` 真 MySQL/Driver/Attempt 只读状态。各槽 `--slot real-canary|watchdog-user|mysql-receipt|r9-integrated`，最终 `--slot all --stress`。详见 `docs/StoryOS_R9_授权生产直连与四槽回归_20261013.md`。
 默认 `COLLABORATIVE` 配置保持不变。
 
 ```text

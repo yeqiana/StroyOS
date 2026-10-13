@@ -121,15 +121,47 @@ def register_task(plan: dict) -> bool:
     return rc==0 and out=="REGISTERED"
 
 
+def _windows_sid_equal(observed: str, expected: str) -> bool:
+    """Compare task principal by Windows SID, not ambiguous display spelling.
+
+    Task Scheduler may normalize DOMAIN\\user to machine-local user.
+    Never accept only the final username segment, and never emit actual SID.
+    """
+    if os.name!="nt" or not observed or not expected:
+        return False
+    script=(
+        "$ErrorActionPreference='Stop';"
+        f"$left={_ps(observed)};$right={_ps(expected)};"
+        "try{$a=(New-Object System.Security.Principal.NTAccount($left))."
+        "Translate([System.Security.Principal.SecurityIdentifier]).Value;"
+        "$b=(New-Object System.Security.Principal.NTAccount($right))."
+        "Translate([System.Security.Principal.SecurityIdentifier]).Value;"
+        "if($a -eq $b){'SID_EQUAL'}else{'SID_DIFFERENT'}}"
+        "catch{'SID_UNKNOWN'}"
+    )
+    try:
+        rc,out=_powershell(script)
+        return rc==0 and out=="SID_EQUAL"
+    except (OSError,subprocess.TimeoutExpired):
+        return False
+
+
 def _task_matches(plan: dict, record: dict) -> bool:
-    return (record.get("principal","").casefold()==plan["principal"].casefold()
-            and Path(record.get("executable","")).resolve()==Path(plan["executable"]).resolve()
-            and record.get("arguments")==plan["arguments"]
-            and record.get("working_directory")==plan["working_directory"]
-            and record.get("trigger")=="AT_USER_LOGON"
-            and record.get("trigger_user","").casefold()==plan["principal"].casefold()
-            and record.get("multiple_instances")=="IgnoreNew"
-            and record.get("enabled") is True)
+    if not isinstance(record,dict):
+        return False
+    # Check all fixed trusted launch properties before optional SID resolution.
+    fixed=(Path(record.get("executable","")).resolve()==Path(plan["executable"]).resolve()
+           and record.get("arguments")==plan["arguments"]
+           and record.get("working_directory")==plan["working_directory"]
+           and record.get("trigger")=="AT_USER_LOGON"
+           and record.get("trigger_user","").casefold()==plan["principal"].casefold()
+           and record.get("multiple_instances")=="IgnoreNew"
+           and record.get("enabled") is True)
+    observed=record.get("principal","")
+    if not fixed or not isinstance(observed,str):
+        return False
+    return (observed.casefold()==plan["principal"].casefold()
+            or _windows_sid_equal(observed,plan["principal"]))
 
 
 def _primary_checkout() -> bool:
@@ -149,6 +181,15 @@ def install(episode: Path, *, acknowledged: bool, identity: str) -> dict:
             return {"status":"PRIMARY_CHECKOUT_REQUIRED","changed":False}
         if not register_task(plan):
             return {"status":"SCHEDULER_REGISTRATION_UNVERIFIED","changed":False}
+        # A successful Register-ScheduledTask is not yet authority:
+        # read back the actual Windows task and verify SID/argv/trigger/CWD.
+        try:
+            observed=registered_task(plan["task_name"])
+        except (OSError,subprocess.TimeoutExpired):
+            observed=None
+        if observed is None or not _task_matches(plan,observed):
+            return {"status":"REGISTERED_BUT_UNVERIFIED","changed":True,
+                    "task_name":plan["task_name"]}
         return {"status":"REGISTERED","changed":True,"task_name":plan["task_name"]}
     except (ValueError,OSError,subprocess.TimeoutExpired):
         return {"status":"SCHEDULER_AUTHORITY_UNVERIFIED","changed":False}

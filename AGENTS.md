@@ -78,6 +78,13 @@
 - 文件 Episode Stage 只是本地快照，与 MySQL 冲突时以 MySQL 为准；`storyos_stage_drift_readonly.py` 只读报告差异，不修库、不改文件。
 - 四槽每次推进分别跑 `--slot frame01-real|native-image-readiness|stage-drift|r8-integration`；最终 `--slot all --stress`，见 `docs/StoryOS_R8_四槽Frame01真实准入与极限验收_20261013.md`。
 
+## R9 真实生产授权 · 原生 Codex、Watchdog SID 与极速回归
+
+- 经明确授权的真实生产只能从主工作区 `storyos_codex_managed.py start --ack-real-production` 进入 canonical Driver，不能直接重复派发裸 `codex exec` 图片。一个真实 Driver 曾处于 `RETRY_WAIT` 并以 rc=3 退出，MySQL Generation Attempt=0，不能谎称已出图；先修复正式审核 WORK shadow 挂起。
+- 在 `CODEX_MANAGED` 文本路由下，历史 `*-critic-shadow` 是旁路/非权威 REVIEW 请求，只可从待执行队列过滤、不能改动历史审计；正式 `story-semantic` 必须继续审核并产生 SHA 绑定的正式 PASS/FAIL 回执。
+- Windows Task Scheduler 的 principal 显示名可能与交互用户不同；仅 Windows SID 一致（加可执行文件、参数、工作目录、用户 Logon、IgnoreNew、Enabled 全验证）才能判为 `INSTALLED`。注册完成后必须再查任务，未证实则 `REGISTERED_BUT_UNVERIFIED`，不可擅自自动续跑。
+- 用 `storyos_autonomy_production_probe.py` 在真正 runtime.env 下读取 Driver/MySQL Stage/Attempt，区别心跳、历史状态和真实 Provider 图片。带 UNKNOWN 的 Attempt 禁止自动新付费请求。每槽极速 `--slot real-canary|watchdog-user|mysql-receipt|r9-integrated`，完工 `--slot all --stress`。参见 `docs/StoryOS_R9_授权生产直连与四槽回归_20261013.md`。
+
 ## Story OS 当前执行入口
 
 涉及 `story` 分支的选题、分镜、出图、字幕、审核、发布、复盘任务，Codex 必须先读取仓库根目录 `START_HERE.md`，再读取 `SKILL.md`。

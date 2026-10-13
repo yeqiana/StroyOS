@@ -60,6 +60,15 @@ SLOTS = {
     "native-image-readiness": ["tests/system/test_storyos_autonomy_r8_native.py"],
     "stage-drift": ["tests/system/test_storyos_autonomy_r8_stage.py"],
     "r8-integration": ["tests/system/test_storyos_autonomy_r8_integration.py"],
+    # R9: authorized production pilot; every live observation is read-only,
+    # and real paid delivery still goes through native canonical Gateway.
+    "real-canary": ["tests/system/test_storyos_autonomy_r9_probe.py",
+                    "tests/system/test_storyos_autonomy_r9_native_routing.py"],
+    "watchdog-user": ["tests/system/test_storyos_autonomy_r9_watchdog_user.py",
+                      "tests/system/test_storyos_autonomy_r4_carrier.py"],
+    "mysql-receipt": ["tests/system/test_storyos_autonomy_r9_probe.py",
+                      "tests/system/test_storyos_autonomy_r8_stage.py"],
+    "r9-integrated": ["tests/system/test_storyos_autonomy_r9_integration.py"],
 }
 FULL_STRESS = [
     "tests/platform/test_runtime_state_store.py",

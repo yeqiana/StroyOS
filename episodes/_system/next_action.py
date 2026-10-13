@@ -92,6 +92,14 @@ def _pending_product_review_scan(ep: Path, *, current_state: str | None = None) 
         p = current["path"]
         d = current.get("payload") or {}
         kind = str(d.get("review_kind") or "")
+        # A prior WORK host's optional critic-shadow is not the official
+        # Story Critic authority in the explicitly native CODEX_MANAGED mode.
+        # Keep historical request bytes for audit, but do not let its missing
+        # host response permanently strand the native production DAG.
+        # The canonical story-semantic request is NOT suppressed.
+        text_runtime, _ = runtime_router.text_review_runtime()
+        if text_runtime == "CODEX" and kind.endswith("-critic-shadow"):
+            continue
         # Actual-pixel authority now belongs to CODEX_VISION. Historical WORK
         # product-review requests for visual tasks are compatibility residue and
         # must never steal routing back from the vision lane.
