@@ -101,6 +101,12 @@ SLOTS = {
     "r13-attempt-history": ["tests/system/test_storyos_autonomy_r13_attempt_history.py"],
     "r13-frame01": ["tests/system/test_storyos_autonomy_r13_frame01.py"],
     "r13-integrated": ["tests/system/test_storyos_autonomy_r13_integrated.py"],
+    # R14: don't confuse a test Worktree with production, enforce exact
+    # native Codex binary identity and frozen current-rubric SHA authority.
+    "r14-primary-worktree": ["tests/system/test_storyos_autonomy_r14_primary.py"],
+    "r14-native-identity": ["tests/system/test_storyos_autonomy_r14_identity.py"],
+    "r14-critic-history": ["tests/system/test_storyos_autonomy_r14_history.py"],
+    "r14-closure": ["tests/system/test_storyos_autonomy_r14_closure.py"],
 }
 FULL_STRESS = [
     "tests/platform/test_runtime_state_store.py",

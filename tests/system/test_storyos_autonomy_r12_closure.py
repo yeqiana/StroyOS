@@ -14,6 +14,9 @@ def test_fresh_epoch_ticket_is_exclusive_even_after_crashed_worker(tmp_path,monk
         "prior_review_request_id":"old-request","prior_standard_sha256":"c"*64,
         "current_standard_sha256":"d"*64,
         "current_story_sha256":"e"*64,"storyboard_sha256":"f"*64}
+    import story_review
+    (tmp_path/".git").mkdir()
+    monkeypatch.setattr(story_review,"ROOT",tmp_path)
     monkeypatch.setattr(migration,"plan",lambda ep:selected)
     stamp=migration.authorize(tmp_path,attempt=9,current_rubric_sha256="1"*64)
     assert stamp["review_scope"]==migration.REVIEW_SCOPE
@@ -37,7 +40,8 @@ def test_duplicate_native_review_not_automatically_a_second_image_generation():
               "outcome_unknown_assets":[]},
         driver={"driver_state":"STOPPED","liveness":"DEAD"},
         codex={"status":"NATIVE_AUTH_CONTEXT_READY","opencodex_used":False,
-               "interactive_codex_auth_context_present":True},
+               "interactive_codex_auth_context_present":True,
+               "cli_runner_same_binary_verified":True},
         review={"status":"ALREADY_AUTHORIZED_NO_RETRY"})
     assert x["can_dispatch_image"] is False
     assert x["may_start_new_text_review"] is False

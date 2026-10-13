@@ -10,7 +10,8 @@ BASE={
         "outcome_unknown_assets":[],"unverified_status_assets":[]},
 "driver":{"driver_state":"STOPPED","liveness":"DEAD"},
 "codex":{"status":"NATIVE_AUTH_CONTEXT_READY","opencodex_used":False,
-         "interactive_codex_auth_context_present":True},
+         "interactive_codex_auth_context_present":True,
+         "cli_runner_same_binary_verified":True},
 "review":{"status":"ONE_SHOT_NEW_CRITIC_EPOCH_READY","attempt":9},
 }
 def run(**kw):

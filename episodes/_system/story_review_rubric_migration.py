@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import sys
 
@@ -72,6 +73,10 @@ def plan(ep: Path) -> dict:
         if len(bypath)!=len(frozen) or FORMAL_STANDARD not in bypath:
             return {**base,"status":"FROZEN_SOURCE_BINDINGS_INVALID"}
         original_sha=bypath[FORMAL_STANDARD]
+        if any(not re.fullmatch(r"[a-f0-9]{64}", v) for v in bypath.values()):
+            return {**base,"status":"FROZEN_SOURCE_SHA_MALFORMED"}
+        if not str(prior.get("request_id") or "").strip():
+            return {**base,"status":"HISTORICAL_REQUEST_ID_MISSING"}
         formal = root/FORMAL_STANDARD
         current_sha=digest(formal)
         if not original_sha or original_sha==current_sha:
@@ -117,6 +122,11 @@ def plan(ep: Path) -> dict:
 
 def authorize(ep: Path, *, attempt: int, current_rubric_sha256: str) -> dict:
     """Reserve the SINGLE paid text-Critic call BEFORE dispatch. Never retry."""
+    import story_review as sr
+    if (not (sr.ROOT/".git").is_dir()
+            or (sr.ROOT/".git").is_symlink()
+            or not Path(ep).resolve().is_relative_to(sr.ROOT.resolve())):
+        raise RuntimeError("migrated rubric paid Critic requires canonical primary checkout")
     if attempt!=9:
         raise RuntimeError("migrated rubric revalidation only admits attempt 9")
     ep=Path(ep).resolve()

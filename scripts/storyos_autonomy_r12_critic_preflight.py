@@ -33,7 +33,8 @@ def decide(*, stage:dict, paid:dict, driver:dict, codex:dict, review:dict)->dict
         return {**base,"status":"DRIVER_SINGLETON_UNVERIFIED"}
     if (codex.get("status")!="NATIVE_AUTH_CONTEXT_READY"
         or codex.get("opencodex_used") is not False
-        or codex.get("interactive_codex_auth_context_present") is not True):
+        or codex.get("interactive_codex_auth_context_present") is not True
+        or codex.get("cli_runner_same_binary_verified") is not True):
         return {**base,"status":"NATIVE_CODEX_AUTH_UNVERIFIED"}
     if review.get("status")!="ONE_SHOT_NEW_CRITIC_EPOCH_READY" or review.get("attempt")!=9:
         return {**base,"status":"RUBRIC_REVIEW_AUTHORITY_UNVERIFIED"}
@@ -44,6 +45,15 @@ def decide(*, stage:dict, paid:dict, driver:dict, codex:dict, review:dict)->dict
 
 def inspect(episode:str)->dict:
     try:
+        # An isolated feature Worktree is an evidence fixture, not the live
+        # production checkout; it intentionally lacks runtime.env and may
+        # carry different episode inputs. Never issue a one-shot paid permit.
+        git_directory=native.ROOT/".git"
+        if not git_directory.is_dir() or git_directory.is_symlink():
+            return {"status":"PRIMARY_CHECKOUT_REQUIRED",
+                    "read_only":True,"model_calls":0,"sql_writes":0,
+                    "can_dispatch_image":False,
+                    "may_start_new_text_review":False}
         ep=native.canonical_episode(episode)
         env=native.native_environment()
         ref=ep.relative_to(native.ROOT).as_posix()
