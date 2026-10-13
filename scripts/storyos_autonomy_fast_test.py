@@ -118,6 +118,11 @@ SLOTS = {
     "r16-candidate": ["tests/system/test_storyos_autonomy_r16_candidate.py"],
     "r16-driver": ["tests/system/test_storyos_autonomy_r16_driver.py"],
     "r16-integrated": ["tests/system/test_storyos_autonomy_r16_integrated.py"],
+    # Episode 15: four tiny content-draft checks, no new model dispatch.
+    "ep15-subtitles": ["tests/system/test_episode15_content_repair_draft.py::test_ep15_caption_draft_all_20_frames_from_locked_source"],
+    "ep15-frame15": ["tests/system/test_episode15_content_repair_draft.py::test_ep15_frame15_has_new_observable_change_and_causes_frame16"],
+    "ep15-hairpin": ["tests/system/test_episode15_content_repair_draft.py::test_ep15_wooden_hairpin_source_and_carry_chain_unambiguous"],
+    "ep15-a9-fence": ["tests/system/test_episode15_content_repair_draft.py::test_ep15_locked_v1_bytes_untouched_and_a9_still_nonretryable"],
 }
 FULL_STRESS = [
     "tests/platform/test_runtime_state_store.py",
