@@ -4,6 +4,7 @@ import CSSMotion from '@rc-component/motion';
 import { ArrowRight, CheckCircle2, ChevronRight, CircleAlert, Clapperboard, Clock3, Image as ImageIcon, Plus, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import type { Episode, NavigationTab, ProjectItem } from '../../types';
 import { platformApi, type RuntimeStatusSummary, stageLabel } from '../../api/platformApi';
+import { reconcileRuntimeCatalog } from '../../api/runtimeCatalogReconciliation';
 import { useLocalApprovedMedia } from '../../api/localApprovedMedia';
 
 interface Props {
@@ -87,6 +88,7 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
   });
   const safeStoryPage=Math.min(storyPage,Math.max(1,Math.ceil(filtered.length/storyPageSize)));
   const galleryPageItems=filtered.slice((safeStoryPage-1)*storyPageSize,safeStoryPage*storyPageSize);
+  const reconciliation = reconcileRuntimeCatalog(episodes,runtime,runtimeTotal,runtimeStatus==='available');
   const runtimeIsFixture = runtime.some(item => item.state_source === 'isolated-test');
   const runtimeIsLocalFile = runtime.some(item => item.state_source === 'local_workspace_episode_state_file');
 
@@ -141,6 +143,20 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
       {[{label:'作品记录',value:episodes.length},{label:'有批准图片',value:approved.length},{label:'未发布',value:unfinished.length},{label:'项目空间',value:projects.length}].map(metric=><span key={metric.label} className="inline-flex items-baseline gap-2 text-[var(--text-secondary)]"><span>{metric.label}</span><strong className="text-[15px] font-semibold tabular-nums text-[var(--text-primary)]">{metric.value}</strong></span>)}
       <span className="ml-auto text-[11px] text-[var(--text-tertiary)]">当前工作区快照</span>
     </section>
+
+    <details aria-label="作品来源一致性对账" className="border-b border-[var(--border-subtle)] pb-2 text-[12px] text-[var(--text-secondary)]">
+      <summary className="flex cursor-pointer flex-wrap items-center gap-2 py-1 marker:text-[var(--text-tertiary)]">
+        <span className="font-medium text-[var(--text-primary)]">作品来源对账</span>
+        <span>双重身份一致 {reconciliation.confirmed.length} / 已读取真实作品 {reconciliation.observed}</span>
+        <span className="text-[var(--text-tertiary)]">{reconciliation.complete?'本次来源完整':'本次来源未完整核验'} · 点击查看差异</span>
+      </summary>
+      <div className="space-y-2 pl-4 pt-2">
+        <p>只用作品编号与标题同时完全相同的唯一记录确认关联；本地草稿不算正式作品。不会凭相似名称补齐身份，也不更改 Runtime 状态。</p>
+        <p>监控侧未匹配目录：{reconciliation.unmatched.length} · 快照侧未匹配目录：{reconciliation.snapshotOnly.length}。这些是两种目录来源的差异，不表示作品丢失或没有生产。</p>
+        {reconciliation.unmatched.length>0&&<p className="break-words">监控侧待核对：{reconciliation.unmatched.map(ep=>ep.title+'（'+ep.business_episode_id+'）').join('、')}</p>}
+        <Button size="small" onClick={()=>onNavigate('production_monitor')}>打开真实生产监控核对</Button>
+      </div>
+    </details>
 
     <section aria-label="工作台关注事项与快捷入口" className="flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-3 text-[12px]">
       <div className="flex items-center gap-2 text-[var(--text-secondary)]">{attention.length?<CircleAlert size={15} className="shrink-0 text-[var(--danger)]"/>:<CheckCircle2 size={15} className="shrink-0 text-[var(--text-tertiary)]"/>}
