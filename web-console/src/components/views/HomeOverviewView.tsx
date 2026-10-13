@@ -6,6 +6,7 @@ import type { Episode, NavigationTab, ProjectItem } from '../../types';
 import { platformApi, type RuntimeStatusSummary, stageLabel } from '../../api/platformApi';
 import { reconcileRuntimeCatalog } from '../../api/runtimeCatalogReconciliation';
 import { useLocalApprovedMedia } from '../../api/localApprovedMedia';
+import { CanonicalRuntimeDirectory } from '../catalog/CanonicalRuntimeDirectory';
 
 interface Props {
   episodes: Episode[];
@@ -99,6 +100,8 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
       <span className="text-[11px] text-[var(--text-tertiary)]">本机工作区只读证据 · 非在线执行状态</span>
     </header>
 
+    <CanonicalRuntimeDirectory episodes={episodes} condensed onSelectHistorical={onSelectEpisode} onOpenMonitor={()=>onNavigate('production_monitor')}/>
+
     <section aria-label="创作快捷入口" className="space-y-3">
       <div><h2 className="text-[22px] font-semibold leading-8 tracking-tight">今天想创作什么？</h2><p className="mt-1 text-[12px] text-[var(--text-secondary)]">从已有作品接着做，或去素材库查看批准图片；正式生图仍使用受控流程。</p></div>
       <div className="grid min-w-0 gap-px border-y border-[var(--border-subtle)] bg-[var(--border-subtle)] md:grid-cols-3" role="group" aria-label="三项核心创作操作">
@@ -141,7 +144,7 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
 
     <section aria-label="项目概况" className="flex flex-wrap items-center gap-x-7 gap-y-2 border-y border-[var(--border-subtle)] py-2 text-[12px]">
       {[{label:'作品记录',value:episodes.length},{label:'有批准图片',value:approved.length},{label:'未发布',value:unfinished.length},{label:'项目空间',value:projects.length}].map(metric=><span key={metric.label} className="inline-flex items-baseline gap-2 text-[var(--text-secondary)]"><span>{metric.label}</span><strong className="text-[15px] font-semibold tabular-nums text-[var(--text-primary)]">{metric.value}</strong></span>)}
-      <span className="ml-auto text-[11px] text-[var(--text-tertiary)]">当前工作区快照</span>
+      <span className="ml-auto text-[11px] text-[var(--text-tertiary)]">以下数字为历史工作区快照，不等于正式 Runtime 目录总量</span>
     </section>
 
     <details aria-label="作品来源一致性对账" className="border-b border-[var(--border-subtle)] pb-2 text-[12px] text-[var(--text-secondary)]">
