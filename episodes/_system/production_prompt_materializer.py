@@ -99,12 +99,44 @@ def ensure(ep: Path, *, require_locked_table: bool = False) -> dict:
     return {"created": created, "reused": reused, "prompt_dir": PROMPT_DIR.as_posix(), "total": total}
 
 
+def _prepare_reviewed_m00_source_drafts(ep: Path) -> dict:
+    """Only after current canonical Story Review succeeds.
+
+    A skip must remain invisible to old production prompt/Frame SHA. A new
+    draft is NEVER a verified delta and never an image Attempt permission.
+    """
+    import visual_profile
+    import story_review
+    import m00_storyboard_delta_sources as sources
+
+    if visual_profile.compile_prompt_contract(ep)["profile_id"] != "M00":
+        return {"status": "SKIPPED_OTHER_PROFILE"}
+    if not story_review.review_required(ep):
+        return {"status": "SKIPPED_NO_CANONICAL_REVIEW"}
+    try:
+        if story_review.verify(ep):
+            return {"status": "SKIPPED_CANONICAL_REVIEW_NOT_READY"}
+        if not story_review.review_authority_sha256(ep):
+            return {"status": "SKIPPED_CANONICAL_REVIEW_SHA_MISSING"}
+        story, board = frame_contract.artifact_paths(ep)
+        return sources.prepare_drafts(
+            episode=ep, story=story, storyboard=board,
+            count=frame_contract.frame_count(ep), apply=True)
+    except (ValueError, KeyError, UnicodeError) as exc:
+        # Candidate extraction is advisory. A legacy valid storyboard shape
+        # must not be blocked from image-queue preparation by this assistant.
+        return {"status": "SKIPPED_DRAFT_EXTRACTION_UNSUPPORTED",
+                "reason_code": str(exc).split(":")[0][:100]}
+
+
 def prepare_queue(ep: Path) -> dict:
     ep = Path(ep).resolve()
+    source_drafts = _prepare_reviewed_m00_source_drafts(ep)
     materialized = ensure(ep)
     import image_scheduler
     imported = image_scheduler.import_batch(ep, ep / PROMPT_DIR)
-    return {"status": "PASS", "materialized": materialized, "queue": imported}
+    return {"status": "PASS", "materialized": materialized, "queue": imported,
+            "m00_source_drafts": source_drafts}
 
 
 def self_test() -> None:

@@ -21,6 +21,8 @@ R8_DELTA_TEST = ROOT / "tests" / "system" / "test_m00_sequence_delta_r8.py"
 R9_EPISODE_TEST = ROOT / "tests" / "system" / "test_m00_episode_state_delta_r9.py"
 R9_REVIEW_TEST = ROOT / "tests" / "system" / "test_m00_episode_delta_review_r9.py"
 R10_MARKDOWN_DELTA_TEST = ROOT / "tests" / "system" / "test_m00_storyboard_delta_r10.py"
+R11_SUGGESTION_TEST = ROOT / "tests" / "system" / "test_m00_source_suggestions_r11.py"
+R11_PIPELINE_TEST = ROOT / "tests" / "system" / "test_m00_auto_draft_pipeline_r11.py"
 
 if __name__ == "__main__":
     print("M00_FAST_TEST (contracts + actual-pixel safety, no provider, no image attempts)", flush=True)
@@ -38,6 +40,8 @@ if __name__ == "__main__":
         [sys.executable, "-m", "pytest", "-q", str(R9_EPISODE_TEST)],
         [sys.executable, "-m", "pytest", "-q", str(R9_REVIEW_TEST)],
         [sys.executable, "-m", "pytest", "-q", str(R10_MARKDOWN_DELTA_TEST)],
+        [sys.executable, "-m", "pytest", "-q", str(R11_SUGGESTION_TEST)],
+        [sys.executable, "-m", "pytest", "-q", str(R11_PIPELINE_TEST)],
     )
     for argv in commands:
         rc = subprocess.call(argv, cwd=ROOT)

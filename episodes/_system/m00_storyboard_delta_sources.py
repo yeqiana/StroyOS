@@ -59,16 +59,22 @@ def proposal(*, story: Path, storyboard: Path, frame: int) -> dict:
     prev, curr, fmt = excerpts(storyboard, frame)
     if not story.is_file() or not story.read_text(encoding="utf-8-sig").strip():
         raise ValueError("M00_DELTA_STORY_MISSING")
+    source = {
+        "story_sha256": digest(story), "storyboard_sha256": digest(storyboard),
+        "previous_excerpt_sha256": hashlib.sha256(prev.encode("utf-8")).hexdigest(),
+        "current_excerpt_sha256": hashlib.sha256(curr.encode("utf-8")).hexdigest(),
+        "format": fmt,
+    }
+    import m00_storyboard_source_suggestions as suggestions
+    hints = suggestions.analyze(
+        story=story.read_text(encoding="utf-8-sig"),
+        previous=prev, current=curr, source=source)
     return {
         "schema_version": 1, "status": "DRAFT_ONLY", "frame": f"{frame:02d}",
         "authority": "SOURCE_QUOTATIONS_ONLY_NOT_A_REVIEW_PASS",
-        "source": {
-            "story_sha256": digest(story), "storyboard_sha256": digest(storyboard),
-            "previous_excerpt_sha256": hashlib.sha256(prev.encode("utf-8")).hexdigest(),
-            "current_excerpt_sha256": hashlib.sha256(curr.encode("utf-8")).hexdigest(),
-            "format": fmt,
-        },
+        "source": source,
         "evidence": {"previous": prev, "current": curr},
+        "source_suggestions": hints,
         "delta": {"schema_version": 1, "mode": "action",
                   "locked": {k: "" for k in SOURCE_KEYS},
                   "observable_changes": []},
@@ -125,3 +131,54 @@ def approve_source_bound(*, document: dict, story: Path, storyboard: Path,
 
 def candidate_path(episode: Path, frame: int) -> Path:
     return episode / REL / f"{frame:02d}.json"
+
+
+def prepare_drafts(*, episode: Path, story: Path, storyboard: Path,
+                   count: int, apply: bool = False) -> dict:
+    """Preflight *all* adjacent frames before creating any draft.
+
+    Existing sidecars and official story/board stay immutable. DRAFT_ONLY
+    candidates never grant authority or alter old Frame Contract fingerprints.
+    """
+    from frame_contract import _frame_from_json
+    if count < 1:
+        raise ValueError("M00_DELTA_INVALID_FRAME_COUNT")
+    original_json = None
+    if storyboard.suffix.lower() == ".json":
+        original_json = json.loads(storyboard.read_text(encoding="utf-8-sig"))
+    pending, prepared, existing = [], [], 0
+    for n in range(2, count + 1):
+        if original_json is not None:
+            current = _frame_from_json(original_json, n)
+            if isinstance(current, dict) and "m00_adjacent_state_delta" in current:
+                continue  # Explicit locked JSON contract already owns this frame.
+        data = proposal(story=story, storyboard=storyboard, frame=n)
+        path = candidate_path(episode, n)
+        if path.is_file():
+            existing += 1
+            continue
+        hints = data["source_suggestions"]
+        pending.append({
+            "frame": f"{n:02d}", "path": path.relative_to(episode).as_posix(),
+            "previous_excerpt_sha256": data["source"]["previous_excerpt_sha256"],
+            "current_excerpt_sha256": data["source"]["current_excerpt_sha256"],
+            "mode_hint": hints["mode_hint"],
+            "quoted_lock_categories": sum(bool(v) for v in hints["locked_quote_candidates"].values()),
+            "observable_change_candidates": len(hints["observable_change_candidates"]),
+            "missing_evidence": hints["missing_evidence"],
+            "auto_attested": False,
+        })
+        prepared.append((path, data))
+    if apply:
+        for path, data in prepared:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("x", encoding="utf-8", newline="\n") as handle:
+                json.dump(data, handle, ensure_ascii=False, indent=2)
+                handle.write("\n")
+    return {
+        "status": "DRAFTS_CREATED_NO_AUTHORITY" if apply else "DRY_RUN",
+        "created": len(prepared) if apply else 0,
+        "existing_untouched": existing,
+        "pending": pending, "formal_generation_calls": 0,
+        "formal_authority_granted": False,
+    }
