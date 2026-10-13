@@ -2,7 +2,7 @@ import React, {useRef, useState} from 'react';
 import {Button, Modal, Input, Select} from 'antd';
 import {saveTestBackup,listTestBackups,getTestBackup,saveWorkspace,listWorkspaces,getWorkspace} from '../../api/isolatedDraftVault';
 import type {SavedWorkspaceItem} from '../../api/isolatedDraftVault';
-import {saveWebDraft,listWebDrafts,readWebDraft} from '../../api/webDraftApi';
+import {saveWebDraft,listWebDrafts,readWebDraft,inspectWebDraftHandoff} from '../../api/webDraftApi';
 import type {Episode,ProjectItem} from '../../types';
 import {createDraftBackup,MAX_BACKUP_CHARS,reviewDraftRestore} from '../../api/localDraftBackup';
 
@@ -86,6 +86,32 @@ export const LocalDraftSafetyPanel:React.FC<Props>=({episodes,projects,onRestore
         }
       });
     }catch(e){setStatus('服务端草稿恢复失败：'+(e instanceof Error?e.message:'未知错误'));}
+    finally{setWebBusy(false);}
+  };
+
+  const inspectProductionHandoff=async()=>{
+    if(!webSelected)return;
+    setWebBusy(true);
+    try{
+      const plan=await inspectWebDraftHandoff(webSecret,webSelected);
+      if(plan.admission_granted||plan.production_started||plan.canonical_episode_created)
+        throw Error('交接预检响应越权，已停止');
+      Modal.info({
+        title:'正式 Episode 交接 · 只读预检',
+        width:700,
+        content:<div className="max-h-80 overflow-auto text-[12px]">
+          <p>服务端工作区 v{plan.workspace_version} · {plan.items.length} 部草稿。这里只提供既有 create --dry-run 入口，不创建正式 Episode、不启动生产。</p>
+          {plan.items.map(item=><div key={item.server_draft_id} className="mt-2 border-t border-[var(--border-subtle)] pt-2">
+            <strong>{item.title||item.source_draft_id}</strong>
+            <span className="ml-2">{item.preflight_available?'可执行只读预检':'资料待补：'+item.reason}</span>
+            {item.preflight_argv&&<pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap break-all text-[11px]">{JSON.stringify(item.preflight_argv)}</pre>}
+          </div>)}
+          <p className="mt-2">执行正式创建和 Driver 仍需要单独授权，不能通过本按钮启动。</p>
+        </div>,
+        okText:'关闭',
+      });
+      setStatus('已读取服务端草稿交接计划；未运行预检命令，正式生产未变化');
+    }catch(e){setStatus('交接预检失败：'+(e instanceof Error?e.message:'未知错误'));}
     finally{setWebBusy(false);}
   };
 
@@ -276,6 +302,8 @@ export const LocalDraftSafetyPanel:React.FC<Props>=({episodes,projects,onRestore
           label:item.workspace_id.slice(0,18)+' · v'+item.version}))}/>}
       <Button size="small" disabled={webBusy||!webSelected||webSecret.trim().length<32}
         onClick={()=>void restoreOfficialDraft()}>恢复选中草稿</Button>
+      <Button size="small" disabled={webBusy||!webSelected||webSecret.trim().length<32}
+        onClick={()=>void inspectProductionHandoff()}>生产交接预检（只读）</Button>
       {webCurrent&&<span className="text-[11px] text-[var(--text-tertiary)]">当前 v{webCurrent.version}</span>}
     </div>
     {status&&<p role="status" className="mt-2 text-[11px] text-[var(--text-secondary)]">{status}</p>}
