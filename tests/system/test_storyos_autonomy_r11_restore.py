@@ -11,12 +11,30 @@ def test_no_run_without_explicit_ack(monkeypatch):
     import pytest
     assert inspect.main(["episodes/15_天界生活日常/01_天界普通女生的一天","--apply"])==2
 
-def test_missing_or_drifted_plan_refuses_before_driver(monkeypatch):
-    ep=ROOT/"episodes/15_天界生活日常/01_天界普通女生的一天"
-    monkeypatch.setattr(apply.native,"canonical_episode",lambda ref:ep)
-    result=apply.restore(str(ep),{"can_recover_review":True,"review_sha256":"old"},
-                         lambda ref:{"can_recover_review":True,"review_sha256":"new"})
+def test_restore_rejects_feature_worktree_without_any_mutation(tmp_path,monkeypatch):
+    (tmp_path/".git").write_text("gitdir: elsewhere")
+    ep=tmp_path/"episodes"/"fixture"
+    ep.mkdir(parents=True)
+    monkeypatch.setattr(apply.native,"ROOT",tmp_path)
+    monkeypatch.setattr(apply.native,"canonical_episode",lambda _:ep)
+    result=apply.restore("synthetic",{"can_recover_review":True,"review_sha256":"old"},
+        lambda _: (_ for _ in ()).throw(AssertionError("worktree must not inspect")))
     assert result["status"]=="NOT_PRIMARY_CHECKOUT"
+    assert not result["mysql_writes_verified"]
+
+
+def test_missing_or_drifted_plan_refuses_before_driver(tmp_path,monkeypatch):
+    import subprocess
+    (tmp_path/".git").mkdir()
+    ep=tmp_path/"episodes"/"fixture"
+    ep.mkdir(parents=True)
+    monkeypatch.setattr(apply.native,"ROOT",tmp_path)
+    monkeypatch.setattr(apply.native,"canonical_episode",lambda _:ep)
+    monkeypatch.setattr(apply.subprocess,"run",lambda *a,**kw:
+        subprocess.CompletedProcess(a,0,stdout=str(tmp_path)))
+    result=apply.restore("synthetic",{"can_recover_review":True,"review_sha256":"old"},
+                         lambda _:{"can_recover_review":True,"review_sha256":"new"})
+    assert result["status"]=="EVIDENCE_CHANGED_BEFORE_APPLY"
     assert not result["mysql_writes_verified"]
 
 def test_paid_attempt_unknown_remains_nonretryable():
