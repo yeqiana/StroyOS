@@ -16,6 +16,7 @@ export interface RuntimeStatusSummary {
   state_source?: string | null;
   updated_at?: string | null;
   observed_at?: string | null;
+  writer_owner_status?: string | null;
 }
 
 export interface RuntimeStatusList {
@@ -86,7 +87,7 @@ export interface RuntimeStatusDetail {
   read_only?: boolean;
   frame_records?: RecordedFrameEvidence[];
   mysql_monitor?: LocalMySqlMonitor;
-  writer_owner_observation?: {status: string; reason: string; read_only: true};
+  writer_owner_observation?: {status: string; reason: string | null; read_only: true; fresh_seconds?: number | null; producer_process_verified?: boolean; kernel_lock_verified?: false; provider_inflight_verified?: false};
   queue_summary?: {recorded_items: number; status_counts: Record<string, number>; recorded_at?: string | null} | null;
   checkpoint_steps?: RecordedCheckpointStep[];
   review_records?: Record<string, RecordedReviewEvidence>;

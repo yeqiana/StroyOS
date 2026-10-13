@@ -7,6 +7,7 @@ import threading
 from pathlib import Path
 import episode_runner
 import runner_state_store
+import writer_owner_observation
 import runtime_trace
 
 
@@ -14,18 +15,21 @@ def run(episode: Path, interval: int = 10, resume: bool = False, codex: str | No
     episode = Path(episode).resolve()
     if not runner_state_store.acquire_lock(episode):
         return 25  # another live owner; never overwrite its state
+    epoch = writer_owner_observation.new_epoch(episode)
     stop = threading.Event()
     heartbeat_error = []
     def heartbeat():
         while not stop.wait(max(0.1, min(interval or 1, 30))):
             try:
                 runner_state_store.save(episode, pid=os.getpid())
+                writer_owner_observation.emit(episode, epoch, held=True)
             except Exception as exc:
                 heartbeat_error.append(str(exc))
                 return
     thread = threading.Thread(target=heartbeat, name="storyos-heartbeat", daemon=True)
     try:
         runner_state_store.save(episode, status="RUNNING", pid=os.getpid(), resume_enabled=resume)
+        writer_owner_observation.emit(episode, epoch, held=True)
         runtime_trace.emit(episode, {"event": "RUNNER_STARTED", "resume_enabled": resume,
                                      "codex": codex or ""})
         thread.start()
@@ -41,6 +45,7 @@ def run(episode: Path, interval: int = 10, resume: bool = False, codex: str | No
         stop.set()
         if thread.is_alive():
             thread.join(timeout=5)
+        writer_owner_observation.emit(episode, epoch, held=False)
         runner_state_store.release_lock(episode)
 
 

@@ -85,6 +85,7 @@ export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMor
         columns={[
           {title:'作品',key:'title',render:(_,item)=><div className="min-w-0"><span title={item.title||item.episode_ref||item.episode_id} className="block max-w-[560px] truncate text-[13px] font-semibold text-[var(--text-primary)]">{item.title||item.episode_ref||item.episode_id||'未知作品'}</span><span className="block max-w-[560px] truncate font-mono text-[10px] text-[var(--text-tertiary)]">{item.episode_ref||item.episode_id||'未提供作品标识'}</span></div>},
           {title:'生产阶段',dataIndex:'production_stage',key:'stage',width:160,render:(value:string)=><span className="inline-flex items-center gap-2 text-[12px] text-[var(--text-secondary)]"><span className="h-1.5 w-1.5 rounded-full bg-[var(--text-tertiary)]"/>{stageLabel(value||'NO_STATE')}</span>},
+          {title:'Driver持锁报告',key:'writer',width:160,render:(_,item)=><span className="text-[11px] text-[var(--text-secondary)]">{item.writer_owner_status==='FRESH_PRODUCER_LOCK_CLAIM'?'持锁心跳新鲜（自报）':'未核验'}</span>},
           {title:'数据来源',dataIndex:'state_source',key:'source',width:190,render:(value:string)=><span title={value||'未提供'} className="text-[12px] text-[var(--text-tertiary)]">{value==='local_workspace_episode_state_file'?'本机文件 · 只读':value==='isolated-test'?'隔离测试':value||'未提供'}</span>},
           {title:'更新时间',key:'updated',width:144,render:(_,item)=><span className="tabular-nums text-[11px] text-[var(--text-tertiary)]">{item.updated_at||item.observed_at?String(item.updated_at||item.observed_at).replace('T',' ').slice(0,16):'未知'}</span>},
           {title:'',key:'action',width:90,align:'right',render:(_,item)=><Button type="link" aria-label={'查看权威阶段：'+(item.title||item.episode_ref||item.episode_id)} size="small" onClick={event=>{event.stopPropagation();setSelected(item);}}>详情</Button>}
@@ -176,6 +177,25 @@ export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMor
           {Boolean(visibleDetail.source_errors?.length) && (
             <p role="alert" className="text-xs text-[var(--warning)]">有 {visibleDetail.source_errors?.length} 份生产证据读取失败，当前明细不完整。</p>
           )}
+        </section>
+      )}
+
+      {detailIsCurrent && visibleDetail?.writer_owner_observation && (
+        <section aria-label="Driver持锁心跳只读观测" className="space-y-2 border-t border-[var(--border-subtle)] pt-4">
+          <h4 className="font-medium">Driver 持锁心跳</h4>
+          {visibleDetail.writer_owner_observation.status === 'FRESH_PRODUCER_LOCK_CLAIM'
+            ? <p role="status" className="text-xs text-[var(--text-secondary)]">
+                原生产 Driver 报告近期持有单机 Writer 锁；进程身份和心跳均已核验。
+                上次心跳约 {visibleDetail.writer_owner_observation.fresh_seconds ?? '未知'} 秒前。
+              </p>
+            : <p role="status" className="text-xs text-[var(--text-tertiary)]">
+                尚无可核验的持锁 Driver 报告（{visibleDetail.writer_owner_observation.reason || 'UNKNOWN'}）。
+                可能尚未制作、运行中的旧版 Driver 未生成新证据，或进程已结束。
+              </p>}
+          <p className="text-[11px] text-[var(--text-tertiary)]">
+            仅展示已成功取得锁的 Driver 自报心跳；不检测或争抢生产 OS 锁。
+            该观察不等于内核锁此刻仍持有，也不证明有生图 Provider 正在调用。
+          </p>
         </section>
       )}
 

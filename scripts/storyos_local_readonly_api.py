@@ -25,6 +25,7 @@ from platform.api.http_server import PlatformApiDispatcher, PlatformApiRequestHa
 from platform.operations.local_episode_monitoring import read_recorded_production
 from platform.operations.local_mysql_monitor_readonly import observe_mysql_episode, empty as empty_mysql_monitor
 from platform.operations.local_worker_heartbeat_readonly import observe_local_redis_heartbeats
+from platform.operations.local_writer_owner_readonly import observe_writer_owner, unknown as unknown_writer_owner
 
 SOURCE = "local_workspace_episode_state_file"
 
@@ -79,6 +80,7 @@ class LocalEpisodeFileStatuses:
                     "title": str(state.get("title") or state_file.parent.parent.name),
                     "production_stage": stage,
                     "state_source": SOURCE,
+                    "writer_owner_status": observe_writer_owner(resolved.parent.parent)["status"],
                     "updated_at": state.get("updated_at"),
                 })
             except (OSError, ValueError, UnicodeError, json.JSONDecodeError):
@@ -120,6 +122,7 @@ class LocalEpisodeFileStatuses:
             return None
         recorded = {}
         mysql_snapshot = empty_mysql_monitor("EPISODE_IDENTITY_UNVERIFIED")
+        writer_owner = unknown_writer_owner("NO_CANONICAL_DRIVER_OWNER_EVIDENCE")
         for state_file in self._production_state_files():
             try:
                 resolved = state_file
@@ -127,6 +130,7 @@ class LocalEpisodeFileStatuses:
                 candidate_ref = "LOCAL_" + hashlib.sha256(relative.encode("utf-8")).hexdigest()[:24]
                 if candidate_ref == episode:
                     recorded = read_recorded_production(resolved.parent)
+                    writer_owner = observe_writer_owner(resolved.parent.parent)
                     mysql_snapshot = observe_mysql_episode(
                         resolved.parent.parent.relative_to(self.episodes).as_posix(),
                         str(item.get("business_episode_id") or ""),
@@ -146,11 +150,7 @@ class LocalEpisodeFileStatuses:
             "auto_recoverable": None,
             "heartbeat": {"health": "unknown"},
             "mysql_monitor": mysql_snapshot,
-            "writer_owner_observation": {
-                "status": "UNVERIFIED",
-                "reason": "OS_LOCK_HOLDER_UNAVAILABLE_WITHOUT_AUTHORITY_OPERATION",
-                "read_only": True,
-            },
+            "writer_owner_observation": writer_owner,
             **recorded,
         }
 
