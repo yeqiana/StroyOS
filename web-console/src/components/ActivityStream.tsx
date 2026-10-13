@@ -43,6 +43,8 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode, o
   const selectedBatchFrame=selectedFrame?.kind==='batch'?batch?.items.find(item=>item.frameIndex===selectedFrame.frame):undefined;
   const selectedImageUrl=selectedApprovedFrame?.url||(hasVerifiedPreview(selectedBatchFrame?.imageUrl)?selectedBatchFrame?.imageUrl:undefined);
   const selectedReview=selectedFrame?reviews.find(review=>review.frameIndex===selectedFrame.frame):undefined;
+  // A frame-number match is evidence of storyboard planning, never of image-reference binding.
+  const selectedStoryboardBeat=selectedFrame?activeEpisode.storyboardBeats?.find(beat=>beat.beatIndex===selectedFrame.frame):undefined;
   const frameOrder=selectedFrame?.kind==='approved'?(approved?.frames.map(item=>item.frame)||[]):(batch?.items.map(item=>item.frameIndex)||[]);
   const orderedFrames=[...new Set(frameOrder)].sort((a,b)=>a-b);
   const framePosition=selectedFrame?orderedFrames.indexOf(selectedFrame.frame):-1;
@@ -227,6 +229,16 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode, o
           {selectedReview&&<div className="grid grid-cols-[100px_minmax(0,1fr)] gap-3 py-3"><dt className="text-[var(--text-tertiary)]">审核结论</dt><dd><span className={`font-medium ${verdictColor[selectedReview.verdict]}`}>{selectedReview.verdict}</span><p className="mt-1 whitespace-pre-wrap break-words leading-5 text-[var(--text-secondary)]">{selectedReview.comment||selectedReview.issueTags?.join('、')||'未记录审核备注'}</p></dd></div>}
           {selectedBatchFrame?.prompt&&<div className="grid grid-cols-[100px_minmax(0,1fr)] gap-3 py-3"><dt className="text-[var(--text-tertiary)]">历史 Prompt</dt><dd className="min-w-0"><div className="mb-2 flex justify-end"><Button size="small" icon={<Copy size={12}/>} onClick={()=>void copyBatchPrompt(selectedBatchFrame.prompt)}>复制 Prompt</Button></div><p className="whitespace-pre-wrap break-words leading-5">{selectedBatchFrame.prompt}</p></dd></div>}
         </dl>
+        <details aria-label="逐帧分镜快照" className="border-t border-[var(--border-subtle)] pt-3 text-[12px]">
+          <summary className="cursor-pointer font-medium text-[var(--text-primary)]">Frame {String(selectedFrame.frame).padStart(2,'0')} · 分镜契约 {selectedStoryboardBeat?'有记录':'未提供'}</summary>
+          {selectedStoryboardBeat?<dl className="mt-2 space-y-2 text-[var(--text-secondary)]">
+            {selectedStoryboardBeat.sceneName&&<div><dt className="text-[var(--text-tertiary)]">场景</dt><dd className="break-words">{selectedStoryboardBeat.sceneName}</dd></div>}
+            {selectedStoryboardBeat.shotType&&<div><dt className="text-[var(--text-tertiary)]">镜头</dt><dd className="break-words">{selectedStoryboardBeat.shotType}</dd></div>}
+            {selectedStoryboardBeat.lighting&&<div><dt className="text-[var(--text-tertiary)]">光线</dt><dd className="break-words">{selectedStoryboardBeat.lighting}</dd></div>}
+            {selectedStoryboardBeat.narration&&<div><dt className="text-[var(--text-tertiary)]">分镜描述</dt><dd className="whitespace-pre-wrap break-words">{selectedStoryboardBeat.narration}</dd></div>}
+          </dl>:<p className="mt-2 text-[var(--text-tertiary)]">作品快照未提供与当前帧号匹配的分镜信息。</p>}
+          <p className="mt-2 text-[11px] leading-5 text-[var(--text-tertiary)]">仅按作品快照的帧编号匹配，不代表参考素材已绑定或被实际用于生成。</p>
+        </details>
         <details aria-label="作品级参考素材" className="border-y border-[var(--border-subtle)] py-3 text-[12px]">
           <summary className="cursor-pointer font-medium text-[var(--text-primary)]">作品参考 · {activeEpisode.characters.length} 人物 · {activeEpisode.visualLocks.length} 视觉锚点</summary>
           <p className="mt-2 text-[11px] leading-5 text-[var(--text-tertiary)]">仅展示当前作品快照中的参考信息；不代表素材已绑定此 Frame，也不构成正式生产授权。</p>

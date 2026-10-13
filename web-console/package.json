@@ -41,6 +41,7 @@
     "capture:r26": "node scripts/capture-r26-compare-cdp.mjs",
     "test:r27": "node scripts/test-r27-filmstrip-browser.mjs",
     "test:creator-shortcuts": "node scripts/test-rea-creator-shortcuts-browser.mjs",
+    "test:frame-evidence": "node scripts/test-frame-evidence-browser.mjs",
     "capture:r27": "node scripts/capture-r26-compare-cdp.mjs --r27",
     "test:r28": "node scripts/test-r28-all-menu-browser.mjs",
     "test:r29": "node scripts/test-r29-home-browser.mjs",

@@ -938,14 +938,14 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
                 </div>
 
                 {/* References 引用列表 (带小预览图) */}
-                {selectedFrame.referenceItems && selectedFrame.referenceItems.length > 0 && (
+                {(Boolean(selectedFrame.referenceItems?.length) || Boolean(selectedFrame.references?.length)) ? (
                   <div className="space-y-1.5">
                     <div className="text-[#737D8A] text-[11px] flex items-center justify-between">
-                      <span>References (特征契约):</span>
-                      <span className="text-[#505864] text-[10px]">已绑定视觉特征</span>
+                      <span>Frame 引用记录 (历史快照):</span>
+                      <span className="text-[var(--text-tertiary)] text-[10px]">未核验生成时是否使用</span>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                      {selectedFrame.referenceItems.map((ref, idx) => (
+                      {(selectedFrame.referenceItems?.length ? selectedFrame.referenceItems : (selectedFrame.references || []).map(name=>({name, url:undefined, type:undefined}))).map((ref, idx) => (
                         <div
                           key={idx}
                           className="flex items-center gap-2 p-1.5 rounded-[4px] bg-[#0F1115] border border-[#232830] hover:border-[#3E4552] transition-colors"
@@ -966,6 +966,8 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
                       ))}
                     </div>
                   </div>
+                ) : (
+                  <p role="status" className="text-[11px] leading-5 text-[var(--text-tertiary)]">该历史 Frame 未记录参考素材引用；不能据此认定生产时没有使用参考图。</p>
                 )}
 
                 {/* Prompt 提示词 (可折叠/展开与一键复制) */}
