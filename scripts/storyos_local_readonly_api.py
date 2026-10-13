@@ -22,6 +22,7 @@ if str(ROOT) not in sys.path:
 from platform.api.controllers import RuntimeStatusApiController, RuntimeAuthorityApiController
 from platform.operations.runtime_authority_evidence import RuntimeAuthorityEvidenceService
 from platform.api.http_server import PlatformApiDispatcher, PlatformApiRequestHandler, build_http_server
+from platform.operations.local_episode_monitoring import read_recorded_production
 
 SOURCE = "local_workspace_episode_state_file"
 
@@ -98,9 +99,25 @@ class LocalEpisodeFileStatuses:
         item = next((record for record in rows if record["episode_ref"] == episode), None)
         if item is None:
             return None
+        recorded = {}
+        for state_file in self.episodes.glob("*/**/meta/episode-state.json"):
+            try:
+                if state_file.is_symlink() or not state_file.is_file():
+                    continue
+                resolved = state_file.resolve(strict=True)
+                if not resolved.is_relative_to(self.episodes):
+                    continue
+                relative = resolved.relative_to(self.episodes).as_posix()
+                candidate_ref = "LOCAL_" + hashlib.sha256(relative.encode("utf-8")).hexdigest()[:24]
+                if candidate_ref == episode:
+                    recorded = read_recorded_production(resolved.parent)
+                    break
+            except OSError:
+                continue
         return {
             **item,
             "projection_level": "detail",
+            # Even a recently modified file cannot prove a live Writer or Worker.
             "execution_status": "UNKNOWN",
             "current_action": None,
             "next_step": None,
@@ -108,7 +125,7 @@ class LocalEpisodeFileStatuses:
             "needs_user": None,
             "auto_recoverable": None,
             "heartbeat": {"health": "unknown"},
-            "image_progress": None,
+            **recorded,
         }
 
 # R16: only approved images from canonical episode directories; no arbitrary path API.

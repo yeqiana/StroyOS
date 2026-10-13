@@ -29,6 +29,29 @@ export interface RuntimeStatusList {
   errors: string[];
 }
 
+export interface RecordedFrameEvidence {
+  frame: number;
+  ledger_status: string | null;
+  queue_status: string | null;
+  recorded_attempt_entries: number | null;
+  queue_attempts: number | null;
+  approved_in_ledger: boolean;
+  last_error_code: string | null;
+  queue_history_count: number;
+}
+export interface RecordedCheckpointStep {
+  step: string;
+  status: string;
+  attempt: number | null;
+  finished_at: string | null;
+}
+export interface RecordedReviewEvidence {
+  recorded_status: string | null;
+  decision: string | null;
+  passed: boolean | null;
+  source: string;
+}
+
 // GET /api/v1/runtime/status?episode=... -> data (detail 投影)
 export interface RuntimeStatusDetail {
   schema_version?: number;
@@ -40,6 +63,15 @@ export interface RuntimeStatusDetail {
   current_action?: string | null;
   next_step?: string | null;
   image_progress?: ImageProgress;
+  monitoring_scope?: 'RECORDED_FILES_ONLY' | string;
+  read_only?: boolean;
+  frame_records?: RecordedFrameEvidence[];
+  queue_summary?: {recorded_items: number; status_counts: Record<string, number>; recorded_at?: string | null} | null;
+  checkpoint_steps?: RecordedCheckpointStep[];
+  review_records?: Record<string, RecordedReviewEvidence>;
+  runner_record?: {recorded_status: string | null; last_heartbeat_recorded_at: string | null; verified_live: false} | null;
+  recorded_sources?: Record<string,{source: string; recorded_at: string | null}>;
+  source_errors?: string[];
   review_progress?: ReviewProgress;
   auto_recoverable?: boolean | null;
   needs_user?: boolean | null;
