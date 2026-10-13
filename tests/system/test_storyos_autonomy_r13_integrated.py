@@ -1,6 +1,7 @@
 """R13 slot4: integration is part of all/stress, no mutation in GC plan."""
 from pathlib import Path
 import inspect
+import subprocess
 import sys
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/"scripts"))
@@ -25,8 +26,13 @@ def test_integrated_review_has_both_verified_authority_validation_scopes():
 def test_full_auto_mode_semantics_not_changed_by_review_integration():
     # Unrelated uncommitted runtime_request parser changes remain in the
     # owner's primary checkout; reviewer integration must not silently import.
-    import runtime_request
-    source=inspect.getsource(runtime_request.compile_request)
+    # Only the published Git blob defines the release contract. The owner
+    # may have a deliberate uncommitted runtime_request.py in the primary
+    # checkout; reading inspect.getsource() there would make our test
+    # incorrectly fail after a safe fast-forward merge.
+    source=subprocess.check_output(
+        ["git","show","HEAD:episodes/_system/runtime_request.py"],
+        cwd=ROOT,encoding="utf-8")
     assert 'or mode in {"full_auto"' in source
 
 
