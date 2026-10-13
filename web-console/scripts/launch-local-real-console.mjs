@@ -17,6 +17,37 @@ const python=process.env.STORYOS_PYTHON|| (process.platform==='win32'
   ?path.join(process.env.LOCALAPPDATA||'C:\\Users\\79873\\AppData\\Local','Programs','Python','Python312','python.exe')
   :'python3');
 const vite=path.resolve(web,'node_modules','vite','bin','vite.js');
+// Read a per-user local monitor config *only* for the Python read-only API.
+// Never pass monitor credentials to Vite or browser-side environment variables.
+function localMySqlMonitorEnv(){
+  if(process.platform!=='win32') return {};
+  const home=process.env.LOCALAPPDATA;
+  if(!home) return {};
+  const source=path.resolve(home,'StoryOS','monitoring','mysql-monitor-ro.json');
+  try{
+    const stat=fs.lstatSync(source);
+    if(!stat.isFile()||stat.isSymbolicLink()||stat.size>4096) return {};
+    const config=JSON.parse(fs.readFileSync(source,'utf8'));
+    const user=config.STORYOS_MONITOR_MYSQL_RO_USER;
+    const password=config.STORYOS_MONITOR_MYSQL_RO_PASSWORD;
+    if(config.STORYOS_LOCAL_MONITOR_MYSQL!=='1'||
+       !/^[A-Za-z0-9_.:-]{1,64}$/.test(user||'')||
+       typeof password!=='string'||password.length<32||
+       config.STORYOS_MONITOR_MYSQL_RO_DB!=='STORY_OS_RUNTIME'||
+       String(config.STORYOS_MONITOR_MYSQL_RO_PORT)!=='3307') return {};
+    return {
+      STORYOS_LOCAL_MONITOR_MYSQL:'1',
+      STORYOS_MONITOR_MYSQL_RO_USER:user,
+      STORYOS_MONITOR_MYSQL_RO_PASSWORD:password,
+      STORYOS_MONITOR_MYSQL_RO_DB:'STORY_OS_RUNTIME',
+      STORYOS_MONITOR_MYSQL_RO_PORT:'3307',
+    };
+  }catch{
+    // Missing, unreadable or malformed secrets keep monitoring disabled.
+    return {};
+  }
+}
+
 const children=[];
 let closing=false;
 function shutdown(code=0){
@@ -55,7 +86,7 @@ async function poll(url,check){
 }
 async function main(){
  console.log('本机真实状态文件只读：仅 127.0.0.1，读取用户主工作区 episodes；不启动生产 Runtime 或数据库');
- start(python,[path.resolve(root,'scripts','storyos_local_readonly_api.py'),'--workspace-root',dataRoot,'--port',String(apiPort)],root,{...process.env,STORYOS_LOCAL_MONITOR_REDIS:'1'});
+ start(python,[path.resolve(root,'scripts','storyos_local_readonly_api.py'),'--workspace-root',dataRoot,'--port',String(apiPort)],root,{...process.env,STORYOS_LOCAL_MONITOR_REDIS:'1',...localMySqlMonitorEnv()});
  await poll('http://127.0.0.1:'+apiPort+'/healthz',async r=>(await r.json()).code==='OK');
  const viteEnv={...process.env,STORYOS_PLATFORM_PROXY_TARGET:'http://127.0.0.1:'+apiPort,VITE_PLATFORM_API_URL:'',VITE_STORYOS_LOCAL_EVIDENCE_MODE:'true'};
  start(process.execPath,[vite,'--host','127.0.0.1','--port',String(webPort),'--strictPort'],web,viteEnv);
