@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {matchRunEpisodeByTitle} from '../src/api/storyRunEpisodeMatch.ts';
+const entries=[{id:'ep001',title:'同名故事'},{id:'ep002',title:'同名故事'},{id:'ep003',title:'唯一故事'}];
+assert.deepEqual(matchRunEpisodeByTitle(entries,'同名故事'),{kind:'ambiguous'});
+assert.deepEqual(matchRunEpisodeByTitle(entries,'唯一故事'),{kind:'unique',episode:entries[2]});
+assert.deepEqual(matchRunEpisodeByTitle(entries,'不存在'),{kind:'missing'});
+assert.deepEqual(matchRunEpisodeByTitle(entries,''),{kind:'missing'});
+assert.deepEqual(matchRunEpisodeByTitle(entries,' 唯一故事'),{kind:'missing'},'do not fuzzy-match');
+assert.equal(entries[0].id,'ep001','source stays unmodified');
+console.log('ROUND5_HISTORY_RUN_TO_EPISODE_IDENTITY_6_OF_6_PASS');

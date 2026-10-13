@@ -1,3 +1,4 @@
+import { matchRunEpisodeByTitle } from './api/storyRunEpisodeMatch';
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { HeaderBar } from './components/HeaderBar';
@@ -418,9 +419,15 @@ export default function App() {
               <AntdSurface><ProductionMonitorView
                 onShowToast={showToast}
                 onSelectStoryRun={(run) => {
-                  const matchEp = episodes.find(e => e.title === run.storyName);
-                  if (matchEp) {
-                    setActiveEpisode(matchEp);
+                  const matched = matchRunEpisodeByTitle(episodes, run.storyName);
+                  if (matched.kind === 'unique') {
+                    setActiveEpisode(matched.episode);
+                    setCurrentTab('workbench');
+                  } else if (matched.kind === 'ambiguous') {
+                    showToast('存在同名作品，无法按标题唯一定位，请到作品管理按编号选择');
+                    setCurrentTab('episodes');
+                  } else {
+                    showToast('此历史 Run 尚未关联可验证的作品身份，请到作品管理查找');
                   }
                 }}
               /></AntdSurface>
