@@ -17,6 +17,7 @@ EVENT_MOTION_TEST = ROOT / "tests" / "system" / "test_m00_event_motion_fidelity.
 RECOVERY_TEST = ROOT / "tests" / "system" / "test_m00_calibration_receipts.py"
 R2_REAL_TEST = ROOT / "tests" / "system" / "test_m00_real_calibration_r2.py"
 R7_SEQUENCE_TEST = ROOT / "tests" / "system" / "test_m00_sequence_r7.py"
+R8_DELTA_TEST = ROOT / "tests" / "system" / "test_m00_sequence_delta_r8.py"
 
 if __name__ == "__main__":
     print("M00_FAST_TEST (contracts + actual-pixel safety, no provider, no image attempts)", flush=True)
@@ -30,6 +31,7 @@ if __name__ == "__main__":
         [sys.executable, "-m", "pytest", "-q", str(RECOVERY_TEST)],
         [sys.executable, "-m", "pytest", "-q", str(R2_REAL_TEST)],
         [sys.executable, "-m", "pytest", "-q", str(R7_SEQUENCE_TEST)],
+        [sys.executable, "-m", "pytest", "-q", str(R8_DELTA_TEST)],
     )
     for argv in commands:
         rc = subprocess.call(argv, cwd=ROOT)
