@@ -112,7 +112,7 @@ export const LocalDraftSafetyPanel:React.FC<Props>=({episodes,projects,onRestore
       <Button size="small" disabled={testBusy||operatorToken.trim().length<32} onClick={saveTestOnly}>保存测试存档</Button>
       <Button size="small" disabled={testBusy||operatorToken.trim().length<32} onClick={()=>void reviewVaultList()}>查看隔离存档</Button>
       {vaultItems.length>0&&<Select size="small" aria-label="选择隔离草稿存档" className="!w-[220px]" value={selectedVaultId} onChange={setSelectedVaultId}
-        options={vaultItems.map(item=>({value:item.bundle_id,label:item.bundle_id.slice(0,24)}))}/>} 
+        options={vaultItems.map(item=>({value:item.bundle_id,label:item.bundle_id.slice(0,24)}))}/>}
       <Button size="small" disabled={testBusy||operatorToken.trim().length<32} onClick={()=>void retrieveTestOnly()}>读取选中测试存档</Button>
     </div>
     {status&&<p role="status" className="mt-2 text-[11px] text-[var(--text-secondary)]">{status}</p>}
