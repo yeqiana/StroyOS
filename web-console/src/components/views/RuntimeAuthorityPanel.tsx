@@ -3,7 +3,7 @@ import {Button,Drawer,Input,Select,Table} from 'antd';
 import { platformApi, RuntimeStatusDetail, RuntimeStatusSummary, stageLabel } from '../../api/platformApi';
 import type { RuntimeCoverage } from '../../api/runtimeCoverage';
 import { RuntimeRecoveryInsight } from './RuntimeRecoveryInsight';
-import { runtimeDetailMatchesEpisode } from '../../api/runtimeRecoveryAssessment';
+import { runtimeDetailMatchesEpisode, selectCurrentRuntimeDetail } from '../../api/runtimeRecoveryAssessment';
 
 interface Props { items: RuntimeStatusSummary[]; coverage: RuntimeCoverage; hasMore: boolean; loadingMore: boolean; onLoadMore: () => void; dataState: 'loading' | 'ok' | 'partial' | 'offline'; lastSync: string | null; }
 export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMore, loadingMore, onLoadMore, dataState, lastSync }) => {
@@ -35,6 +35,10 @@ export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMor
     }).catch(() => { if (active) setDetailState('unavailable'); });
     return () => { active = false; };
   }, [ref]);
+  // Identity guard runs at render-time, before the effect clears prior selection.
+  // Never flash another Episode's asynchronous details in a newly selected drawer.
+  const visibleDetail = detailState === 'available' && ref ? selectCurrentRuntimeDetail(ref, detail) : null;
+  const detailIsCurrent = visibleDetail !== null;
   const text = (value?: string | number | boolean | null) => value === null || value === undefined || value === '' ? '未提供' : String(value);
   return <section aria-label="只读状态记录及数据来源" className="min-w-0 overflow-hidden border-y border-[var(--border-subtle)] text-[12px] text-[var(--text-primary)]">
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-3 py-2">
@@ -76,25 +80,25 @@ export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMor
     </>}
     {selected && <Drawer open title="阶段证据详情 · 只读" onClose={()=>setSelected(null)} width="min(440px, 100vw)" destroyOnClose className="storyos-authority-inspector"><section aria-label="生产监控阶段详情" className="space-y-4">
       <div className="min-w-0"><h3 className="text-[14px] font-semibold break-words">{selected.title || selected.episode_ref || selected.episode_id}</h3><p className="mt-1 text-[11px] text-[var(--text-tertiary)]">仅展示当前只读证据 · 未知执行状态不推断</p></div>
-      {detailState === 'loading' && <p role="status" className="text-[var(--text-secondary)]">正在读取扩展详情，下方摘要已可查看…</p>}
+      {(detailState === 'loading' || (detailState === 'available' && !detailIsCurrent)) && <p role="status" className="text-[var(--text-secondary)]">正在读取扩展详情，下方摘要已可查看…</p>}
       {detailState === 'unavailable' && <p role="alert" className="text-[var(--warning)]">扩展详情接口不可用，以下保留已读取的阶段证据。</p>}
       <dl className="space-y-0">
         {[
           ['生产阶段', stageLabel(selected.production_stage || 'NO_STATE')],
           ['数据来源', selected.state_source === 'local_workspace_episode_state_file' ? '本机状态文件 · 只读' : text(selected.state_source)],
           ['更新时间', text(selected.updated_at || selected.observed_at)],
-          ...(detailState === 'available' ? [
-            ['执行状态', text(detail?.execution_status)],
-            ['当前动作', text(detail?.current_action || detail?.next_step)],
-            ['阻塞原因', text(detail?.blocking_reason)],
-            ['需要人工', text(detail?.needs_user)],
-            ['心跳健康', text(detail?.heartbeat?.health)],
-            ['已接受帧', text(detail?.image_progress?.accepted_frames)],
-            ['总目标帧', text(detail?.image_progress?.expected_frames)]
+          ...(detailIsCurrent ? [
+            ['执行状态', text(visibleDetail?.execution_status)],
+            ['当前动作', text(visibleDetail?.current_action || detail?.next_step)],
+            ['阻塞原因', text(visibleDetail?.blocking_reason)],
+            ['需要人工', text(visibleDetail?.needs_user)],
+            ['心跳健康', text(visibleDetail?.heartbeat?.health)],
+            ['已接受帧', text(visibleDetail?.image_progress?.accepted_frames)],
+            ['总目标帧', text(visibleDetail?.image_progress?.expected_frames)]
           ] : [])
         ].map(([key, value]) => <div key={key} className="grid grid-cols-[100px_minmax(0,1fr)] items-start gap-3 border-b border-[var(--border-subtle)] py-3"><dt className="text-[11px] text-[var(--text-tertiary)]">{key}</dt><dd className="break-words text-[12px] text-[var(--text-primary)]">{value}</dd></div>)}
       </dl>
-      <RuntimeRecoveryInsight episodeRef={ref || ""} detail={detail} source={selected.state_source} detailLoaded={detailState === 'available'} />
+      <RuntimeRecoveryInsight episodeRef={ref || ""} detail={visibleDetail} source={selected.state_source} detailLoaded={detailIsCurrent} />
     </section></Drawer>}
   </section>;
 };

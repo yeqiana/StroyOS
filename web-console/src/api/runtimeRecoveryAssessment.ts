@@ -16,6 +16,13 @@ export function runtimeDetailMatchesEpisode(expectedRef: string, detail: Runtime
   return Boolean(expectedRef && actual && expectedRef === actual);
 }
 
+/** Render-time guard: a previous request must never become another Episode's UI. */
+export function selectCurrentRuntimeDetail(
+  expectedRef: string, detail: RuntimeStatusDetail | null
+): RuntimeStatusDetail | null {
+  return runtimeDetailMatchesEpisode(expectedRef, detail) ? detail : null;
+}
+
 export interface RecoveryAssessment {
   code: RecoveryAssessmentCode;
   title: string;
