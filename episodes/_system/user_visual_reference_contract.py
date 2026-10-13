@@ -19,6 +19,44 @@ REL = Path("meta/user-visual-reference-contract.json")
 CONTRACT_TYPE = "USER_VISUAL_REFERENCE"
 ALLOWED_KINDS = {"identity", "prop", "location", "capture_style"}
 ALLOWED_SCOPES = {"batch", "repair", "visual_lock"}
+# Externally supplied pixels are staged outside Episode/character/approved
+# production media. This directory is runtime-local and should not be committed.
+USER_CAPTURE_DIR = Path(".storyos/user-visual-references")
+
+
+def approved_user_capture_style(ep: Path, ref_path: str) -> bool:
+    """Recognize an explicitly locked original user upload, never a generated frame.
+
+    This is additional provenance for the existing ledger source gate, not a
+    Visual Lock PASS and not an entitlement to launch image generation.
+    """
+    path = Path(str(ref_path))
+    if path.is_absolute() or ".." in path.parts or not path.parts:
+        return False
+    for row in load(ep).get("items") or []:
+        if not isinstance(row, dict):
+            continue
+        if (row.get("kind") != "capture_style"
+                or row.get("decision") not in {"locked", "pass", "passed"}
+                or row.get("origin") != "direct_user_upload"
+                or row.get("reference_use") != "capture_appearance_only"
+                or not str(row.get("source_attachment_id") or "").startswith("file_")):
+            continue
+        if str(row.get("path") or "") != path.as_posix():
+            continue
+        try:
+            source = _repo_file(path.as_posix())
+            rel = source.relative_to(ROOT.resolve())
+            if not rel.is_relative_to(USER_CAPTURE_DIR):
+                continue
+            expected = str(row.get("sha256") or "").lower()
+            if len(expected) != 64 or _sha256(source) != expected:
+                continue
+        except (OSError, ValueError):
+            continue
+        return True
+    return False
+
 
 
 def _sha256(path: Path) -> str:

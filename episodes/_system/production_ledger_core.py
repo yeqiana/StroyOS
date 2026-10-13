@@ -20,6 +20,7 @@ import episode_lifecycle
 import episode_state_persistence
 import production_ledger_persistence
 from runtime_atomic_store import atomic_write_json
+import user_visual_reference_contract
 
 LEDGER_FILE = Path("meta/production-ledger.json")
 MANIFEST_FILE = Path("meta/release-manifest.json")
@@ -417,6 +418,10 @@ def creative_enforcement_required(ep: Path) -> bool:
 
 
 def approved_capture_style_source(ep: Path, ref_path: str) -> str | None:
+    # A direct user upload cannot be marked as a passed generated calibration
+    # frame. It has its own exact SHA, original-upload provenance and safe path.
+    if user_visual_reference_contract.approved_user_capture_style(ep, ref_path):
+        return "explicit_user_upload_capture_style"
     gates_path = ep / "meta/story-gates.json"
     if not gates_path.is_file():
         return None

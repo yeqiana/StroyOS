@@ -133,7 +133,13 @@ def merge_provider_reference_evidence(attempt: dict, receipt_data: dict, provide
         actual = str(row.get("sha256") or "").lower()
         if not expected or expected != actual:
             verified = False
-    if declared and not sent:
+    # Every declared reference must be present exactly once. A receipt for a
+    # single sent image cannot silently validate a two-reference request.
+    declared_paths = list(declared)
+    sent_paths = [str(row["path"]) for row in sent]
+    if (len(sent_paths) != len(declared_paths)
+            or len(set(sent_paths)) != len(sent_paths)
+            or set(sent_paths) != set(declared_paths)):
         verified = False
     evidence.update({
         "selected_references": selected,

@@ -80,9 +80,12 @@ def generation_attempt_context(ep, item, payload_policy):
     }
 
 
-def _payload_reference_evidence(ep: Path, root: Path, refs: list[Path]) -> list[dict]:
+def _payload_reference_evidence(ep: Path, root: Path, refs: list[Path],
+                                declarations: list[dict] | None = None) -> list[dict]:
     rows = []
-    for path in refs:
+    if declarations is not None and len(declarations) != len(refs):
+        raise ValueError("IMAGE_PAYLOAD_REFERENCE_DECLARATION_COUNT_MISMATCH")
+    for index, path in enumerate(refs):
         resolved = path.resolve()
         try:
             relative = resolved.relative_to(root.resolve()).as_posix()
@@ -91,6 +94,15 @@ def _payload_reference_evidence(ep: Path, root: Path, refs: list[Path]) -> list[
         if not resolved.is_file():
             raise ValueError("IMAGE_PAYLOAD_REFERENCE_MISSING")
         digest = hashlib.sha256(resolved.read_bytes()).hexdigest()
+        if declarations is not None:
+            declared = declarations[index]
+            if not isinstance(declared, dict):
+                raise ValueError("IMAGE_PAYLOAD_REFERENCE_DECLARATION_INVALID")
+            if str(declared.get("path") or "") != relative:
+                raise ValueError("IMAGE_PAYLOAD_REFERENCE_DECLARED_PATH_MISMATCH")
+            expected_sha = str(declared.get("sha256") or "").lower()
+            if expected_sha and expected_sha != digest:
+                raise ValueError("IMAGE_PAYLOAD_REFERENCE_SOURCE_SHA_DRIFT")
         rows.append({"path": relative, "authority_id": None, "sha256": digest})
     return rows
 
@@ -106,7 +118,8 @@ def _canonical_controller_request(ep: Path, item: dict, package: dict,
     visual_text = str(visual.get("text") or "").strip()
     if not scene or not frame_prompt or not visual_text:
         raise ValueError("IMAGE_PAYLOAD_SOURCE_CONTRACT_MISSING")
-    reference_evidence = _payload_reference_evidence(ep, root, refs)
+    reference_evidence = _payload_reference_evidence(
+        ep, root, refs, declarations=item.get("references") or [])
     canonical = json.dumps({
         "scene_prompt_sha256": package.get("scene_prompt_sha256"),
         "frame_contract_sha256": package.get("frame_contract_sha256"),
