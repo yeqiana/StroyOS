@@ -41,6 +41,12 @@ SLOTS = {
     "provider-receipt": ["tests/system/test_storyos_autonomy_r5_provider_receipt.py"],
     "native-login": ["tests/system/test_storyos_autonomy_r5_native_login.py"],
     "r5-integrated": ["tests/system/test_storyos_autonomy_r5_integration.py"],
+    # R6 four slots: retirement ref pin, ambiguous dispatch, native CLI/Frame01,
+    # and cross-system fail-closed tests.
+    "gc-fence": ["tests/system/test_storyos_autonomy_r6_gc.py"],
+    "provider-timeout": ["tests/system/test_storyos_autonomy_r6_receipt.py"],
+    "codex-frame01": ["tests/system/test_storyos_autonomy_r6_canary.py"],
+    "r6-e2e": ["tests/system/test_storyos_autonomy_r6_e2e.py"],
 }
 FULL_STRESS = [
     "tests/platform/test_runtime_state_store.py",

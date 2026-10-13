@@ -13,6 +13,7 @@ import argparse
 import json
 
 import storyos_codex_managed as native
+import storyos_autonomy_native_ready as native_cli
 
 
 def decide(native_report: dict, baseline: dict, *, episode: str) -> dict:
@@ -64,6 +65,7 @@ def plan(episode: str) -> dict:
         env=native.native_environment()
         ref=ep.relative_to(native.ROOT).as_posix()
         primary=native.preflight(env,episode=ep)
+        first_cli=native_cli.report()
         # Existing Frame01 gate is read-only and is the single evidence source.
         rc,baseline=native._probe(env,"scripts/storyos_native_frame01_preflight.py",[ref])
         if rc not in (0,2):
@@ -75,6 +77,18 @@ def plan(episode: str) -> dict:
             return {"status":"BLOCKED","reason":"CANARY_AUTHORITY_CHANGED",
                     "can_dispatch_image":False,"production_authorization":False,
                     "model_calls":0,"sql_writes":0,"frame":1}
+        final_cli=native_cli.report()
+        unavailable={"status":"BLOCKED","reason":"NATIVE_CLI_OR_LOGIN_UNVERIFIED",
+                     "can_dispatch_image":False,"production_authorization":False,
+                     "model_calls":0,"sql_writes":0,"frame":1}
+        if (not isinstance(first_cli,dict)
+                or first_cli.get("status")!="NATIVE_AUTH_CONTEXT_READY"
+                or first_cli.get("model_calls")!=0 or first_cli.get("sql_writes")!=0
+                or first_cli.get("may_start_paid_production") is not False
+                or first_cli.get("opencodex_used") is not False):
+            return unavailable
+        if first_cli != final_cli:
+            return {**unavailable,"reason":"NATIVE_CLI_OR_LOGIN_CHANGED"}
         return decide(fresh,baseline,episode=ref)
     except (ValueError,OSError):
         return {"status":"BLOCKED","reason":"ENVIRONMENT_UNVERIFIED",

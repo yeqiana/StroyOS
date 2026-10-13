@@ -3,9 +3,19 @@
 from __future__ import annotations
 
 from typing import Callable, Any
+import subprocess
 
 import generation_attempt_authority as authority
 import global_image_capacity
+
+
+def _provider_outcome_uncertain(error: BaseException) -> bool:
+    """Network/CLI timeout may have reached a paid remote Provider.
+
+    A local exception before handoff cannot carry this uncertainty; callers
+    also check whether Provider execution actually started.
+    """
+    return isinstance(error, (TimeoutError, ConnectionError, subprocess.TimeoutExpired))
 
 
 def provider_generate(ep, lease: dict | None, fencing_token: int | None,
@@ -26,21 +36,24 @@ def _provider_generate_with_capacity(ep, lease: dict | None, fencing_token: int 
     committed = authority.commit_dispatch(ep, lease, int(fencing_token), provider=provider)
     lease["_phase"] = "DISPATCH_COMMITTED"
     provider_returned = False
+    provider_entered = False
     try:
         # A newer Writer/Attempt fence may have appeared after the irreversible
         # dispatch commit but BEFORE any paid Provider operation.
         authority.validate_committed_dispatch(ep, committed, int(fencing_token))
+        provider_entered = True
         result = call()
         provider_returned = True
         authority.mark_observed(ep, committed, int(fencing_token))
         return result
     except BaseException as exc:
         try:
-            if provider_returned:
-                # Provider returned success; only recording its receipt failed.
-                # Calling this FAILED would invite a paid duplicate retry.
-                authority.mark_outcome_unknown(
-                    ep, committed, int(fencing_token), "PROVIDER_RECEIPT_PERSISTENCE_FAILED")
+            if provider_returned or (provider_entered and _provider_outcome_uncertain(exc)):
+                # A successful but unrecorded response OR a network/CLI timeout
+                # might have consumed a paid generation. Never refund/retry it.
+                reason = ("PROVIDER_RECEIPT_PERSISTENCE_FAILED" if provider_returned
+                          else "PROVIDER_OUTCOME_UNCERTAIN")
+                authority.mark_outcome_unknown(ep, committed, int(fencing_token), reason)
             else:
                 authority.fail_after_dispatch(ep, committed, int(fencing_token), type(exc).__name__)
         except Exception:
@@ -72,22 +85,30 @@ def _provider_generate_many_with_capacity(ep, leases: list[dict] | None, provide
         raise authority.AttemptDenied("GENERATION_ATTEMPT_DUPLICATE_ASSET_IN_BATCH")
     committed = []
     provider_returned = False
+    provider_entered = False
+    observed_count = 0
     try:
         committed = authority.commit_dispatch_many(ep, leases, provider=provider)
         for lease in leases:
             lease["_phase"] = "DISPATCH_COMMITTED"
         authority.validate_committed_dispatch_many(ep, committed)
+        provider_entered = True
         result = call()
         provider_returned = True
         for lease in committed:
             authority.mark_observed(ep, lease, lease["fencing_token"])
+            observed_count += 1
         return result
     except BaseException as exc:
-        for lease in committed:
+        # Persisted receipts must stay SUCCEEDED; only the unobserved tail
+        # can become UNKNOWN. Failed Provider itself has no observed frames.
+        remaining = committed[observed_count:] if provider_returned else committed
+        for lease in remaining:
             try:
-                if provider_returned:
-                    authority.mark_outcome_unknown(
-                        ep, lease, lease["fencing_token"], "BATCH_PROVIDER_RECEIPT_PERSISTENCE_FAILED")
+                if provider_returned or (provider_entered and _provider_outcome_uncertain(exc)):
+                    reason = ("BATCH_PROVIDER_RECEIPT_PERSISTENCE_FAILED" if provider_returned
+                              else "BATCH_PROVIDER_OUTCOME_UNCERTAIN")
+                    authority.mark_outcome_unknown(ep, lease, lease["fencing_token"], reason)
                 else:
                     authority.fail_after_dispatch(ep, lease, lease["fencing_token"], type(exc).__name__)
             except Exception:

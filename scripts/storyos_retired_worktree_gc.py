@@ -12,6 +12,7 @@ import argparse
 from datetime import datetime, timezone
 from functools import lru_cache
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -55,7 +56,8 @@ def classify(info: dict) -> dict:
         "merged_in_local_main": info.get("merged_local") is True,
         "merged_in_origin_main": info.get("merged_remote") is True,
         "clean_including_untracked": info.get("clean") is True,
-        "older_than_72h": isinstance(info.get("age_hours"), (int, float))
+        "older_than_72h": type(info.get("age_hours")) in (int, float)
+            and math.isfinite(info["age_hours"])
             and info["age_hours"] >= MIN_AGE_HOURS,
         "no_running_process_references": info.get("process_verification") == "CLEAR",
         "no_other_checkout": info.get("branch_checked_out_elsewhere") is False,
@@ -253,9 +255,16 @@ def apply_branches(*, acknowledged: bool, max_count: int = 15) -> dict:
         return {"status": "GIT_AUTHORITY_UNAVAILABLE", "deleted": []}
     removed = []
     for branch in before["eligible"][:max_count]:
-        # Reread merged and checked-out evidence immediately before delete.
+        # A branch can be force-moved between initial and final scans.
+        # Pin the exact tip around the final eligibility recheck.
+        rc, initial_tip = _git("rev-parse", "--verify", "refs/heads/" + branch)
+        if rc or not re.fullmatch(r"[0-9a-fA-F]{40,64}", initial_tip):
+            continue
         second = branch_plan()
         if second["status"] != "DRY_RUN" or branch not in second["eligible"]:
+            continue
+        rc, final_tip = _git("rev-parse", "--verify", "refs/heads/" + branch)
+        if rc or final_tip != initial_tip:
             continue
         rc, _ = _git("branch", "-d", branch)
         if rc == 0:

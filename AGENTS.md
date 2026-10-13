@@ -56,6 +56,13 @@
 - `scripts/storyos_autonomy_native_ready.py` 只读检查本机 Codex CLI 参数和交互账号 Runner 授权上下文；`NATIVE_AUTH_CONTEXT_READY` **不能作为真实模型调用能力或生产授权**。
 - 第五轮各槽每推进一次必须跑 `python scripts/storyos_autonomy_fast_test.py --slot retirement|provider-receipt|native-login|r5-integrated`，最后跑 `--slot all` 和 `--slot all --stress`；见 `docs/StoryOS_R5_四槽治理_原生Codex与极速验收_20261013.md`。
 
+## R6 四槽继续推进 · 原生 Codex / 结果 UNKNOWN / 安全清理
+
+- 原生 Codex 登录已可经 `storyos_autonomy_native_ready.py` 只读核查，但需要在 Frame01 证据前后双次验证；`EVIDENCE_ONLY` 不授权付费调用。禁止独立 Provider 和 OpenCodex 旁路。
+- Provider `TimeoutError`、`ConnectionError`、`subprocess.TimeoutExpired` 在实际进入派发后是**可能付费但结果不确定**：保留 MySQL Generation Attempt 消耗，必须记录/保守处理 UNKNOWN，不得自动重试；批量已成功记账的帧不得错误改写。
+- 历史本地分支清理需要在二次主线合并检查前后对引用 SHA 重新核对；`inf`、`nan` 与无效时间戳不得清理，Worktree 没有全部权威证据就保留。不得使用 force / `-D`。
+- 每次修改对应槽必须 RED→GREEN 极速测试：`python scripts/storyos_autonomy_fast_test.py --slot gc-fence|provider-timeout|codex-frame01|r6-e2e`，四槽一起执行 `--slot all`，全轮结束执行 `--slot all --stress`。参见 `docs/StoryOS_R6_四槽续推与极限测试_20261013.md`。
+
 ## Story OS 当前执行入口
 
 涉及 `story` 分支的选题、分镜、出图、字幕、审核、发布、复盘任务，Codex 必须先读取仓库根目录 `START_HERE.md`，再读取 `SKILL.md`。
