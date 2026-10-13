@@ -73,6 +73,42 @@ export interface LocalMySqlMonitor {
   production_authorization: false;
 }
 
+export interface RecordedProductionProgress {
+  scope: 'VERIFIED_EPISODE_RECORDED_PROGRESS';
+  available: boolean;
+  reason: string | null;
+  read_only: true;
+  verified_current_frame: null;
+  verified_current_task: null;
+  provider_call_verified: false;
+  stalled_verified: false;
+  execution_in_progress_verified: false;
+  writer_producer_claim_fresh: boolean;
+  recent_task: null | {
+    task_type: string | null;
+    recorded_status: string | null;
+    frame: number | null;
+    attempt_no: number | null;
+    recorded_updated_at: string | null;
+    age_seconds: number | null;
+  };
+  recent_frame: null | RecordedFrameAttemptSummary;
+  frame_attempts: RecordedFrameAttemptSummary[];
+  unresolved_generation_count: number;
+  unresolved_generation_sample_only: true;
+  may_be_truncated: boolean;
+}
+export interface RecordedFrameAttemptSummary {
+  frame: number;
+  last_attempt_no: number | null;
+  last_recorded_status: string | null;
+  last_kind: string | null;
+  last_error_code: string | null;
+  last_recorded_duration_ms: number | null;
+  recorded_at: string | null;
+  age_seconds: number | null;
+}
+
 export interface RuntimeStatusDetail {
   schema_version?: number;
   observed_at?: string | null;
@@ -87,6 +123,7 @@ export interface RuntimeStatusDetail {
   read_only?: boolean;
   frame_records?: RecordedFrameEvidence[];
   mysql_monitor?: LocalMySqlMonitor;
+  recorded_production_progress?: RecordedProductionProgress;
   writer_owner_observation?: {status: string; reason: string | null; read_only: true; fresh_seconds?: number | null; producer_process_verified?: boolean; kernel_lock_verified?: false; provider_inflight_verified?: false};
   queue_summary?: {recorded_items: number; status_counts: Record<string, number>; recorded_at?: string | null} | null;
   checkpoint_steps?: RecordedCheckpointStep[];

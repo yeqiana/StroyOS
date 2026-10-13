@@ -5,6 +5,14 @@ import type { RuntimeCoverage } from '../../api/runtimeCoverage';
 import { RuntimeRecoveryInsight } from './RuntimeRecoveryInsight';
 import { runtimeDetailMatchesEpisode, selectCurrentRuntimeDetail } from '../../api/runtimeRecoveryAssessment';
 
+const readOnlyAge = (seconds: number | null | undefined): string => {
+  if (seconds === null || seconds === undefined || !Number.isFinite(seconds) || seconds < 0) return "无法核验";
+  if (seconds < 60) return "不足 1 分钟";
+  if (seconds < 3600) return Math.floor(seconds / 60) + " 分钟前";
+  if (seconds < 86400) return Math.floor(seconds / 3600) + " 小时前";
+  return Math.floor(seconds / 86400) + " 天前";
+};
+
 interface Props { items: RuntimeStatusSummary[]; coverage: RuntimeCoverage; hasMore: boolean; loadingMore: boolean; onLoadMore: () => void; dataState: 'loading' | 'ok' | 'partial' | 'offline'; lastSync: string | null; }
 export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMore, loadingMore, onLoadMore, dataState, lastSync }) => {
   const [selected, setSelected] = useState<RuntimeStatusSummary | null>(null);
@@ -196,6 +204,58 @@ export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMor
             仅展示已成功取得锁的 Driver 自报心跳；不检测或争抢生产 OS 锁。
             该观察不等于内核锁此刻仍持有，也不证明有生图 Provider 正在调用。
           </p>
+        </section>
+      )}
+
+      {detailIsCurrent && visibleDetail?.recorded_production_progress && (
+        <section aria-label="真实制作进度只读关联" className="space-y-3 border-t border-[var(--border-subtle)] pt-4">
+          <h4 className="font-medium">制作进度 · Task / 逐帧记录关联</h4>
+          {!visibleDetail.recorded_production_progress.available ? (
+            <p role="status" className="text-xs text-[var(--text-tertiary)]">
+              MySQL 身份或只读授权未验证，无法关联任务与制作帧；不将记录缺失解释为没有生产。
+            </p>
+          ) : <>
+            <p className="text-xs text-[var(--text-secondary)]">
+              以下是这部作品数据库中保存的最近记录，不是当前模型执行快照。
+              持锁 Driver 报告：{visibleDetail.recorded_production_progress.writer_producer_claim_fresh ? '新鲜（仅进程自报）' : '未核验'}。
+            </p>
+            <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-[var(--text-secondary)]">
+              <span>最近保存的 Task：{visibleDetail.recorded_production_progress.recent_task
+                ? (visibleDetail.recorded_production_progress.recent_task.task_type || '类型未知') + ' / ' + (visibleDetail.recorded_production_progress.recent_task.recorded_status || '状态未知')
+                : '无匹配记录'}</span>
+              <span>Task 距上次更新：{readOnlyAge(visibleDetail.recorded_production_progress.recent_task?.age_seconds)}</span>
+              <span>最近记录的生图帧：{visibleDetail.recorded_production_progress.recent_frame
+                ? '第 ' + visibleDetail.recorded_production_progress.recent_frame.frame + ' 帧'
+                : '无匹配记录'}</span>
+              <span>帧记录距今：{readOnlyAge(visibleDetail.recorded_production_progress.recent_frame?.age_seconds)}</span>
+            </div>
+            <p role="status" className="text-xs text-[var(--text-secondary)]">
+              当前执行 Task / 正在生成帧 / Provider 调用：<strong>均未核验</strong>；
+              是否卡住：<strong>无法判定</strong>，不能仅凭历史 CURRENT、RUNNING 或较早更新时间下结论。
+            </p>
+            {visibleDetail.recorded_production_progress.unresolved_generation_count > 0 && (
+              <p role="status" className="text-xs text-[var(--warning)]">
+                最近的 Generation Attempt 样本内有 {visibleDetail.recorded_production_progress.unresolved_generation_count} 条 OUTCOME_UNKNOWN；
+                仅提示人工核对，不自动补发或重试。
+              </p>
+            )}
+            <h5 className="text-xs font-medium">各帧最近一条 Production Attempt</h5>
+            <Table size="small" pagination={false} rowKey={item=>item.frame}
+              scroll={{x:620,y:220}}
+              dataSource={visibleDetail.recorded_production_progress.frame_attempts}
+              locale={{emptyText:'该作品目前没有可匹配的逐帧 Attempt'}}
+              columns={[
+                {title:'帧',dataIndex:'frame',width:90,render:(v:number)=>'第 '+v+' 帧'},
+                {title:'最近序号',dataIndex:'last_attempt_no',width:80,render:(v:number|null)=>v??'—'},
+                {title:'保存的结果',dataIndex:'last_recorded_status',render:(v:string|null)=>v||'未知'},
+                {title:'历史耗时',dataIndex:'last_recorded_duration_ms',width:98,render:(v:number|null)=>v===null?'未知':(v/1000).toFixed(1)+' 秒'},
+                {title:'距记录时间',dataIndex:'age_seconds',width:112,render:(v:number|null)=>readOnlyAge(v)}
+              ]}/>
+            <p className="text-[11px] text-[var(--text-tertiary)]">
+              MySQL 每类最多读取最近 60 条；本表只展示样本中涉及的帧，可能遗漏更早记录。
+              历史耗时是已记录 Attempt 的用时，不是当前任务已运行多久。
+            </p>
+          </>}
         </section>
       )}
 

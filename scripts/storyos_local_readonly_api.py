@@ -26,6 +26,7 @@ from platform.operations.local_episode_monitoring import read_recorded_productio
 from platform.operations.local_mysql_monitor_readonly import observe_mysql_episode, empty as empty_mysql_monitor
 from platform.operations.local_worker_heartbeat_readonly import observe_local_redis_heartbeats
 from platform.operations.local_writer_owner_readonly import observe_writer_owner, unknown as unknown_writer_owner
+from platform.operations.local_production_progress_readonly import summarize_production_progress
 
 SOURCE = "local_workspace_episode_state_file"
 
@@ -151,6 +152,7 @@ class LocalEpisodeFileStatuses:
             "heartbeat": {"health": "unknown"},
             "mysql_monitor": mysql_snapshot,
             "writer_owner_observation": writer_owner,
+            "recorded_production_progress": summarize_production_progress(mysql_snapshot, writer_owner),
             **recorded,
         }
 
