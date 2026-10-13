@@ -7,9 +7,11 @@ import sys
 from pathlib import Path
 
 from platform.repository.mysql.web_draft_repository import WebDraftRepository, DraftWriteError
+from platform.operations.web_draft_handoff_plan import compile_handoff_plan
 
 BASE="/api/v1/web-drafts"
 ITEM=re.compile(r"^/api/v1/web-drafts/(WDW_[a-f0-9-]{36})$")
+HANDOFF=re.compile(r"^/api/v1/web-drafts/(WDW_[a-f0-9-]{36})/handoff-plan$")
 MAX=2_100_000
 
 def main():
@@ -38,7 +40,10 @@ def main():
         repo=WebDraftRepository(config,test_only=test_only)
         try:
             match=ITEM.fullmatch(path)
-            if method=="GET" and path==BASE:
+            handoff=HANDOFF.fullmatch(path)
+            if method=="GET" and handoff:
+                result={"status":200,"data":compile_handoff_plan(repo.read(handoff.group(1)))}
+            elif method=="GET" and path==BASE:
                 result={"status":200,"data":repo.list()}
             elif method=="GET" and match:
                 result={"status":200,"data":repo.read(match.group(1))}
