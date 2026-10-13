@@ -27,6 +27,14 @@
 <!-- STORY_OS_MULTI_EPISODE_PERMANENT_CONTRACT_END -->
 
 
+## R2 自治生产 Watchdog / 每轮极速验证
+
+- 原生 Codex 无人值守恢复仅走 `scripts/storyos_autonomy_watchdog.py` → `storyos_codex_managed.preflight` → canonical `runtime_driver start --resume`，不得增加第二套调度器或绕过旧 Gate。
+- Watchdog `plan` 永远只读；`once`/`watch` 必须有明确 `--ack-real-production`；不得自动首次启动新 Episode。只允许确认已死/干净退出的已有 Driver，非零退出、UNKNOWN、活动 Attempt、人工门禁或在线 Writer 来源不确定时必须停在诊断。
+- 同 Git Common Directory、同 Episode 的恢复使用跨进程 OS Lock、两次只读权威核验和崩溃前原子落盘的预算 journal；默认 24h 内最多 2 次、300s 冷却。它不是 MySQL/Provider Attempt Authority；跨主机仍不可宣称 Fencing 已验收。
+- **每个四槽增量变更必须执行对应 `python scripts/storyos_autonomy_fast_test.py --slot watchdog|budget|authority|e2e`，合并前执行 `--slot all`，整体交付前执行 `--slot all --stress`，失败不得伪装为通过。**
+- 文档见 `docs/StoryOS_R2_自治Watchdog_四槽极速验收_20261013.md`。
+
 ## Story OS 当前执行入口
 
 涉及 `story` 分支的选题、分镜、出图、字幕、审核、发布、复盘任务，Codex 必须先读取仓库根目录 `START_HERE.md`，再读取 `SKILL.md`。

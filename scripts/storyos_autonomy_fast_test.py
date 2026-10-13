@@ -16,12 +16,18 @@ SLOTS = {
     # Fast closure runs representative fail-closed, budget and success boundaries.
     "closure": ["tests/system/test_canonical_full_auto_integration.py",
                 "-k", "case5 or case9b or case14b"],
+    # R2: each autonomous modification has a dedicated subsecond extreme case.
+    "watchdog": ["tests/system/test_storyos_autonomy_watchdog_policy.py"],
+    "budget": ["tests/system/test_storyos_autonomy_watchdog_budget.py"],
+    "authority": ["tests/system/test_storyos_autonomy_watchdog_authority.py"],
+    "e2e": ["tests/system/test_storyos_autonomy_watchdog_e2e.py"],
 }
 FULL_STRESS = [
     "tests/system/test_canonical_full_auto_integration.py",
     "tests/system/test_runtime_recovery.py",
     "tests/system/test_runner_host_loop_v262.py",
     "tests/system/test_multi_episode_global_image_capacity.py",
+    "tests/system/test_storyos_native_codex_whole_chain_routes.py",
 ]
 
 

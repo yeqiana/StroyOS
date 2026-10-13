@@ -194,6 +194,14 @@ def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
                     "outcome_unknown_assets": attempts.get("outcome_unknown_assets", []),
                     "active_attempt_assets": attempts.get("active_attempt_assets", [])},
         "driver_state": driver.get("driver_state") if episode else None,
+        # Read-only identity needed by the bounded autonomy watchdog. Never
+        # promote a PID / heartbeat sample into a Writer fencing permit.
+        "driver_evidence": {
+            "driver_state": driver.get("driver_state"),
+            "pid": driver.get("pid"),
+            "liveness": driver.get("liveness"),
+            "exit_code": driver.get("exit_code"),
+        } if episode else {},
         "visual_lock_admission": visual_lock_admission,
         "creative_story_recovery": {
             "status": creative_recovery.get("status"),

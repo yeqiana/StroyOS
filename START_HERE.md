@@ -19,6 +19,7 @@
 历史 `OUTCOME_UNKNOWN` 做只读准入；不会跳过审核/Attempt/Revision，也不使用视频生成。
 
 已有 Episode 需要在会话退出后继续生产，优先使用 `python scripts/storyos_codex_managed.py start <episode> --ack-real-production`；`start` 调用已有常驻 Driver，仍先执行全部只读 Attempt / Owner / Stage 准入，不代表可以越过审核。四槽极速测试：`python scripts/storyos_autonomy_fast_test.py --slot all`；改造完成再用 `--stress`。详见 `docs/StoryOS_原生Codex自治生产与四槽极速验收_20261013.md`。
+**自治续跑 R2（显式授权）**：已有 Episode 的恢复 Watchdog 使用 `python scripts/storyos_autonomy_watchdog.py plan <episode>` 先只读诊断；需要持久监控时，由可信用户态 Carrier 显式运行 `watch <episode> --ack-real-production`，绝不自动首次启动、清理 UNKNOWN 或绕过人工门禁。新增四槽测试 `--slot watchdog|budget|authority|e2e`，整体仍为 `python scripts/storyos_autonomy_fast_test.py --slot all --stress`。见 `docs/StoryOS_R2_自治Watchdog_四槽极速验收_20261013.md`。
 默认 `COLLABORATIVE` 配置保持不变。
 
 ```text

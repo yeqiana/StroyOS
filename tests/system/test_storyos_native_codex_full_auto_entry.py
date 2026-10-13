@@ -161,6 +161,14 @@ def test_native_preflight_exposes_unlocked_story_without_reuse_authority(monkeyp
     assert result["visual_lock_admission"]["status"] == "BLOCKED"
     assert result["visual_lock_admission"]["tool_generation_proven"] is False
 
+def test_preflight_retains_readonly_driver_snapshot_for_watchdog(monkeypatch):
+    monkeypatch.setattr(native,"_probe",_proofs(driver="NEVER_STARTED"))
+    result=native.preflight(_test_env(),episode=native.ROOT/"episodes")
+    assert result["driver_evidence"]["driver_state"]=="NEVER_STARTED"
+    assert result["driver_evidence"]["exit_code"] is None
+    assert result["production_authorization"] is False
+
+
 
 def test_preflight_blocks_incompatible_cli_before_paid_production(monkeypatch):
     monkeypatch.setattr(native, "_probe", _proofs(model_client_ok=False))
