@@ -53,3 +53,20 @@ export function readWebDraft(token:string,id:string){
  identity_map:SavedWebDraft['identity_map'];canonical_episode_created:false}>(session,
  '/api/v1/web-drafts/'+id));
 }
+export type HandoffItem={
+ server_draft_id:string;source_draft_id:string;title:string;
+ preflight_available:boolean;reason:string|null;preflight_argv?:string[];
+ canonical_episode_created:false;production_started:false;
+};
+export type HandoffPlan={
+ workspace_id:string;workspace_version:number;source_sha256:string;
+ authority:'READ_ONLY_HANDOFF_PLAN';requires_human_approval:true;
+ admission_granted:false;canonical_episode_created:false;production_started:false;
+ model_calls:0;runtime_writes:0;items:HandoffItem[];
+};
+/** Inspect saved server bytes only; never creates an Episode or starts a Driver. */
+export function inspectWebDraftHandoff(token:string,id:string){
+ if(!/^WDW_[a-f0-9-]{36}$/.test(id))throw Error('无效的草稿工作区 ID');
+ return authorized(token,session=>call<HandoffPlan>(
+  session,'/api/v1/web-drafts/'+id+'/handoff-plan'));
+}
