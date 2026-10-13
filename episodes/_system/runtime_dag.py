@@ -525,6 +525,11 @@ def _run_targeted_review(ep, *, kind, attempt, codex, timeout, run_id, trace_id)
         selection = story_review_attempt_admission.decide(
             dag_attempt=attempt, official_review=official if official else None,
             request_rows=rows, candidate_exists=candidates)
+        if selection["status"]=="EXISTING_REVIEW_MUST_BE_REVALIDATED":
+            errors=story_review.verify(Path(ep).resolve())
+            if errors:
+                return 22, "OFFICIAL_MIGRATED_STORY_REVIEW_UNVERIFIED:" + ";".join(str(e) for e in errors[:6])
+            return 0, "VERIFIED_OFFICIAL_MIGRATED_STORY_REVIEW_REUSE_NO_MODEL_CALL"
         if selection["status"] not in {
                 "DISPATCH_BOUNDED_STORY_CRITIC",
                 "EXISTING_REVIEW_REQUIRES_FINALIZATION"}:

@@ -99,6 +99,13 @@
 - `storyos_autonomy_resume_admission.py` 要同时核对 MySQL Attempt/Driver Stage、Review 生命周期与迁移证据；任意 UNKNOWN 或正式 Critic 缺失不得重复付费或自动声明准入。M00 像素和首帧生图仍须 canonical Gateway/Attempt + 五图额度许可。
 - 四槽 RED-GREEN 秒速回归：`--slot review-relocation|review-restore-guard|frame01-after-review|r11-closure`，最终 `--slot all --stress`。见 `docs/StoryOS_R11_真实迁移证据与四槽验收_20261013.md`。
 
+## R12 独立 Codex 审核：旧 rubric 漂移绝不冒充新 PASS
+
+- 正式 Story Review 若只有迁移前旧 `WORK_DEVSPACE_BOUNDED` attempt 2 的历史 PASS，但旧 `standards/制作规范_正式版.md` 来源 SHA 与当前不同，必须使用新的、独立原生 Codex 审核；不能将历史 FINALISED/FINALIZED 字段或旧 Review 复制成当前 MySQL PASS。
+- R12 **仅**为 `MIGRATED_EPISODE_RUBRIC_REVALIDATION` 引入 `--attempt 9 --direct-user-migrated-rubric` 单次独立审核纪元。需通过 `storyos_autonomy_r12_critic_preflight.py` 真实 Stage、Driver、Attempt、原生 Codex 认证和旧／新来源 SHA 双重校验；审核令牌必须在付费调用前独占创建，失败或超时不能重新创建／重试。
+- `runtime_dag._run_targeted_review` 仅当新官方 Review 真实存在，且 `story_review.verify` 无错误时才能无模型调用复用；Frame01 仍只能经正式 Gateway、全局五图容量与 M00 像素 Gate。绝不因 text Critic 就给予生图许可。
+- 四槽独立极速 `r12-critic-epoch`、`r12-driver-gate`、`r12-frame01-proof`、`r12-integrated` 与最终 `--slot all --stress`。现有主工作区未提交的 `story_review.py` 概念审核改造需无损并行合流后才能认为 R12 已正式部署。详情 `docs/StoryOS_R12_独立新审核纪元与四槽压力_20261013.md`。
+
 ## Story OS 当前执行入口
 
 涉及 `story` 分支的选题、分镜、出图、字幕、审核、发布、复盘任务，Codex 必须先读取仓库根目录 `START_HERE.md`，再读取 `SKILL.md`。

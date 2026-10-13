@@ -18,6 +18,18 @@ def decide(*, dag_attempt: int, official_review: dict | None,
             or any(type(i) is not int or i not in (1,2)
                    or not isinstance(row,dict) for i,row in request_rows.items())):
         return {**base,"status":"REVIEW_AUTHORITY_UNVERIFIED"}
+    # Distinct user-authorized migrated-rubric epoch #9 is already a NEW
+    # independent Critic, not another review of the stale WORK #1/#2.
+    # This is only a request to revalidate the official receipt; the DAG
+    # must call story_review.verify before returning a successful step.
+    if isinstance(official_review,dict):
+        prov=official_review.get("critic_provenance") or {}
+        if (prov.get("attempt")==9
+                and prov.get("review_scope")=="MIGRATED_EPISODE_RUBRIC_REVALIDATION"
+                and prov.get("direct_user_continuation_review") is True
+                and prov.get("review_epoch")==8 and prov.get("epoch_attempt")==1
+                and (official_review.get("summary") or {}).get("passed") is True):
+            return {**base,"status":"EXISTING_REVIEW_MUST_BE_REVALIDATED"}
     for i,row in sorted(request_rows.items()):
         if row.get("status")=="FINALIZED" and not isinstance(official_review,dict):
             return {**base,"status":"FINALIZED_REVIEW_WITHOUT_CANONICAL_PROOF"}

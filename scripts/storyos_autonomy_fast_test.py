@@ -87,6 +87,13 @@ SLOTS = {
                              "tests/system/test_storyos_autonomy_r11_resume.py"],
     "frame01-after-review": ["tests/system/test_storyos_autonomy_r11_frame01.py"],
     "r11-closure": ["tests/system/test_storyos_autonomy_r11_closure.py"],
+    # R12: fully independent, single-use native Codex Critic epoch for a
+    # migrated Episode whose original reviewed formal standard SHA drifted.
+    "r12-critic-epoch": ["tests/system/test_storyos_autonomy_r12_critic_epoch.py"],
+    "r12-driver-gate": ["tests/system/test_storyos_autonomy_r12_driver_review.py"],
+    "r12-frame01-proof": ["tests/system/test_storyos_autonomy_r12_text_pixel.py",
+                          "tests/system/test_storyos_autonomy_r12_entrypoint.py"],
+    "r12-integrated": ["tests/system/test_storyos_autonomy_r12_closure.py"],
 }
 FULL_STRESS = [
     "tests/platform/test_runtime_state_store.py",

@@ -23,6 +23,7 @@ import runtime_timeout_policy
 import episode_state_persistence
 import review_record_persistence
 import review_policy_binding
+import story_review_rubric_migration
 import runtime_request
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -303,12 +304,27 @@ def validate_payload(data: dict, *, story_sha: str, storyboard_sha: str, version
         and provenance.get("previous_storyboard_sha256") != storyboard_sha
         and data.get("subtitle_source_sha256") == provenance.get("subtitle_source_sha256")
     )
+    migrated_rubric_epoch = (
+        attempt == 9
+        and provenance.get("direct_user_continuation_review") is True
+        and provenance.get("review_scope") == story_review_rubric_migration.REVIEW_SCOPE
+        and provenance.get("review_epoch") == 8
+        and provenance.get("epoch_attempt") == 1
+        and all(isinstance(provenance.get(k),str)
+                and len(provenance[k])==64
+                and all(ch in "0123456789abcdef" for ch in provenance[k].lower())
+                for k in ("previous_review_sha256","previous_review_request_sha256",
+                          "previous_standard_sha256","current_standard_sha256",
+                          "current_rubric_sha256"))
+        and provenance.get("previous_standard_sha256") != provenance.get("current_standard_sha256")
+    )
     if attempt not in {1, 2} and not (
         continuation or source_revision or symbolic_remediation or paired_caption
-        or photo_text_repair or character_source_repair
+        or photo_text_repair or character_source_repair or migrated_rubric_epoch
     ):
         errors.append("critic attempt must be 1 or 2 unless explicitly authorized policy continuation or SHA-bound source/caption revision")
-    revisions = ({0, 1, 2, 3, 4, 5, 6, 7} if character_source_repair else
+    revisions = ({8} if migrated_rubric_epoch else
+                 {0, 1, 2, 3, 4, 5, 6, 7} if character_source_repair else
                  {0, 1, 2, 3, 4, 5, 6} if photo_text_repair else
                  {0, 1, 2, 3, 4, 5} if paired_caption else
                  {0, 1, 2, 3, 4} if symbolic_remediation else
@@ -432,6 +448,8 @@ def verify(ep: Path) -> list[str]:
                 "meta/runtime/story-review-photo-text-source-repair-a7.json",
             "CHARACTER_STORY_SOURCE_REPAIR_AFTER_FAIL":
                 "meta/runtime/story-review-character-source-repair-a8.json",
+            story_review_rubric_migration.REVIEW_SCOPE:
+                story_review_rubric_migration.EPOCH_REL,
         }
         rel = manifest_by_scope.get(scope)
         if rel is None:
@@ -475,6 +493,11 @@ def verify(ep: Path) -> list[str]:
                     errors.append("policy continuation authority or current rubric SHA mismatch")
             except (OSError, ValueError, KeyError, RuntimeError):
                 errors.append("policy continuation manifest missing or invalid")
+    if ((data.get("critic_provenance") or {}).get("review_scope")
+            == story_review_rubric_migration.REVIEW_SCOPE):
+        if not story_review_rubric_migration.validate_epoch(
+                ep, data.get("critic_provenance") or {}):
+            errors.append("migrated rubric epoch source SHA or durable authority mismatch")
     if propagation_core_gate.required(ep):
         errors.extend(propagation_core_gate.verify(ep))
     return errors
@@ -1110,10 +1133,10 @@ def _authorize_character_source_repair(ep: Path, *, attempt: int) -> dict:
     return binding
 
 
-def run_critic(ep: Path, *, attempt: int, codex_raw: str | None, timeout: int | None = None, direct_user_continuation: bool = False, prior_rubric_ref: str | None = None, direct_user_source_revision: bool = False, direct_user_symbolic_remediation: bool = False, direct_user_paired_caption: bool = False, direct_user_photo_text_repair: bool = False, direct_user_character_source_repair: bool = False) -> int:
+def run_critic(ep: Path, *, attempt: int, codex_raw: str | None, timeout: int | None = None, direct_user_continuation: bool = False, prior_rubric_ref: str | None = None, direct_user_source_revision: bool = False, direct_user_symbolic_remediation: bool = False, direct_user_paired_caption: bool = False, direct_user_photo_text_repair: bool = False, direct_user_character_source_repair: bool = False, direct_user_migrated_rubric: bool = False) -> int:
     if timeout is None:
         timeout = runtime_timeout_policy.seconds("review_critic")
-    if attempt not in {1, 2} and not (attempt == 3 and direct_user_continuation) and not (attempt == 4 and direct_user_source_revision) and not (attempt == 5 and direct_user_symbolic_remediation) and not (attempt == 6 and direct_user_paired_caption) and not (attempt == 7 and direct_user_photo_text_repair) and not (attempt == 8 and direct_user_character_source_repair):
+    if attempt not in {1, 2} and not (attempt == 3 and direct_user_continuation) and not (attempt == 4 and direct_user_source_revision) and not (attempt == 5 and direct_user_symbolic_remediation) and not (attempt == 6 and direct_user_paired_caption) and not (attempt == 7 and direct_user_photo_text_repair) and not (attempt == 8 and direct_user_character_source_repair) and not (attempt == 9 and direct_user_migrated_rubric):
         raise RuntimeError("attempts above 2 require explicit direct-user, SHA-bound continuation")
     if direct_user_continuation and (attempt != 3 or direct_user_source_revision):
         raise RuntimeError("policy continuation is only attempt 3")
@@ -1134,13 +1157,36 @@ def run_critic(ep: Path, *, attempt: int, codex_raw: str | None, timeout: int | 
         or direct_user_photo_text_repair
     ):
         raise RuntimeError("Character story source repair is only attempt 8")
+    if direct_user_migrated_rubric:
+        # This is the REAL text Provider path. The standalone read-only audit
+        # is not sufficient; repeat all MySQL/Attempt/Driver/native CLI checks
+        # inside the paid entrypoint, before reserving the one-shot epoch.
+        script_path=str(ROOT/"scripts")
+        if script_path not in sys.path:
+            sys.path.insert(0,script_path)
+        import storyos_autonomy_r12_critic_preflight as native_recheck
+        readiness=native_recheck.inspect(
+            Path(ep).resolve().relative_to(ROOT.resolve()).as_posix())
+        if readiness.get("may_start_new_text_review") is not True:
+            raise RuntimeError("native migrated rubric Critic denied: "+
+                               str(readiness.get("status") or "UNVERIFIED"))
+    if direct_user_migrated_rubric and (attempt!=9 or any((
+        direct_user_continuation,direct_user_source_revision,
+        direct_user_symbolic_remediation,direct_user_paired_caption,
+        direct_user_photo_text_repair,direct_user_character_source_repair))):
+        raise RuntimeError("migrated rubric revalidation is exclusive attempt 9")
     continuation = (_authorize_policy_continuation(ep, attempt=attempt, prior_rubric_ref=prior_rubric_ref)
                     if direct_user_continuation else _authorize_source_revision(ep, attempt=attempt)
                     if direct_user_source_revision else _authorize_symbolic_remediation(ep, attempt=attempt)
                     if direct_user_symbolic_remediation else _authorize_paired_caption_revision(ep, attempt=attempt)
                     if direct_user_paired_caption else _authorize_photo_text_source_repair(ep, attempt=attempt)
                     if direct_user_photo_text_repair else _authorize_character_source_repair(ep, attempt=attempt)
-                    if direct_user_character_source_repair else None)
+                    if direct_user_character_source_repair else
+                    story_review_rubric_migration.authorize(
+                        ep, attempt=attempt,
+                        current_rubric_sha256=_review_rubric_digest(
+                            Path(__file__).read_text(encoding="utf-8-sig")))
+                    if direct_user_migrated_rubric else None)
     story, storyboard = story_paths(ep)
     before_story = sha256_file(story)
     before_board = sha256_file(storyboard)
@@ -1233,7 +1279,9 @@ no Markdown fences and no status summary. The parent process persists it.
         })
         for key in ("previous_rubric_sha256", "previous_storyboard_sha256",
                     "previous_story_sha256", "new_character_authority_sha256",
-                    "character_attestation_sha256"):
+                    "character_attestation_sha256", "previous_review_request_sha256",
+                    "previous_review_request_id", "previous_standard_sha256",
+                    "current_standard_sha256"):
             if key in continuation:
                 provenance[key] = continuation[key]
     if before_captions:
@@ -1332,6 +1380,7 @@ def main() -> int:
     p.add_argument("--direct-user-paired-caption", action="store_true")
     p.add_argument("--direct-user-photo-text-repair", action="store_true")
     p.add_argument("--direct-user-character-source-repair", action="store_true")
+    p.add_argument("--direct-user-migrated-rubric", action="store_true")
     p.add_argument("--prior-rubric-ref")
     p = sub.add_parser("finalize-review")
     p.add_argument("episode_dir")
@@ -1361,7 +1410,8 @@ def main() -> int:
                               direct_user_symbolic_remediation=args.direct_user_symbolic_remediation,
                               direct_user_paired_caption=args.direct_user_paired_caption,
                               direct_user_photo_text_repair=args.direct_user_photo_text_repair,
-                              direct_user_character_source_repair=args.direct_user_character_source_repair)
+                              direct_user_character_source_repair=args.direct_user_character_source_repair,
+                              direct_user_migrated_rubric=args.direct_user_migrated_rubric)
         except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
             print("STORY SEMANTIC REVIEW ERROR:", exc)
             return 3
