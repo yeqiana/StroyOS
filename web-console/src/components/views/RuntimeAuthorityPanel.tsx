@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { recordedTraceCoverage } from '../../api/recordedTraceCoverage';
 import {Button,Drawer,Input,Select,Table} from 'antd';
 import { platformApi, RuntimeStatusDetail, RuntimeStatusSummary, stageLabel } from '../../api/platformApi';
 import type { RuntimeCoverage } from '../../api/runtimeCoverage';
@@ -237,6 +238,25 @@ export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMor
           </p>
         </section>
       )}
+
+      {detailIsCurrent && visibleDetail?.mysql_monitor && (() => {
+        const chain=recordedTraceCoverage(visibleDetail);
+        return <section aria-label="执行证据链覆盖情况" className="space-y-2 border-t border-[var(--border-subtle)] pt-4">
+          <h4 className="text-[13px] font-semibold">执行证据链 · 当前可追溯程度</h4>
+          {!chain.verified ? <p role="status" className="text-[12px] text-[var(--text-tertiary)]">MySQL 只读身份或权限未核验，无法列出可信的任务与尝试记录。</p> : <>
+            <div className="flex flex-wrap gap-x-5 gap-y-2 text-[12px] text-[var(--text-secondary)]">
+              <span>Task 记录 {chain.taskCount}</span>
+              <span>Production Attempt 样本 {chain.productionAttemptCount}</span>
+              <span>Generation Attempt 样本 {chain.generationAttemptCount}</span>
+              {chain.unresolvedCount>0&&<span className="text-[var(--warning)]">OUTCOME_UNKNOWN 样本 {chain.unresolvedCount}</span>}
+            </div>
+            <p role="status" className="text-[12px] text-[var(--text-tertiary)]">
+              三类记录当前仅按作品分别查询。尚无经权威外键核验的 Task → Generation Attempt → Trace → 图片关联，
+              不可据此定位一次模型请求的全部执行步骤，也不能将查询样本数量当作全量数据。
+            </p>
+          </>}
+        </section>;
+      })()}
 
       {detailIsCurrent && visibleDetail?.recorded_production_progress && (
         <section aria-label="真实制作进度只读关联" className="space-y-3 border-t border-[var(--border-subtle)] pt-4">
