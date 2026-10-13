@@ -43,6 +43,7 @@ import storage_config
 import production_ledger
 import episode_state_persistence
 import episode_contract_persistence
+import m00_episode_state_delta
 
 ROOT = Path(__file__).resolve().parents[2]
 CACHE_ROOT = Path("meta/runtime/contracts/frames")
@@ -369,6 +370,9 @@ def compile_frame(ep: Path, frame: int | str, *, write_cache: bool = True) -> di
             raise ValueError("; ".join(ca_errors))
         character_anchor = character_appearance_anchor.build(ep, write=False)
     excerpt = extract_frame_excerpt(storyboard_path, n)
+    adjacent_state = m00_episode_state_delta.source_transition(
+        storyboard_path, n, visual_profile["profile_id"])
+    # An absent opt-in changes neither the derived contract SHA nor legacy prompt.
     refs = resolved_references(ep, n)
     # P1-1: per-frame identity requirement is derived review evidence. It is
     # deliberately excluded from hash_material so publishing it cannot invalidate
@@ -445,6 +449,10 @@ def compile_frame(ep: Path, frame: int | str, *, write_cache: bool = True) -> di
         "wardrobe": wardrobe.get("wardrobe") or {},
         "references": refs,
     }
+    if adjacent_state is not None:
+        # Bound to the selected locked storyboard frame *and its predecessor*;
+        # changing a prior shot invalidates only dependent opt-in frame contracts.
+        hash_material["m00_adjacent_state_delta"] = adjacent_state
     if visual_narrative_active:
         hash_material["visual_narrative"] = visual_narrative.get("visual_narrative") or {}
         hash_material["visual_narrative_sha256"] = visual_narrative.get("visual_narrative_sha256")
@@ -511,6 +519,13 @@ def compile_frame(ep: Path, frame: int | str, *, write_cache: bool = True) -> di
         "Do not weaken impact_level or remove required scale references to make the scene easier.",
     ]
 
+    if adjacent_state is not None:
+        marker = prompt_lines.index("[FRAME DIRECTIVE]")
+        prompt_lines[marker:marker] = [
+            "[M00 STORY-LOCKED ADJACENT DELTA | exact source]",
+            m00_episode_state_delta.delta.prompt_suffix(adjacent_state["delta"]),
+            "",
+        ]
     if visual_narrative_active:
         marker = prompt_lines.index("[FRAME DIRECTIVE]")
         prompt_lines[marker:marker] = [
@@ -544,6 +559,8 @@ def compile_frame(ep: Path, frame: int | str, *, write_cache: bool = True) -> di
         "contract_sha256": contract_sha,
         "prompt_contract": "\n".join(prompt_lines),
     }
+    if adjacent_state is not None:
+        result["m00_adjacent_state_delta"] = adjacent_state
     if write_cache:
         mode = storage_config.episode_meta_store_config()["mode"]
         if mode != "mysql":

@@ -18,6 +18,7 @@ import codex_critic_runner
 import image_payload_request
 import m00_style_guard
 import m00_scene_fidelity_guard
+import m00_episode_state_delta
 import logical_asset_identity
 import model_policy
 import runtime_observability
@@ -222,6 +223,11 @@ def _build_validated_request(*, ep: Path, identity: dict, fields: dict,
     effective_scene_prompt = m00_scene_fidelity_guard.enforce_motion(
         scene_prompt=effective_scene_prompt,
         visual_contract=str(controller_input.get("visual_contract") or ""),
+    )
+    effective_scene_prompt = m00_episode_state_delta.project_final_prompt(
+        scene_prompt=effective_scene_prompt,
+        controller_input=controller_input,
+        is_m00=m00_style_guard.is_m00(str(controller_input.get("visual_contract") or "")),
     )
     request = image_payload_request.build_request(
         **identity,

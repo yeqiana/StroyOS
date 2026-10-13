@@ -37,6 +37,10 @@ def compile_frame(ep,frame,prompt_file,write=True):
       "image_model":model,
       "source_prompt":str(prompt_file),
     }
+    if isinstance(contract.get("m00_adjacent_state_delta"),dict):
+        # Derived from the locked JSON storyboard; explicit opt-in only.
+        material["m00_adjacent_state_delta"] = contract["m00_adjacent_state_delta"]["delta"]
+        material["m00_adjacent_state_delta_sha256"] = contract["m00_adjacent_state_delta"]["delta_sha256"]
     raw=json.dumps(material,ensure_ascii=False,sort_keys=True,separators=(",",":")).encode("utf-8")
     data={**material,"package_sha256":h(raw),"compiled_at":now()}
     if write:

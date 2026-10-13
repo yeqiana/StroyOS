@@ -126,20 +126,33 @@ def _canonical_controller_request(ep: Path, item: dict, package: dict,
         raise ValueError("IMAGE_PAYLOAD_SOURCE_CONTRACT_MISSING")
     reference_evidence = _payload_reference_evidence(
         ep, root, refs, declarations=item.get("references") or [])
-    canonical = json.dumps({
+    canonical_data = {
         "scene_prompt_sha256": package.get("scene_prompt_sha256"),
         "frame_contract_sha256": package.get("frame_contract_sha256"),
         "frame_prompt_contract": frame_prompt,
         "visual_profile_sha256": visual.get("profile_sha256"),
         "visual_contract": visual_text,
         "references": reference_evidence,
-    }, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    }
+    if package.get("m00_adjacent_state_delta_sha256") is not None:
+        canonical_data["m00_adjacent_state_delta_sha256"] = package["m00_adjacent_state_delta_sha256"]
+    canonical = json.dumps(canonical_data, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     authority_sha = hashlib.sha256(canonical).hexdigest()
     visual_sha = hashlib.sha256(json.dumps({
         "profile_sha256": visual.get("profile_sha256"),
         "capture_grammar": visual.get("capture_grammar"),
         "text": visual_text,
     }, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+    controller_fields = {
+        "source_scene_prompt": scene,
+        "frame_prompt_contract": frame_prompt,
+        "visual_contract": visual_text,
+        "storyboard_source": package.get("storyboard_source") or {},
+        "source_prompt_path": prompt_path.relative_to(root).as_posix(),
+    }
+    if package.get("m00_adjacent_state_delta") is not None or package.get("m00_adjacent_state_delta_sha256") is not None:
+        controller_fields["m00_adjacent_state_delta"] = package.get("m00_adjacent_state_delta")
+        controller_fields["m00_adjacent_state_delta_sha256"] = package.get("m00_adjacent_state_delta_sha256")
     request_result = image_payload_controller.build_payload_request(
         ep,
         logical_asset_key=logical_asset_identity.frame_asset_key(ep, frame),
@@ -150,13 +163,7 @@ def _canonical_controller_request(ep: Path, item: dict, package: dict,
         visual_contract_sha256=visual_sha,
         canvas={"width": int(width), "height": int(height), "aspect_ratio": str(aspect)},
         references=reference_evidence,
-        controller_input={
-            "source_scene_prompt": scene,
-            "frame_prompt_contract": frame_prompt,
-            "visual_contract": visual_text,
-            "storyboard_source": package.get("storyboard_source") or {},
-            "source_prompt_path": prompt_path.relative_to(root).as_posix(),
-        },
+        controller_input=controller_fields,
         codex_raw=codex,
         timeout=timeout,
         run_id=str(item.get("run_id") or ""),
