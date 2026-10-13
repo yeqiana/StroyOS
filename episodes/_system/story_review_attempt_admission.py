@@ -24,11 +24,16 @@ def decide(*, dag_attempt: int, official_review: dict | None,
     # must call story_review.verify before returning a successful step.
     if isinstance(official_review,dict):
         prov=official_review.get("critic_provenance") or {}
-        if (prov.get("attempt")==9
+        if (
+            (prov.get("attempt")==9
                 and prov.get("review_scope")=="MIGRATED_EPISODE_RUBRIC_REVALIDATION"
                 and prov.get("direct_user_continuation_review") is True
-                and prov.get("review_epoch")==8 and prov.get("epoch_attempt")==1
-                and (official_review.get("summary") or {}).get("passed") is True):
+                and prov.get("review_epoch")==8 and prov.get("epoch_attempt")==1)
+            or (prov.get("attempt")==10
+                and prov.get("review_scope")=="EPISODE_SOURCE_REVISION_AFTER_A9_TIMEOUT"
+                and prov.get("direct_user_continuation_review") is True
+                and prov.get("review_epoch")==9 and prov.get("epoch_attempt")==1)
+        ) and (official_review.get("summary") or {}).get("passed") is True:
             return {**base,"status":"EXISTING_REVIEW_MUST_BE_REVALIDATED"}
     for i,row in sorted(request_rows.items()):
         if row.get("status")=="FINALIZED" and not isinstance(official_review,dict):

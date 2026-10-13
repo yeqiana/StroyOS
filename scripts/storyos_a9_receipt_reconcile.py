@@ -29,8 +29,33 @@ def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def frozen_story_paths(ep: Path, stamp: dict) -> tuple[Path, Path]:
+    """Restore exact A9 input files by SHA after a later storyboard revision.
+
+    Historic paid-provider evidence is bound to its frozen source, not the
+    mutable release-manifest pointer. Ambiguous/missing matches fail closed.
+    """
+    docs = Path(ep).resolve() / "docs"
+    chosen = []
+    for key in ("story_sha256", "storyboard_sha256"):
+        source_sha = stamp.get(key)
+        if (not isinstance(source_sha, str) or len(source_sha) != 64
+                or any(c not in "0123456789abcdef" for c in source_sha)):
+            raise ValueError("A9_FROZEN_SOURCE_SHA_INVALID")
+        matches = [
+            item for item in docs.glob("*.md")
+            if item.is_file() and not item.is_symlink()
+            and sha256(item.read_bytes()) == source_sha
+        ]
+        if len(matches) != 1:
+            raise ValueError("A9_FROZEN_SOURCE_NOT_UNIQUE")
+        chosen.append(matches[0])
+    return chosen[0], chosen[1]
+
+
 def expected_prompt_sha(ep: Path) -> str:
-    story, board = review.story_paths(ep)
+    stamp = json.loads((ep / migration.EPOCH_REL).read_text(encoding="utf-8-sig"))
+    story, board = frozen_story_paths(ep, stamp)
     prompt = review.critic_prompt(ep, story, board, ep / review.CANDIDATE_REL, 9)
     return sha256((prompt + review.DIRECT_CODEX_EXECUTION_OVERRIDE).encode("utf-8"))
 
@@ -118,6 +143,23 @@ def canonical_a9_review_verified(ep: Path) -> bool:
         return False
 
 
+def canonical_a10_review_verified(ep: Path) -> bool:
+    """A new independent review can supersede A9, never retroactively PASS it."""
+    try:
+        import story_review_a10_source_revision as a10
+        report = review.load_review(ep)
+        prov = report.get("critic_provenance") if isinstance(report, dict) else {}
+        return bool(
+            isinstance(prov,dict)
+            and prov.get("attempt") == 10
+            and prov.get("review_scope") == a10.REVIEW_SCOPE
+            and (report.get("summary") or {}).get("passed") is True
+            and a10.validate_epoch(ep,prov)
+            and not review.verify(ep))
+    except Exception:
+        return False
+
+
 def inspect(episode: Path, *, root: Path = ROOT) -> dict:
     base = decide(epoch_present=True,candidate=None,candidate_exists=False,
                   evidence_status="UNKNOWN",official_review_present=False)
@@ -137,6 +179,10 @@ def inspect(episode: Path, *, root: Path = ROOT) -> dict:
             return {**base,"status":"A9_TICKET_INVALID"}
         if canonical_a9_review_verified(ep):
             return {**base,"status":"CANONICAL_A9_PASS_VERIFIED",
+                    "episode":ep.relative_to(root).as_posix(),
+                    "may_start_driver":True}
+        if canonical_a10_review_verified(ep):
+            return {**base,"status":"CANONICAL_A10_PASS_VERIFIED",
                     "episode":ep.relative_to(root).as_posix(),
                     "may_start_driver":True}
         prompt_sha = expected_prompt_sha(ep)

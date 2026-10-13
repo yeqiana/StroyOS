@@ -9,10 +9,11 @@ EP="episodes/15_天界生活日常/01_天界普通女生的一天"
 
 def test_real_git_relocation_is_proven_but_rubric_revision_blocks_review_replay():
     report=m.plan(EP)
-    assert report["status"] in ("PATH_RELOCATION_PROVEN","RELOCATION_ALREADY_APPLIED")
-    assert len(report["paths"])==3
-    assert report["legacy_review_replay_allowed"] is False
-    assert report["review_replay_blocker"]=="CRITIC_SOURCE_SHA_DRIFT"
+    # Once V1.1 is the official *candidate* source, the legacy V1.0
+    # relocation proof must fail before any old review can be projected.
+    assert report["status"]=="CRITIC_SOURCE_SHA_DRIFT"
+    assert report.get("legacy_review_replay_allowed") is not True
+    assert report.get("can_recover_review") is not True
     assert report["mysql_writes"]==report["review_writes"]==0
 
 def test_manifest_repair_refuses_worktree_without_touching_real_episode(tmp_path,monkeypatch):

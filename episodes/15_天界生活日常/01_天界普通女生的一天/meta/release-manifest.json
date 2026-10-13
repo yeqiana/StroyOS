@@ -18,9 +18,9 @@
   },
   "artifacts": {
     "story": "episodes/15_天界生活日常/01_天界普通女生的一天/docs/02_天界普通女生的一天_StoryLock_V1.0.md",
-    "storyboard": "episodes/15_天界生活日常/01_天界普通女生的一天/docs/03_天界普通女生的一天_20张正式分镜_V1.0.md",
+    "storyboard": "episodes/15_天界生活日常/01_天界普通女生的一天/docs/03_天界普通女生的一天_20张分镜修订草稿_V1.1.md",
     "visual_spec": "episodes/15_天界生活日常/01_天界普通女生的一天/docs/04_天界普通女生的一天_视觉规范_V1.0.md",
-    "captions": null,
+    "captions": "episodes/15_天界生活日常/01_天界普通女生的一天/docs/subtitles.yaml",
     "publish_copy": null,
     "production_review": null,
     "propagation_card": null

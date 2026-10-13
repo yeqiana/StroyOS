@@ -166,8 +166,9 @@ def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
         if (episode/"meta/runtime/story-review-migrated-rubric-a9.json").is_file():
             a9_rc, a9_report = _probe(
                 env, "scripts/storyos_a9_receipt_reconcile.py", ["--episode", rel])
-            if (a9_rc != 0 or
-                    a9_report.get("status") != "CANONICAL_A9_PASS_VERIFIED"):
+            if (a9_rc != 0 or a9_report.get("status") not in {
+                    "CANONICAL_A9_PASS_VERIFIED",
+                    "CANONICAL_A10_PASS_VERIFIED"}):
                 blockers.append("STORY_REVIEW_A9_RECONCILIATION_REQUIRED")
         recovery_rc, creative_recovery = _probe(
             env, "scripts/storyos_creative_recovery_readonly.py", ["--episode", rel]

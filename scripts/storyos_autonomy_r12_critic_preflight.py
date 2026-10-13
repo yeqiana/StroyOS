@@ -36,14 +36,21 @@ def decide(*, stage:dict, paid:dict, driver:dict, codex:dict, review:dict)->dict
         or codex.get("interactive_codex_auth_context_present") is not True
         or codex.get("cli_runner_same_binary_verified") is not True):
         return {**base,"status":"NATIVE_CODEX_AUTH_UNVERIFIED"}
-    if review.get("status")!="ONE_SHOT_NEW_CRITIC_EPOCH_READY" or review.get("attempt")!=9:
+    allowed={
+        ("ONE_SHOT_NEW_CRITIC_EPOCH_READY",9):
+            "MIGRATED_EPISODE_RUBRIC_REVALIDATION",
+        ("ONE_SHOT_REVISED_SOURCE_READY",10):
+            "EPISODE_SOURCE_REVISION_AFTER_A9_TIMEOUT",
+    }
+    pair=(review.get("status"),review.get("attempt"))
+    if pair not in allowed:
         return {**base,"status":"RUBRIC_REVIEW_AUTHORITY_UNVERIFIED"}
     return {**base,"status":"READY_FOR_ONE_SHOT_NATIVE_TEXT_REVIEW",
             "may_start_new_text_review":True,
-            "review_attempt":9,"review_scope":"MIGRATED_EPISODE_RUBRIC_REVALIDATION"}
+            "review_attempt":pair[1],"review_scope":allowed[pair]}
 
 
-def inspect(episode:str)->dict:
+def inspect(episode:str, *, source_revision_after_a9:bool=False)->dict:
     try:
         # An isolated feature Worktree is an evidence fixture, not the live
         # production checkout; it intentionally lacks runtime.env and may
@@ -65,7 +72,10 @@ def inspect(episode:str)->dict:
         codex=ready.report()
         os.environ.update(env)
         if str(native.SYSTEM) not in sys.path: sys.path.insert(0,str(native.SYSTEM))
-        import story_review_rubric_migration as review
+        if source_revision_after_a9:
+            import story_review_a10_source_revision as review
+        else:
+            import story_review_rubric_migration as review
         evidence=review.plan(ep)
         if any(x!=0 for x in (a,b,c)):
             return decide(stage={},paid={},driver={},codex={},review={})
@@ -78,7 +88,10 @@ def inspect(episode:str)->dict:
 def main(argv=None):
     ap=argparse.ArgumentParser(description=__doc__)
     ap.add_argument("episode")
-    r=inspect(ap.parse_args(argv).episode)
+    ap.add_argument("--source-revision-after-a9",action="store_true")
+    options=ap.parse_args(argv)
+    r=inspect(options.episode,
+              source_revision_after_a9=options.source_revision_after_a9)
     print(json.dumps(r,ensure_ascii=False,sort_keys=True))
     return 0 if r["may_start_new_text_review"] else 2
 

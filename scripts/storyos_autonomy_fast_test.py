@@ -123,6 +123,14 @@ SLOTS = {
     "ep15-frame15": ["tests/system/test_episode15_content_repair_draft.py::test_ep15_frame15_has_new_observable_change_and_causes_frame16"],
     "ep15-hairpin": ["tests/system/test_episode15_content_repair_draft.py::test_ep15_wooden_hairpin_source_and_carry_chain_unambiguous"],
     "ep15-a9-fence": ["tests/system/test_episode15_content_repair_draft.py::test_ep15_locked_v1_bytes_untouched_and_a9_still_nonretryable"],
+    # Source revision after native A9 timeout; four small independent fences.
+    "a10-source": ["tests/system/test_storyos_r17_a10_new_source.py::test_a10_independent_source_epoch_ready_but_never_pass"],
+    "a10-one-shot": ["tests/system/test_storyos_r17_a10_new_source.py::test_a10_ticket_is_exclusive_and_binds_both_source_and_old_receipt"],
+    "a10-native": ["tests/system/test_storyos_r17_a10_new_source.py::test_a10_native_admission_and_early_fences"],
+    "a10-integration": [
+        "tests/system/test_storyos_r17_a10_new_source.py::test_a10_success_cannot_be_borrowed_from_a9_or_legacy_history",
+        "tests/system/test_storyos_r17_a10_new_source.py::test_a10_full_story_review_payload_has_to_verify_real_new_source",
+        "tests/system/test_storyos_r17_a10_new_source.py::test_canonical_a10_pass_can_replace_only_unbound_historical_gate"],
 }
 FULL_STRESS = [
     "tests/platform/test_runtime_state_store.py",

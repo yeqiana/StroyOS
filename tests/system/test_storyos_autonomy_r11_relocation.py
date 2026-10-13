@@ -16,9 +16,19 @@ def case():
     req=__import__("json").loads((ep/"meta/runtime/reviews/story-semantic-attempt-2-request.json").read_text("utf-8-sig"))
     return ep,m,req
 
+def historical_v1_manifest(manifest: dict) -> dict:
+    """The prior Git rename proof refers to immutable V1.0, not V1.1."""
+    previous=__import__("copy").deepcopy(manifest)
+    previous["artifacts"]["storyboard"]=str(
+        next((ROOT/EP_REL/"docs").glob("*正式分镜_V1.0.md"))
+        .relative_to(ROOT)).replace("\\","/")
+    return previous
+
 def test_actual_migrated_episode_sources_proved_from_git_and_frozen_sha():
     ep,m,req=case()
-    verdict=recovery.verify_relocated_artifacts(ROOT,ep,m,req["source_files"],check_all_frozen_sources=False)
+    verdict=recovery.verify_relocated_artifacts(
+        ROOT,ep,historical_v1_manifest(m),req["source_files"],
+        check_all_frozen_sources=False)
     assert verdict["status"]=="GIT_RENAME_AND_REVIEW_SHA_VERIFIED"
     assert len(verdict["paths"])==3
     assert all(v["old"].startswith(OLD+"/") for v in verdict["paths"].values())
@@ -51,4 +61,6 @@ def test_non_episode_source_sha_poison_also_blocks_replay():
 def test_ambiguous_non_git_rename_blocked(monkeypatch):
     ep,m,req=case()
     monkeypatch.setattr(recovery,"blob_at",lambda rev,path,root:"a"*40 if rev.endswith("^") else "b"*40)
-    assert recovery.verify_relocated_artifacts(ROOT,ep,m,req["source_files"],check_all_frozen_sources=False)["status"]=="GIT_BYTE_IDENTITY_UNVERIFIED"
+    assert recovery.verify_relocated_artifacts(
+        ROOT,ep,historical_v1_manifest(m),req["source_files"],
+        check_all_frozen_sources=False)["status"]=="GIT_BYTE_IDENTITY_UNVERIFIED"
