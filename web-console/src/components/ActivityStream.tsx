@@ -41,6 +41,14 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode })
   const previousFrame=framePosition>0?orderedFrames[framePosition-1]:null;
   const nextFrame=framePosition>=0&&framePosition<orderedFrames.length-1?orderedFrames[framePosition+1]:null;
   const attentionFrames=[...new Set(warnings.map(review=>review.frameIndex))].sort((a,b)=>a-b);
+  const approvedNumbers=new Set((approved?.frames||[]).map(frame=>frame.frame));
+  const batchNumbers=new Set((batch?.items||[]).map(frame=>frame.frameIndex));
+  const openRecordedFrame=(frame:number)=>{
+    if(!approvedNumbers.has(frame)&&!batchNumbers.has(frame))return;
+    const kind=approvedNumbers.has(frame)?'approved':'batch';
+    setCanvasMode(kind);
+    setSelectedFrame({frame,kind});
+  };
   const nextAttention=selectedFrame&&attentionFrames.length?(attentionFrames.find(frame=>frame>selectedFrame.frame)||attentionFrames[0]):null;
   const pinnedImageUrl=pinnedFrame?.kind==='approved'?approved?.frames.find(item=>item.frame===pinnedFrame.frame)?.url:(pinnedFrame?.kind==='batch'?batch?.items.find(item=>item.frameIndex===pinnedFrame.frame)?.imageUrl:undefined);
   const validPinnedImageUrl=hasVerifiedPreview(pinnedImageUrl)?pinnedImageUrl:undefined;
@@ -83,6 +91,36 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode })
       <div><h2 className="text-[14px] font-semibold">制作与审核记录</h2><p className="mt-1 text-[12px] text-[var(--text-tertiary)]">素材与分镜优先 · 审核证据在右 · 本机工作区只读</p></div>
       <span className="text-[11px] text-[var(--text-tertiary)]">正式出图与返修需受控 Runtime 接口</span>
     </header>
+    <section aria-label="20帧快速定位" className="space-y-2 border-y border-[var(--border-subtle)] py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-3">
+          <h3 className="text-[12px] font-semibold">20 帧快速定位</h3>
+          <span className="text-[11px] text-[var(--text-tertiary)]">有批准素材 {approvedNumbers.size} 帧 · 有批次记录 {batchNumbers.size} 帧 · 需检查 {attentionFrames.length} 帧</span>
+        </div>
+        <Button size="small" disabled={!attentionFrames.some(frame=>approvedNumbers.has(frame)||batchNumbers.has(frame))}
+          onClick={()=>{const frame=attentionFrames.find(f=>approvedNumbers.has(f)||batchNumbers.has(f));if(frame)openRecordedFrame(frame);}}>
+          定位首个待查帧
+        </Button>
+      </div>
+      <div className="grid grid-cols-10 gap-1 sm:grid-cols-20" role="group" aria-label="逐帧索引">
+        {Array.from({length:20},(_,i)=>i+1).map(frame=>{
+          const review=reviews.find(item=>item.frameIndex===frame);
+          const hasAsset=approvedNumbers.has(frame)||batchNumbers.has(frame);
+          const selected=selectedFrame?.frame===frame;
+          const color=selected?'border-[var(--info)] bg-[var(--bg-selected)] text-[var(--text-primary)]'
+            :review?.verdict==='FAIL'?'border-[var(--danger)] text-[var(--danger)]'
+            :review?.verdict==='WARN'?'border-[var(--warning)] text-[var(--warning)]'
+            :'border-[var(--border-subtle)] text-[var(--text-secondary)]';
+          return <button key={frame} type="button" disabled={!hasAsset} onClick={()=>openRecordedFrame(frame)}
+            aria-label={'定位第 '+frame+' 帧'+(review?'，审核 '+review.verdict:'')+(approvedNumbers.has(frame)?'，有批准素材':'')}
+            aria-pressed={selected}
+            title={hasAsset?'第 '+frame+' 帧 · '+(review?.verdict||'无审核结论'):'第 '+frame+' 帧 · 未发现可检视帧证据'}
+            className={'min-h-8 rounded-[4px] border text-[11px] tabular-nums transition-colors '+color+' '+(hasAsset?'hover:bg-[var(--bg-hover)]':'cursor-not-allowed opacity-35')}>{String(frame).padStart(2,'0')}</button>;
+        })}
+      </div>
+      <p className="text-[11px] text-[var(--text-tertiary)]">可点击表示有可检视的批准图或批次帧；灰色表示无可检视帧证据。数字边框仅标记已有审核结论，不代表自动生成或通过。</p>
+    </section>
+
     <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(330px,1fr)]" aria-label="当前批次与审核双栏工作区">
     <section className="min-w-0 border border-[var(--border-subtle)] rounded-[6px] bg-[var(--bg-surface)]" aria-label="分镜与素材创作画布">
       <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-[var(--border-subtle)]">
