@@ -43,7 +43,7 @@ export function createDraftMutationServer(store,{token,port=19118,allowedBrowser
   if((req.url||'').includes('?')||!path.startsWith(PREFIX)){
    send(res,404,'ROUTE_NOT_FOUND');return;
   }
-  if(!['GET','POST','PATCH','DELETE'].includes(method)){send(res,405,'METHOD_FORBIDDEN');return;}
+  if(!['GET','POST','PUT','PATCH','DELETE'].includes(method)){send(res,405,'METHOD_FORBIDDEN');return;}
   try{
    const write=method!=='GET';
    if(write&&(!origin||req.headers['x-storyos-draft-intent']!=='confirmed')){

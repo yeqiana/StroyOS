@@ -15,7 +15,7 @@ export class TestMysqlBridge {
  }
  execute(method,path,body={}){
   if(this.inflight>=6)return Promise.reject(Object.assign(Error('隔离测试库繁忙'),{status:429,code:'TEST_BUSY'}));
-  if(!['GET','POST','PATCH'].includes(method)||!path.startsWith(ROUTES)||path.includes('?'))
+  if(!['GET','POST','PUT','PATCH'].includes(method)||!path.startsWith(ROUTES)||path.includes('?'))
    return Promise.reject(Object.assign(Error('路由不可用'),{status:404,code:'ROUTE_NOT_FOUND'}));
   const json=JSON.stringify({method,path,body});
   if(Buffer.byteLength(json)>2_100_000)

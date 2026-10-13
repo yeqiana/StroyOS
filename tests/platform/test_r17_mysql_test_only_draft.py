@@ -143,3 +143,28 @@ def test_concurrent_same_request_returns_one_result(credentials):
             assert cur.fetchone()["n"] == 1
     finally:
         conn.close()
+
+
+def test_versioned_workspace_save_update_conflict_and_cross_connection(repo, credentials):
+    tag = _tag()
+    initial = _backup(tag)
+    created = repo.save_workspace("r17_ws_create_" + tag, initial)
+    assert created["version"] == 1 and created["production_created"] is False
+    assert repo.save_workspace("r17_ws_create_" + tag, initial) == created
+    workspace_id = created["workspace_id"]
+    updated_backup = _backup(tag, "Edited")
+    updated = repo.save_workspace("r17_ws_update_" + tag, updated_backup, workspace_id, 1)
+    assert updated["version"] == 2
+    assert repo.save_workspace("r17_ws_update_" + tag, updated_backup, workspace_id, 1) == updated
+    with pytest.raises(R17VaultError, match="VERSION_CONFLICT"):
+        repo.save_workspace("r17_ws_old_" + tag, _backup(tag, "stale"), workspace_id, 1)
+    with pytest.raises(R17VaultError, match="IDEMPOTENCY_CONFLICT"):
+        repo.save_workspace("r17_ws_update_" + tag, _backup(tag, "different"), workspace_id, 1)
+    fresh = R17IsolatedMysqlStore(credentials, test_only=True)
+    try:
+        fetched = fresh.read_workspace(workspace_id)
+        assert fetched["version"] == 2
+        assert fetched["backup"]["drafts"][0]["title"] == "Edited"
+        assert any(row["workspace_id"] == workspace_id for row in fresh.list_workspaces())
+    finally:
+        fresh.close()

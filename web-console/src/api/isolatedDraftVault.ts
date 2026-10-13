@@ -25,7 +25,7 @@ async function withSession<T>(token:string,action:(session:VaultSession)=>Promis
   });}catch{/* expires server-side within 15 minutes */}
  }
 }
-async function call<T>(session:VaultSession,path:string,method:'GET'|'POST'='GET',body?:unknown):Promise<T>{
+async function call<T>(session:VaultSession,path:string,method:'GET'|'POST'|'PUT'='GET',body?:unknown):Promise<T>{
  const mutation=method!=='GET';
  const res=await fetch(path,{
   method,credentials:'same-origin',
@@ -55,4 +55,21 @@ export function getTestBackup(token:string,id:string){
  if(!/^TEST_BUNDLE_[a-f0-9-]{36}$/.test(id))throw Error('非法的测试存档 ID');
  return withSession(token,session=>call<{backup:LocalBackup;test_only:true}>(session,
   '/api/v1/draft-vault/'+id));
+}
+export type SavedWorkspaceItem={workspace_id:string;version:number;updated_at:string};
+export function saveWorkspace(token:string,backup:LocalBackup,current?:{workspace_id:string;version:number}){
+ return withSession(token,session=>call<{workspace_id:string;version:number;test_only:true;production_created:false}>(
+  session,current?'/api/v1/draft-vault/workspaces/'+current.workspace_id:'/api/v1/draft-vault/workspaces',
+  current?'PUT':'POST',{
+   request_id:crypto.randomUUID(),backup,...(current?{expected_version:current.version}:{})
+  }));
+}
+export function listWorkspaces(token:string){
+ return withSession(token,session=>call<{items:SavedWorkspaceItem[];test_only:true}>(session,
+  '/api/v1/draft-vault/workspaces'));
+}
+export function getWorkspace(token:string,id:string){
+ if(!/^TEST_WORKSPACE_[a-f0-9-]{36}$/.test(id))throw Error('工作区 ID 无效');
+ return withSession(token,session=>call<{backup:LocalBackup;version:number;test_only:true}>(session,
+  '/api/v1/draft-vault/workspaces/'+id));
 }

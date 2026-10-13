@@ -121,7 +121,7 @@ class R17IsolatedMysqlStore:
                 ).strip()
                 if not cleaned:
                     continue
-                if not re.match(r"CREATE TABLE IF NOT EXISTS r17_draft_[a-z_]+ \(", cleaned, re.I):
+                if not re.match(r"CREATE TABLE IF NOT EXISTS (?:r17_draft_[a-z_]+|r17_saved_workspaces) \(", cleaned, re.I):
                     _fail("DDL_OUTSIDE_SANDBOX", 403)
                 cur.execute(cleaned)
         self.conn.commit()
@@ -265,3 +265,67 @@ class R17IsolatedMysqlStore:
             {"action": "rename", "draft_id": draft_id, "expected_version": expected_version, "title": title},
             mutation,
         )
+
+    def save_workspace(self, request_id: str, backup: dict, workspace_id: str | None = None,
+                       expected_version: int | None = None) -> dict:
+        """Atomic versioned snapshot of LOCAL drafts. Not a canonical Project/Episode."""
+        validate_r16_backup(backup)
+        if workspace_id is not None and not re.fullmatch(r"TEST_WORKSPACE_[a-f0-9-]{36}", workspace_id):
+            _fail("INVALID_WORKSPACE_ID", 400)
+        if workspace_id is None and expected_version is not None:
+            _fail("INVALID_VERSION", 422)
+        if workspace_id is not None and (type(expected_version) is not int or expected_version < 1):
+            _fail("INVALID_VERSION", 422)
+
+        def mutation(cur) -> dict:
+            if workspace_id is None:
+                new_id = "TEST_WORKSPACE_" + str(uuid.uuid4())
+                cur.execute(
+                    "INSERT INTO r17_saved_workspaces(workspace_id,version,backup_json) VALUES(%s,1,%s)",
+                    (new_id, _canonical(backup)),
+                )
+                version = 1
+                subject = new_id
+            else:
+                cur.execute(
+                    "UPDATE r17_saved_workspaces SET backup_json=%s,version=version+1 "
+                    "WHERE workspace_id=%s AND version=%s",
+                    (_canonical(backup), workspace_id, expected_version),
+                )
+                if cur.rowcount != 1:
+                    _fail("VERSION_CONFLICT")
+                version = expected_version + 1
+                subject = workspace_id
+            cur.execute(
+                "INSERT INTO r17_draft_audit(audit_id,action,subject_id,request_id) VALUES(%s,%s,%s,%s)",
+                (str(uuid.uuid4()), "SAVE_WORKSPACE_TEST_ONLY", subject, request_id),
+            )
+            return {"workspace_id": subject, "version": version,
+                    "test_only": True, "production_created": False}
+
+        return self._atomic(request_id,
+                            {"action":"save_workspace","id":workspace_id,
+                             "expected_version":expected_version,"backup":backup},
+                            mutation)
+
+    def list_workspaces(self) -> list[dict]:
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT workspace_id,version,updated_at FROM r17_saved_workspaces "
+                        "ORDER BY updated_at DESC LIMIT 100")
+            return cur.fetchall()
+
+    def read_workspace(self, workspace_id: str) -> dict:
+        if not isinstance(workspace_id, str) or not re.fullmatch(
+            r"TEST_WORKSPACE_[a-f0-9-]{36}", workspace_id
+        ):
+            _fail("INVALID_WORKSPACE_ID", 400)
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT workspace_id,version,backup_json FROM r17_saved_workspaces "
+                        "WHERE workspace_id=%s", (workspace_id,))
+            row = cur.fetchone()
+        if not row:
+            _fail("NOT_FOUND", 404)
+        return {"workspace_id": row["workspace_id"],"version":row["version"],
+                "backup": row["backup_json"] if isinstance(row["backup_json"],dict)
+                else json.loads(row["backup_json"]),
+                "test_only": True, "production_created": False}

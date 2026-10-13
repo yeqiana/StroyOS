@@ -20,7 +20,7 @@ const raw=(path,method,auth,csrf,body,originValue=origin)=>fetch(url+path,{
  headers:{ ...(auth?{Authorization:'Bearer '+auth}:{}),
   ...(csrf?{'X-StoryOS-CSRF':csrf}:{}),
   ...(originValue?{Origin:originValue}:{}),
-  ...(method==='POST'||method==='PATCH'||method==='DELETE'?{'X-StoryOS-Draft-Intent':'confirmed'}:{}),
+  ...(method==='POST'||method==='PUT'||method==='PATCH'||method==='DELETE'?{'X-StoryOS-Draft-Intent':'confirmed'}:{}),
   ...(body?{'Content-Type':'application/json'}:{})},
  body:body?JSON.stringify(body):undefined
 });
@@ -86,6 +86,37 @@ try{
   assert.equal((await restored.json()).data.backup.drafts[0].id,backup.drafts[0].id);
   assert.equal((await raw('/session','DELETE',second.session_token,second.csrf_token)).status,200);
   assert.equal((await raw('','GET',second.session_token)).status,401);
+ });
+ await test('R17: versioned workspace save, repeat, conflict and reload',async()=>{
+  const original=sample(), createReq='w-create-'+randomUUID();
+  const create=await raw('/workspaces','POST',session.session_token,session.csrf_token,
+    {request_id:createReq,backup:original});
+  assert.equal(create.status,201);
+  const first=(await create.json()).data;
+  assert.equal(first.version,1);assert.equal(first.production_created,false);
+  assert.match(first.workspace_id,/^TEST_WORKSPACE_/);
+  const again=await raw('/workspaces','POST',session.session_token,session.csrf_token,
+    {request_id:createReq,backup:original});
+  assert.equal(again.status,201);
+  assert.deepEqual((await again.json()).data,first);
+  const revised={...original,drafts:[{...original.drafts[0],title:'Updated in MySQL'}]};
+  const resource='/workspaces/'+first.workspace_id;
+  const update=await raw(resource,'PUT',session.session_token,session.csrf_token,
+    {request_id:'w-update-'+randomUUID(),expected_version:1,backup:revised});
+  assert.equal(update.status,200);
+  assert.equal((await update.json()).data.version,2);
+  const stale=await raw(resource,'PUT',session.session_token,session.csrf_token,
+    {request_id:'w-stale-'+randomUUID(),expected_version:1,backup:original});
+  assert.equal(stale.status,409);
+  assert.equal((await stale.json()).code,'VERSION_CONFLICT');
+  const reread=await raw(resource,'GET',session.session_token);
+  assert.equal(reread.status,200);
+  const restored=(await reread.json()).data;
+  assert.equal(restored.version,2);
+  assert.equal(restored.backup.drafts[0].title,'Updated in MySQL');
+  const listings=await raw('/workspaces','GET',session.session_token);
+  assert.equal(listings.status,200);
+  assert.ok((await listings.json()).data.items.some(item=>item.workspace_id===first.workspace_id));
  });
  await test('R17 Test MySQL: revoke old operator session and reject re-use',async()=>{
   assert.equal((await raw('/session','DELETE',session.session_token,session.csrf_token)).status,200);

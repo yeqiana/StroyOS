@@ -33,3 +33,12 @@ CREATE TABLE IF NOT EXISTS r17_draft_audit (
  request_id VARCHAR(100) NOT NULL,
  created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
 ) ENGINE=InnoDB;
+
+-- User-created Project and Episode snapshot - browser drafts only, never canonical runtime.
+CREATE TABLE IF NOT EXISTS r17_saved_workspaces (
+  workspace_id VARCHAR(64) PRIMARY KEY,
+  version INT NOT NULL,
+  backup_json JSON NOT NULL,
+  created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)
+) ENGINE=InnoDB;
