@@ -8,10 +8,12 @@ from pathlib import Path
 
 from platform.repository.mysql.web_draft_repository import WebDraftRepository, DraftWriteError
 from platform.operations.web_draft_handoff_plan import compile_handoff_plan
+from platform.operations.web_draft_execute_preflight import execute_saved_dry_run, PreflightBlocked
 
 BASE="/api/v1/web-drafts"
 ITEM=re.compile(r"^/api/v1/web-drafts/(WDW_[a-f0-9-]{36})$")
 HANDOFF=re.compile(r"^/api/v1/web-drafts/(WDW_[a-f0-9-]{36})/handoff-plan$")
+PREFLIGHT=re.compile(r"^/api/v1/web-drafts/(WDW_[a-f0-9-]{36})/preflight$")
 MAX=2_100_000
 
 def main():
@@ -41,7 +43,11 @@ def main():
         try:
             match=ITEM.fullmatch(path)
             handoff=HANDOFF.fullmatch(path)
-            if method=="GET" and handoff:
+            preflight=PREFLIGHT.fullmatch(path)
+            if method=="POST" and preflight:
+                result={"status":200,"data":execute_saved_dry_run(
+                    repo.read(preflight.group(1)), body, root=Path(__file__).resolve().parents[1])}
+            elif method=="GET" and handoff:
                 result={"status":200,"data":compile_handoff_plan(repo.read(handoff.group(1)))}
             elif method=="GET" and path==BASE:
                 result={"status":200,"data":repo.list()}
@@ -56,6 +62,8 @@ def main():
                 raise DraftWriteError("ROUTE_NOT_FOUND",404)
         finally:
             repo.close()
+    except PreflightBlocked as exc:
+        result={"status":exc.status,"code":exc.code,"message":exc.code}
     except DraftWriteError as exc:
         result={"status":exc.status,"code":exc.code,"message":exc.code}
     except (ValueError,TypeError,json.JSONDecodeError):

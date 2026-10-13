@@ -31,3 +31,13 @@
 - Web Console「生产交接预检（只读）」仅显示建议命令，不执行 Python、Codex 或 Driver；没有新数据表、调度器或任务队列。
 - 结果包含工作区版本与快照 SHA，用于识别后续编辑；`admission_granted=false`，`canonical_episode_created=false`，`production_started=false`。
 - 真实 Episode 创建、编号领取与付费生产仍须后续独立人工确认并通过已有 canonical Bootstrap 和 Gate。不要把预检计划当作生产准入批准。
+
+## R20：受权执行真实 canonical dry-run
+
+- 浏览器在 R19 只读交接清单中，为单条候选草稿点击“执行真实只读预检”，人工确认后才调用 `POST /api/v1/web-drafts/{workspace_id}/preflight`。
+- 服务端**重新读取当前持久化版本**，同时比较 `workspace_version`、`source_sha256`、`WDE_` 身份；旧版本 409，缺失身份 404/422，CSRF 不合法 403。
+- 严格通过 argv 调用已存在的 `episodes/_system/story_os.py create <synopsis> --title <title> --dry-run --json`，没有 shell、没有 `--full-auto`，24 秒内必须返回 `dry_run=true,written=false,created=false,workflow.invoked=false`，否则一律拒绝出具通过回执。
+- Canonical CLI 查询独立 SELECT-only 账号：Git 忽略目录 `.storyos-tmp/web-drafts/preflight-mysql-readonly.json`，环境变量由 `scripts/launch-web-drafts.mjs` 在本机显式提供。只授权 `STORY_OS_RUNTIME.*` 的 SELECT，无写权限。
+- R20 只新增一个路由和极少按钮，**没有新表、Writer、调度器、编号、生产任务、Codex 或图片视频生成**。
+- 全部单元/HTTP/浏览器测试依然使用 TEST_ONLY MySQL；正式 CLI 读取预检若发生数据库/脚本错误，直接显示阻断，不可冒充已创建。
+- 必须提醒：单独调用 `story_os.py create`（没有 dry-run）可能进入 Runtime workflow，不能将其当成纯 Episode Bootstrap 暴露给 Web Console。正式创建仍未开放。

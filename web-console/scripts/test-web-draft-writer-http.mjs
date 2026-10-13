@@ -99,6 +99,20 @@ try{
   assert.equal(plan.runtime_writes,0);
   assert.equal(plan.items[0].server_draft_id,created.identity_map.drafts[draft.drafts[0].id]);
   assert.ok(plan.items[0].preflight_argv.includes('--dry-run'));
+  const dryrunPath=url+'/preflight';
+  const dryrunRequest={server_draft_id:plan.items[0].server_draft_id,
+    workspace_version:plan.workspace_version,source_sha256:plan.source_sha256};
+  const oldVersion=await fetchIt(dryrunPath,'POST',session2.session_token,session2.csrf_token,
+    {...dryrunRequest,workspace_version:1});
+  assert.equal(oldVersion.status,409);
+  assert.equal((await oldVersion.json()).code,'PREFLIGHT_STALE_WORKSPACE');
+  const csrfDenied=await fetchIt(dryrunPath,'POST',session2.session_token,undefined,dryrunRequest);
+  assert.equal(csrfDenied.status,403);
+  const badGet=await fetchIt(dryrunPath,'GET',session2.session_token);
+  assert.equal(badGet.status,404);
+  const readOnlyUnconfigured=await fetchIt(dryrunPath,'POST',session2.session_token,session2.csrf_token,dryrunRequest);
+  assert.equal(readOnlyUnconfigured.status,503);
+  assert.equal((await readOnlyUnconfigured.json()).code,'PREFLIGHT_READONLY_DB_NOT_CONFIGURED');
   assert.equal((await fetchIt(url+'/handoff-plan','POST',session2.session_token,session2.csrf_token,{})).status,404);
   const index=(await (await fetchIt('','GET',session2.session_token)).json()).data.items;
   assert.ok(index.some(v=>v.workspace_id===created.workspace_id));

@@ -9,7 +9,7 @@ export type SavedWebDraft={workspace_id:string;version:number;identity_map:{
 
 async function parse<T>(response:Response):Promise<T>{
  const value=await response.json() as ApiResult<T>;
- if(!response.ok||value.code!=='OK')throw Error(value.message||value.code||'服务端草稿不可用');
+ if(!response.ok||value.code!=='OK')throw Error(value.code?.startsWith('PREFLIGHT_')?value.code:(value.message||value.code||'服务端草稿不可用'));
  return value.data;
 }
 async function authorized<T>(secret:string,action:(session:WebSession)=>Promise<T>):Promise<T>{
@@ -69,4 +69,20 @@ export function inspectWebDraftHandoff(token:string,id:string){
  if(!/^WDW_[a-f0-9-]{36}$/.test(id))throw Error('无效的草稿工作区 ID');
  return authorized(token,session=>call<HandoffPlan>(
   session,'/api/v1/web-drafts/'+id+'/handoff-plan'));
+}
+
+export type CanonicalDryRunReceipt={
+ authority:'CANONICAL_DRY_RUN';workspace_id:string;workspace_version:number;
+ source_sha256:string;server_draft_id:string;status:'PLANNED'|'HUMAN_GATE_REQUIRED';
+ profile_id:string|null;visual_lock:string|null;real_preflight_executed:true;
+ canonical_episode_created:false;admission_granted:false;production_started:false;model_calls:0;
+};
+/** Explicit per-draft, version-pinned canonical dry-run. Never creates Episode. */
+export function runWebDraftDryRun(token:string,plan:HandoffPlan,item:HandoffItem){
+ if(!/^WDW_[a-f0-9-]{36}$/.test(plan.workspace_id)||!/^WDE_[a-f0-9-]{36}$/.test(item.server_draft_id))throw Error('草稿身份无效');
+ return authorized(token,session=>call<CanonicalDryRunReceipt>(session,
+  '/api/v1/web-drafts/'+plan.workspace_id+'/preflight','POST',{
+    server_draft_id:item.server_draft_id,workspace_version:plan.workspace_version,
+    source_sha256:plan.source_sha256,
+  }));
 }

@@ -77,7 +77,7 @@ jobs:
       - name: Compile Story OS
         run: python -m compileall -q episodes/_system skills/dali-cat-story
       - name: Web draft handoff read-only safety
-        run: python scripts/ci_storyos_python.py -m pytest -q tests/platform/test_web_draft_handoff_plan.py
+        run: python scripts/ci_storyos_python.py -m pytest -q tests/platform/test_web_draft_handoff_plan.py tests/platform/test_web_draft_execute_preflight.py
       - name: Image scheduler authority projection regressions
         run: >-
           python scripts/ci_storyos_python.py -m pytest -q

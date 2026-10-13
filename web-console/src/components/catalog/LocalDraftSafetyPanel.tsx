@@ -2,7 +2,8 @@ import React, {useRef, useState} from 'react';
 import {Button, Modal, Input, Select} from 'antd';
 import {saveTestBackup,listTestBackups,getTestBackup,saveWorkspace,listWorkspaces,getWorkspace} from '../../api/isolatedDraftVault';
 import type {SavedWorkspaceItem} from '../../api/isolatedDraftVault';
-import {saveWebDraft,listWebDrafts,readWebDraft,inspectWebDraftHandoff} from '../../api/webDraftApi';
+import {saveWebDraft,listWebDrafts,readWebDraft,inspectWebDraftHandoff,runWebDraftDryRun} from '../../api/webDraftApi';
+import type {HandoffPlan,HandoffItem} from '../../api/webDraftApi';
 import type {Episode,ProjectItem} from '../../types';
 import {createDraftBackup,MAX_BACKUP_CHARS,reviewDraftRestore} from '../../api/localDraftBackup';
 
@@ -89,6 +90,32 @@ export const LocalDraftSafetyPanel:React.FC<Props>=({episodes,projects,onRestore
     finally{setWebBusy(false);}
   };
 
+
+  const runCanonicalPreflight=(plan:HandoffPlan,item:HandoffItem)=>{
+    if(!item.preflight_available)return;
+    Modal.confirm({
+      title:'确认执行原生 StoryOS 只读预检？',
+      content:'仅对 '+item.title+' 调用 canonical create --dry-run。会访问正式数据库的只读账号，不创建 Episode、不运行 Driver 或 Codex。',
+      okText:'运行只读预检',cancelText:'取消',
+      onOk:async()=>{
+        setWebBusy(true);
+        try{
+          const receipt=await runWebDraftDryRun(webSecret,plan,item);
+          if(!receipt.real_preflight_executed||receipt.canonical_episode_created||
+             receipt.admission_granted||receipt.production_started)throw Error('预检响应不安全');
+          setStatus('原生预检已执行：'+receipt.status+'；未创建正式作品');
+          Modal.info({title:'原生 StoryOS 预检结果',
+            content:<div className="text-[12px]">
+              <p>草稿：{item.title} · 状态：{receipt.status}</p>
+              <p>Visual Profile：{receipt.profile_id||'待人工裁决'}</p>
+              <p>正式 Episode：未创建 · Driver：未启动</p>
+            </div>,okText:'关闭'});
+        }catch(e){setStatus('原生预检未通过：'+(e instanceof Error?e.message:'未知错误'));}
+        finally{setWebBusy(false);}
+      }
+    });
+  };
+
   const inspectProductionHandoff=async()=>{
     if(!webSelected)return;
     setWebBusy(true);
@@ -100,11 +127,12 @@ export const LocalDraftSafetyPanel:React.FC<Props>=({episodes,projects,onRestore
         title:'正式 Episode 交接 · 只读预检',
         width:700,
         content:<div className="max-h-80 overflow-auto text-[12px]">
-          <p>服务端工作区 v{plan.workspace_version} · {plan.items.length} 部草稿。这里只提供既有 create --dry-run 入口，不创建正式 Episode、不启动生产。</p>
+          <p>服务端工作区 v{plan.workspace_version} · {plan.items.length} 部草稿。可对单条草稿执行原生 create --dry-run，只读检查，不创建正式 Episode、不启动生产。</p>
           {plan.items.map(item=><div key={item.server_draft_id} className="mt-2 border-t border-[var(--border-subtle)] pt-2">
             <strong>{item.title||item.source_draft_id}</strong>
             <span className="ml-2">{item.preflight_available?'可执行只读预检':'资料待补：'+item.reason}</span>
             {item.preflight_argv&&<pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap break-all text-[11px]">{JSON.stringify(item.preflight_argv)}</pre>}
+            {item.preflight_available&&<Button size="small" disabled={webBusy} onClick={()=>runCanonicalPreflight(plan,item)}>执行真实只读预检</Button>}
           </div>)}
           <p className="mt-2">执行正式创建和 Driver 仍需要单独授权，不能通过本按钮启动。</p>
         </div>,

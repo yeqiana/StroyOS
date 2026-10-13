@@ -15,7 +15,7 @@ export class WebDraftBridge {
  }
  execute(method,path,body={}){
   if(this.inflight>=6)return Promise.reject(Object.assign(Error('草稿库繁忙'),{status:429,code:'DRAFT_BUSY'}));
-  if(!['GET','POST','PUT'].includes(method)||!/^\/api\/v1\/web-drafts(?:\/WDW_[a-f0-9-]{36}(?:\/handoff-plan)?)?$/.test(path))
+  if(!['GET','POST','PUT'].includes(method)||!/^\/api\/v1\/web-drafts(?:\/WDW_[a-f0-9-]{36}(?:\/handoff-plan|\/preflight)?)?$/.test(path))
     return Promise.reject(Object.assign(Error('路由无效'),{status:404,code:'ROUTE_NOT_FOUND'}));
   const json=JSON.stringify({method,path,body});
   if(Buffer.byteLength(json)>2_100_000)

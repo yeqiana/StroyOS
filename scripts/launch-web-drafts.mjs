@@ -18,4 +18,6 @@ process.env.STORYOS_WEB_DRAFTS_TEST_ONLY='0';
 process.env.STORYOS_WEB_DRAFTS_AUTH=credential;
 process.env.STORYOS_WEB_DRAFTS_OPERATOR_TOKEN=token;
 process.env.STORYOS_WEB_DRAFTS_PYTHON=readFileSync(pythonPath,'utf8').trim();
+const readonly=join(dir,'preflight-mysql-readonly.json');
+if(existsSync(readonly))process.env.STORYOS_WEB_DRAFTS_PREFLIGHT_AUTH=readonly;
 await import('../web-console/server/start-web-drafts.mjs');
