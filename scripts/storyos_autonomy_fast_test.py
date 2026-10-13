@@ -107,6 +107,12 @@ SLOTS = {
     "r14-native-identity": ["tests/system/test_storyos_autonomy_r14_identity.py"],
     "r14-critic-history": ["tests/system/test_storyos_autonomy_r14_history.py"],
     "r14-closure": ["tests/system/test_storyos_autonomy_r14_closure.py"],
+    # R15: production release overlap gate, Windows read-only text Critic,
+    # irreversibility and pixel/Attempt boundaries.
+    "r15-release-overlap": ["tests/system/test_storyos_autonomy_r15_release.py"],
+    "r15-critic-sandbox": ["tests/system/test_storyos_autonomy_r15_critic.py"],
+    "r15-frame01": ["tests/system/test_storyos_autonomy_r15_frame01.py"],
+    "r15-closure": ["tests/system/test_storyos_autonomy_r15_closure.py"],
 }
 FULL_STRESS = [
     "tests/platform/test_runtime_state_store.py",

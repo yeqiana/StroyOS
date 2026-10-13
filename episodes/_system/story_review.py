@@ -1505,6 +1505,15 @@ def _authorize_concept_selection_source_repair_after_fail_a5(ep: Path, *, attemp
     return binding
 
 
+def critic_sandbox(*, migrated_rubric: bool) -> str:
+    """A9 is a source-reading critic, never a repository-writing agent.
+
+    On Windows, codex_critic_runner.resolve_sandbox("workspace-write")
+    expands to danger-full-access. Explicit "read-only" does not.
+    """
+    return "read-only" if migrated_rubric else "workspace-write"
+
+
 def run_critic(ep: Path, *, attempt: int, codex_raw: str | None, timeout: int | None = None, direct_user_continuation: bool = False, prior_rubric_ref: str | None = None, direct_user_source_revision: bool = False, direct_user_symbolic_remediation: bool = False, direct_user_paired_caption: bool = False, direct_user_photo_text_repair: bool = False, direct_user_character_source_repair: bool = False, direct_user_concept_selection_source_revision: bool = False, direct_user_concept_selection_source_repair_after_fail: bool = False, direct_user_concept_selection_source_repair_after_fail_a5: bool = False, direct_user_migrated_rubric: bool = False) -> int:
     if timeout is None:
         timeout = runtime_timeout_policy.seconds("review_critic")
@@ -1571,6 +1580,22 @@ def run_critic(ep: Path, *, attempt: int, codex_raw: str | None, timeout: int | 
         direct_user_concept_selection_source_repair_after_fail,
         direct_user_concept_selection_source_repair_after_fail_a5))):
         raise RuntimeError("migrated rubric revalidation is exclusive attempt 9")
+    # A nonexistent native executable must never burn the irreversible A9
+    # reservation. Only the actual paid dispatch is allowed to consume it.
+    prevalidated_codex = resolve_codex(codex_raw) if direct_user_migrated_rubric else None
+    prevalidated_prompt = None
+    if direct_user_migrated_rubric:
+        # Finish every local, free, deterministic input check BEFORE writing
+        # the exclusive, non-retryable paid text Critic reservation.
+        check_story, check_board = story_paths(ep)
+        if not check_story.is_file() or not check_board.is_file():
+            raise RuntimeError("migrated rubric Critic source files missing")
+        if (ep / CANDIDATE_REL).exists():
+            raise RuntimeError("migrated rubric candidate already exists: reconcile first")
+        if _locked_documentary_rubric(ep) and not (ep / "docs/subtitles.yaml").is_file():
+            raise RuntimeError("migrated rubric critic requires locked subtitles")
+        prevalidated_prompt = critic_prompt(
+            ep, check_story, check_board, ep / CANDIDATE_REL, attempt)
     continuation = (_authorize_policy_continuation(ep, attempt=attempt, prior_rubric_ref=prior_rubric_ref)
                     if direct_user_continuation else _authorize_source_revision(ep, attempt=attempt)
                     if direct_user_source_revision else _authorize_symbolic_remediation(ep, attempt=attempt)
@@ -1629,10 +1654,11 @@ def run_critic(ep: Path, *, attempt: int, codex_raw: str | None, timeout: int | 
         print(json.dumps(request, ensure_ascii=False, indent=2))
         return product_review_adapter.HOST_ACTION_REQUIRED_RC
 
-    codex = resolve_codex(codex_raw)
+    codex = prevalidated_codex or resolve_codex(codex_raw)
     log = ep / "meta" / f"story-critic-attempt-{attempt}.jsonl"
     log.parent.mkdir(parents=True, exist_ok=True)
-    direct_prompt = critic_prompt(ep, story, storyboard, candidate, attempt) + """
+    direct_prompt = (prevalidated_prompt if direct_user_migrated_rubric else
+                     critic_prompt(ep, story, storyboard, candidate, attempt)) + """
 
 DIRECT CODEX EXECUTION OVERRIDE:
 Do not edit or write any repository file in this execution.
@@ -1646,7 +1672,7 @@ no Markdown fences and no status summary. The parent process persists it.
         timeout=timeout,
         output_path=candidate,
         reasoning_effort="high",
-        sandbox="workspace-write",
+        sandbox=critic_sandbox(migrated_rubric=direct_user_migrated_rubric),
         log_path=log,
         # A long-lived interactive Windows runner can have stale arg0 ACLs
         # beneath ~/.codex; the independent Story critic must start in its
