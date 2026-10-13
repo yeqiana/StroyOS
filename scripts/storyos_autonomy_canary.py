@@ -59,6 +59,54 @@ def decide(native_report: dict, baseline: dict, *, episode: str) -> dict:
             "next_step":"INDEPENDENT_AUTHORIZED_CANARY_NOT_THIS_COMMAND"}
 
 
+LEGACY_UNKNOWN_RECOVERY_EPISODE = "episodes/00_独立篇/06_五十亩山地之后_全新重制"
+
+
+def is_legacy_recovery_scope(episode_ref: str) -> bool:
+    # native_baseline_readonly_preflight.inspect hard-codes this ONE
+    # historical UNKNOWN recovery. It is not a general new-image check.
+    return episode_ref == LEGACY_UNKNOWN_RECOVERY_EPISODE
+
+
+def decide_new_frame01(native_report: dict, *, episode: str) -> dict:
+    """Read-only normal production Frame01 diagnosis, NOT a forged legacy receipt."""
+    blocked={"status":"BLOCKED","episode":episode,"frame":1,"frame_key":"01",
+             "can_dispatch_image":False,"production_authorization":False,
+             "model_entitlement_verified":False,"model_calls":0,"sql_writes":0}
+    if (not isinstance(native_report,dict)
+            or native_report.get("episode") not in (None,episode)
+            or native_report.get("status")!="READY_TO_START"
+            or native_report.get("read_only") is not True
+            or native_report.get("production_authorization") is not False
+            or native_report.get("model_calls")!=0 or native_report.get("sql_writes")!=0
+            or native_report.get("image_executor")!="CODEX"
+            or native_report.get("production_mode")!="CODEX_MANAGED"
+            or native_report.get("blockers")):
+        return {**blocked,"reason":"NATIVE_AUTHORITY_UNVERIFIED"}
+    stage=native_report.get("episode_stage") or {}
+    attempts=native_report.get("attempt") or {}
+    codex=native_report.get("codex") or {}
+    if stage.get("source")!="mysql" or stage.get("current_state")!="STORYBOARD_LOCKED":
+        return {**blocked,"reason":"STORYBOARD_STAGE_UNVERIFIED"}
+    if (attempts.get("status")!="ATTEMPT_HISTORY_READ_ONLY"
+            or attempts.get("active_attempt_assets")
+            or attempts.get("outcome_unknown_assets")):
+        return {**blocked,"reason":"GENERATION_ATTEMPT_UNVERIFIED"}
+    if not all(codex.get(k) is True for k in ("mode_ok","bridge_ok","model_client_version_ok")):
+        return {**blocked,"reason":"NATIVE_CODEX_ROUTE_UNVERIFIED"}
+    visual=native_report.get("visual_lock_admission") or {}
+    if visual.get("read_only") is not True:
+        return {**blocked,"reason":"VISUAL_LOCK_AUTHORITY_UNVERIFIED"}
+    visual_status=visual.get("status")
+    reason=visual.get("reason")
+    if visual_status=="REVIEW_PASS_REQUIRES_INDEPENDENT_PROVENANCE":
+        return {**blocked,"status":"EVIDENCE_ONLY",
+                "reason":"REAL_NATIVE_IMAGE_TOOL_AND_PIXEL_PROOF_STILL_REQUIRED",
+                "next_step":"AUTHORIZED_NATIVE_FRAME01_THROUGH_CANONICAL_GATEWAY"}
+    return {**blocked,"reason":reason if isinstance(reason,str) and reason else
+            "VISUAL_LOCK_FRAME01_ADMISSION_BLOCKED"}
+
+
 def plan(episode: str) -> dict:
     try:
         ep=native.canonical_episode(episode)
@@ -66,10 +114,14 @@ def plan(episode: str) -> dict:
         ref=ep.relative_to(native.ROOT).as_posix()
         primary=native.preflight(env,episode=ep)
         first_cli=native_cli.report()
-        # Existing Frame01 gate is read-only and is the single evidence source.
-        rc,baseline=native._probe(env,"scripts/storyos_native_frame01_preflight.py",[ref])
-        if rc not in (0,2):
-            baseline={}
+        # This historical recovery probe is scoped to exactly one old Episode.
+        # New images MUST NOT be checked against old OUTCOME_UNKNOWN evidence.
+        legacy=is_legacy_recovery_scope(ref)
+        baseline={}
+        if legacy:
+            rc,baseline=native._probe(env,"scripts/storyos_native_frame01_preflight.py",[ref])
+            if rc not in (0,2):
+                baseline={}
         # Frame01 MySQL/Attempt/Driver can change while its read-only baseline
         # assessment runs. Recheck the entire canonical scope, not just Stage.
         fresh=native.preflight(env,episode=ep)
@@ -90,7 +142,7 @@ def plan(episode: str) -> dict:
             return unavailable
         if first_cli != final_cli:
             return {**unavailable,"reason":"NATIVE_CLI_OR_LOGIN_CHANGED"}
-        return decide(fresh,baseline,episode=ref)
+        return decide(fresh,baseline,episode=ref) if legacy else decide_new_frame01(fresh,episode=ref)
     except (ValueError,OSError):
         return {"status":"BLOCKED","reason":"ENVIRONMENT_UNVERIFIED",
                 "can_dispatch_image":False,"model_calls":0,"sql_writes":0}

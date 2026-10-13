@@ -53,6 +53,13 @@ SLOTS = {
     "gateway-proof": ["tests/system/test_storyos_autonomy_r7_gateway.py"],
     "native-route": ["tests/system/test_storyos_autonomy_r7_native.py"],
     "r7-closure": ["tests/system/test_storyos_autonomy_r7_closure.py"],
+    # R8: split legacy UNKNOWN recovery from real Frame01 visual evidence;
+    # distinguish DAG start from image admission and canonical MySQL stage.
+    "frame01-real": ["tests/system/test_storyos_autonomy_r8_frame01.py",
+                     "tests/system/test_storyos_visual_lock_readonly.py"],
+    "native-image-readiness": ["tests/system/test_storyos_autonomy_r8_native.py"],
+    "stage-drift": ["tests/system/test_storyos_autonomy_r8_stage.py"],
+    "r8-integration": ["tests/system/test_storyos_autonomy_r8_integration.py"],
 }
 FULL_STRESS = [
     "tests/platform/test_runtime_state_store.py",

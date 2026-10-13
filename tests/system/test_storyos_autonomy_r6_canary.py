@@ -13,6 +13,8 @@ def setup(monkeypatch):
     monkeypatch.setattr(canary.native,"native_environment",lambda:{})
     monkeypatch.setattr(canary.native,"preflight",lambda *a,**k:healthy())
     monkeypatch.setattr(canary.native,"_probe",lambda *a,**k:(0,baseline()))
+    # Legacy tests specifically verify the historical UNKNOWN recovery path.
+    monkeypatch.setattr(canary,"is_legacy_recovery_scope",lambda _:True)
 
 def test_cli_bridge_unavailable_refuses_even_when_stage_valid(monkeypatch):
     setup(monkeypatch)

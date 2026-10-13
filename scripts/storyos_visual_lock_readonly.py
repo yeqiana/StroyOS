@@ -12,6 +12,27 @@ for x in (ROOT,SYSTEM):
 
 EXPECTED_PLAN=((1,"ordinary_baseline"),(16,"worst_capture_condition"),
                (8,"first_major_anomaly"),(17,"high_impact_admission"))
+# EXPECTED_PLAN is the original regression sample, NOT the universal frame
+# numbering contract: each storyboard selects its own four admission frames.
+EXPECTED_ROLES=tuple(role for _,role in EXPECTED_PLAN)
+
+
+def valid_four_frame_plan(plan:dict|None)->tuple[int,...]:
+    if not isinstance(plan,dict) or plan.get("schema_version",1)!=1:
+        return ()
+    items=plan.get("items")
+    if not isinstance(items,list) or len(items)!=4:
+        return ()
+    if any(not isinstance(x,dict) for x in items):
+        return ()
+    if tuple(x.get("role") for x in items)!=EXPECTED_ROLES:
+        return ()
+    frames=tuple(x.get("frame") for x in items)
+    if (any(type(f) is not int or not 1<=f<=20 for f in frames)
+            or frames[0]!=1 or len(set(frames))!=4):
+        return ()
+    return frames
+
 
 def classify(*,stage:str,attempt_status:str,reviews:dict,plan:dict|None,calibration:dict|None)->dict:
     """Never infer tool entitlement from a text-only probe or a filename."""
@@ -25,14 +46,12 @@ def classify(*,stage:str,attempt_status:str,reviews:dict,plan:dict|None,calibrat
     if stage not in {"STORYBOARD_LOCKED","IMAGE_LOCKED"}:
         result.update(status="NOT_APPLICABLE",reason="EPISODE_NOT_AT_VISUAL_ADMISSION_STAGE")
         return result
-    items=(plan or {}).get("items") if isinstance(plan,dict) else None
-    actual=tuple((x.get("frame"),x.get("role")) for x in items) if (
-        isinstance(items,list) and all(isinstance(x,dict) for x in items)) else ()
-    if actual!=EXPECTED_PLAN:
+    frames=valid_four_frame_plan(plan)
+    if not frames:
         result["reason"]="OFFICIAL_VISUAL_LOCK_FOUR_FRAME_PLAN_MISSING_OR_DRIFTED"
         return result
     decisions=(calibration or {}).get("items")
-    result["admission_frames"]=[frame for frame,_ in EXPECTED_PLAN]
+    result["admission_frames"]=list(frames)
     result["pending_admission_items"]=sum(
         isinstance(x,dict) and x.get("decision")=="pending" for x in decisions
     ) if isinstance(decisions,list) else None

@@ -70,6 +70,14 @@
 - Frame01 的 `EVIDENCE_ONLY` 还需要检查 CLI 与交互用户 Runner 的版本和可执行文件指纹完全一致；仅登录或找到 `codex` 命令都不是付费生图许可。只读检查不暴露用户路径、证书或密钥。
 - 本轮每次改动 RED→GREEN 的极速入口 `--slot gc-atomic|gateway-proof|native-route|r7-closure`；联合 `--slot all`；整轮 `--slot all --stress`。详见 `docs/StoryOS_R7_四槽原子退役与Codex同路由验收_20261013.md`。
 
+## R8 Frame01 专用回收分流与 M00 作品级四帧校验
+
+- `storyos_native_frame01_preflight.py` 验证的是《五十亩山地之后》旧 Attempt 的严格 UNKNOWN 回收，禁止把它误当全体新作品的通用首帧准入。普通作品通过 `storyos_autonomy_canary.py plan` 独立核对 MySQL Stage/Attempt、Visual Lock、原生 Codex 只读证据，绝不凭预检直接发起付费图片生成。
+- M00 四帧必须按四种固定角色与首帧=1 校验；后三帧在不同作品中可选不同的 1–20 编号，但必须互不重复。原有 1/16/8/17 仅为旧测试样例，不能作为所有分镜的统一强制帧号。
+- `storyos_codex_managed.py plan` 的 `READY_TO_START` 仅代表 DAG 可启动；新增 `production_admission.image_ready=false` 和图片阻断原因用于明确区分。真实 Provider 许可仍由正式 Gateway/Attempt/Pixel 权威决定。
+- 文件 Episode Stage 只是本地快照，与 MySQL 冲突时以 MySQL 为准；`storyos_stage_drift_readonly.py` 只读报告差异，不修库、不改文件。
+- 四槽每次推进分别跑 `--slot frame01-real|native-image-readiness|stage-drift|r8-integration`；最终 `--slot all --stress`，见 `docs/StoryOS_R8_四槽Frame01真实准入与极限验收_20261013.md`。
+
 ## Story OS 当前执行入口
 
 涉及 `story` 分支的选题、分镜、出图、字幕、审核、发布、复盘任务，Codex 必须先读取仓库根目录 `START_HERE.md`，再读取 `SKILL.md`。

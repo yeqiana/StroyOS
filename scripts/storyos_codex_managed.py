@@ -94,6 +94,25 @@ def resident_restart_permitted(driver: dict) -> bool:
     return state == "EXITED" and code in {"", "0"}
 
 
+def admission_summary(*,stage:dict,visual:dict,native_ready:dict,
+                      blockers:list[str])->dict:
+    """Split DAG startability from proven paid-image readiness.
+
+    Neither a healthy CLI nor a clean MySQL Stage means an image may be
+    dispatched. Only canonical Gateway/Attempt and pixel gates can authorize.
+    """
+    dag=(not blockers and stage.get("status")=="STAGE_ELIGIBLE")
+    visual_status=visual.get("status") if isinstance(visual,dict) else None
+    reason=visual.get("reason") if isinstance(visual,dict) else None
+    return {"dag_startable":bool(dag),"image_ready":False,
+            "image_blocking_reason":(
+                reason if isinstance(reason,str) and reason else
+                "IMAGE_TOOL_ENTITLEMENT_AND_PIXEL_PROOF_UNVERIFIED"),
+            "visual_lock_status":visual_status,
+            "real_image_tool_verified":False,
+            "production_authorization":False}
+
+
 def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
     """Read-only gate. No owner acquisition, revision activation or model calls."""
     blockers: list[str] = []
@@ -171,6 +190,11 @@ def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
                     "read_only": True,
                 }
     return {
+        "production_admission":admission_summary(
+            stage=stage,visual=visual_lock_admission,
+            native_ready={"bridge_ok":native_ok,"mode_ok":mode_ok,
+                          "model_client_version_ok":model_version_ok},
+            blockers=blockers),
         "status": "READY_TO_START" if not blockers else "BLOCKED",
         "scope": "NATIVE_CODEX_FULL_AUTO",
         "production_mode": "CODEX_MANAGED",
