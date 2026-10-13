@@ -9,7 +9,7 @@ import hashlib
 import json
 import re
 
-DRAFT_UID = re.compile(r"WDE_[0-9a-f-]{36}\\Z")
+DRAFT_UID = re.compile(r"WDE_[0-9a-f-]{36}")
 
 
 def compile_handoff_plan(record: dict) -> dict:
