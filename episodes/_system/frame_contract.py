@@ -371,7 +371,7 @@ def compile_frame(ep: Path, frame: int | str, *, write_cache: bool = True) -> di
         character_anchor = character_appearance_anchor.build(ep, write=False)
     excerpt = extract_frame_excerpt(storyboard_path, n)
     adjacent_state = m00_episode_state_delta.source_transition(
-        storyboard_path, n, visual_profile["profile_id"])
+        storyboard_path, n, visual_profile["profile_id"], episode=ep)
     # An absent opt-in changes neither the derived contract SHA nor legacy prompt.
     refs = resolved_references(ep, n)
     # P1-1: per-frame identity requirement is derived review evidence. It is

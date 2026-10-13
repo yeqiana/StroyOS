@@ -28,7 +28,7 @@ def inspect(*, episode: Path, frame: int, previous: Path | None = None,
         raise ValueError("M00_EPISODE_PAIR_REQUIRES_TWO_IMAGES")
     profile = visual_profile.compile_prompt_contract(ep)["profile_id"]
     _story_path, storyboard = frame_contract.artifact_paths(ep)
-    source = m00_episode_state_delta.source_transition(storyboard, frame, profile)
+    source = m00_episode_state_delta.source_transition(storyboard, frame, profile, episode=ep)
     if source is None:
         return {"status": "NOT_EXPLICITLY_OPTED_IN", "advisory_only": True}
     if previous is None:
