@@ -137,7 +137,7 @@ if(!widthArg){
    const result=spawnSync(process.execPath,[process.argv[1],'--width='+width],{stdio:'inherit',timeout:240000});
    if(result.status!==0)process.exit(result.status||1);
  }
- console.log('R14_ALL_FIRST_LEVEL_MENU_LAYOUT_14_OF_14_PASS');
+ console.log('R14_ALL_FIRST_LEVEL_MENU_LAYOUT_8_OF_8_PASS_1440');
  process.exit(0);
 }
 const requestedWidth=Number(widthArg.slice('--width='.length));
@@ -196,4 +196,4 @@ for(const width of [requestedWidth]){
    }
  }finally{if(ws)ws.close();child.kill();}
 }
-console.log('R14_ALL_FIRST_LEVEL_MENU_LAYOUT_14_OF_14_PASS');
+console.log('R14_ALL_FIRST_LEVEL_MENU_LAYOUT_8_OF_8_PASS_1440');
