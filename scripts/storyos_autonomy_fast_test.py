@@ -113,6 +113,11 @@ SLOTS = {
     "r15-critic-sandbox": ["tests/system/test_storyos_autonomy_r15_critic.py"],
     "r15-frame01": ["tests/system/test_storyos_autonomy_r15_frame01.py"],
     "r15-closure": ["tests/system/test_storyos_autonomy_r15_closure.py"],
+    # R16: one-shot A9 native timeout reconciliation and paid DAG blocker.
+    "r16-receipt": ["tests/system/test_storyos_autonomy_r16_receipt.py"],
+    "r16-candidate": ["tests/system/test_storyos_autonomy_r16_candidate.py"],
+    "r16-driver": ["tests/system/test_storyos_autonomy_r16_driver.py"],
+    "r16-integrated": ["tests/system/test_storyos_autonomy_r16_integrated.py"],
 }
 FULL_STRESS = [
     "tests/platform/test_runtime_state_store.py",

@@ -160,6 +160,15 @@ def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
         if rc != 0 or stage.get("status") != "STAGE_ELIGIBLE":
             blockers.append("EPISODE_STAGE_NOT_ELIGIBLE_FOR_PRODUCTION")
         rel = episode.relative_to(ROOT).as_posix()
+        # An irreversible A9 new-Review ticket forbids DAG start while its
+        # one-shot Codex result is timed out, unknown, or lacks canonical
+        # MySQL PASS. Never interpret a healthy CLI as paid-review authority.
+        if (episode/"meta/runtime/story-review-migrated-rubric-a9.json").is_file():
+            a9_rc, a9_report = _probe(
+                env, "scripts/storyos_a9_receipt_reconcile.py", ["--episode", rel])
+            if (a9_rc != 0 or
+                    a9_report.get("status") != "CANONICAL_A9_PASS_VERIFIED"):
+                blockers.append("STORY_REVIEW_A9_RECONCILIATION_REQUIRED")
         recovery_rc, creative_recovery = _probe(
             env, "scripts/storyos_creative_recovery_readonly.py", ["--episode", rel]
         )

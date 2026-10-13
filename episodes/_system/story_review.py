@@ -1505,6 +1505,11 @@ def _authorize_concept_selection_source_repair_after_fail_a5(ep: Path, *, attemp
     return binding
 
 
+# Shared verbatim with the A9 read-only durable receipt reconciler. Never
+# mint another paid attempt merely to recover a lost subprocess return value.
+DIRECT_CODEX_EXECUTION_OVERRIDE = "\n\nDIRECT CODEX EXECUTION OVERRIDE:\nDo not edit or write any repository file in this execution.\nReturn ONLY the exact candidate JSON object as your final answer, with no prose,\nno Markdown fences and no status summary. The parent process persists it.\n"
+
+
 def critic_sandbox(*, migrated_rubric: bool) -> str:
     """A9 is a source-reading critic, never a repository-writing agent.
 
@@ -1658,13 +1663,7 @@ def run_critic(ep: Path, *, attempt: int, codex_raw: str | None, timeout: int | 
     log = ep / "meta" / f"story-critic-attempt-{attempt}.jsonl"
     log.parent.mkdir(parents=True, exist_ok=True)
     direct_prompt = (prevalidated_prompt if direct_user_migrated_rubric else
-                     critic_prompt(ep, story, storyboard, candidate, attempt)) + """
-
-DIRECT CODEX EXECUTION OVERRIDE:
-Do not edit or write any repository file in this execution.
-Return ONLY the exact candidate JSON object as your final answer, with no prose,
-no Markdown fences and no status summary. The parent process persists it.
-"""
+                     critic_prompt(ep, story, storyboard, candidate, attempt)) + DIRECT_CODEX_EXECUTION_OVERRIDE
     completed = codex_critic_runner.launch(
         direct_prompt,
         codex=codex,
