@@ -36,13 +36,30 @@ class LocalEpisodeFileStatuses:
         if not self.episodes.is_dir() or not self.episodes.is_relative_to(self.root):
             raise ValueError("workspace must have episodes directory")
 
+    def _production_state_files(self):
+        """Only canonical production Episode states, not tests or archives."""
+        for state_file in sorted(self.episodes.glob("*/**/meta/episode-state.json")):
+            try:
+                parts = state_file.relative_to(self.episodes).parts
+                if len(parts) != 4 or any(part.startswith(("_", ".")) for part in parts):
+                    continue
+                if state_file.is_symlink() or not state_file.is_file():
+                    continue
+                if any(parent.is_symlink() for parent in (
+                    state_file.parent, state_file.parent.parent, state_file.parent.parent.parent
+                )):
+                    continue
+                resolved = state_file.resolve(strict=True)
+                if resolved.is_relative_to(self.episodes):
+                    yield resolved
+            except OSError:
+                continue
+
     def _load(self) -> tuple[list[dict], list[str]]:
         rows: list[dict] = []
         errors: list[str] = []
-        for state_file in sorted(self.episodes.glob("*/**/meta/episode-state.json")):
-            resolved = state_file.resolve()
-            if not resolved.is_relative_to(self.episodes) or not resolved.is_file():
-                continue
+        for state_file in self._production_state_files():
+            resolved = state_file
             relative = resolved.relative_to(self.episodes).as_posix()
             try:
                 state = json.loads(resolved.read_text(encoding="utf-8"))
@@ -103,13 +120,9 @@ class LocalEpisodeFileStatuses:
             return None
         recorded = {}
         mysql_snapshot = empty_mysql_monitor("EPISODE_IDENTITY_UNVERIFIED")
-        for state_file in self.episodes.glob("*/**/meta/episode-state.json"):
+        for state_file in self._production_state_files():
             try:
-                if state_file.is_symlink() or not state_file.is_file():
-                    continue
-                resolved = state_file.resolve(strict=True)
-                if not resolved.is_relative_to(self.episodes):
-                    continue
+                resolved = state_file
                 relative = resolved.relative_to(self.episodes).as_posix()
                 candidate_ref = "LOCAL_" + hashlib.sha256(relative.encode("utf-8")).hexdigest()[:24]
                 if candidate_ref == episode:
