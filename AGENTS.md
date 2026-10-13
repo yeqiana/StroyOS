@@ -63,6 +63,13 @@
 - 历史本地分支清理需要在二次主线合并检查前后对引用 SHA 重新核对；`inf`、`nan` 与无效时间戳不得清理，Worktree 没有全部权威证据就保留。不得使用 force / `-D`。
 - 每次修改对应槽必须 RED→GREEN 极速测试：`python scripts/storyos_autonomy_fast_test.py --slot gc-fence|provider-timeout|codex-frame01|r6-e2e`，四槽一起执行 `--slot all`，全轮结束执行 `--slot all --stress`。参见 `docs/StoryOS_R6_四槽续推与极限测试_20261013.md`。
 
+## R7 原生 Codex CLI 同路由及 Provider 最后证据门禁
+
+- 清理老分支必须经 `storyos_retired_worktree_gc.py branches-plan`；只对本地/远端均已合并、已解除 Worktree 占用、72h 以上的临时分支执行 Git 原子 ref compare-and-delete；分支提交变动/活跃签出时拒绝。绝不 `--force` 或 `-D`。
+- 图片 `image_generation_gateway.py` 的单帧与批量 post-commit MySQL Fence 验证，必须明确返回 `True`；拒绝 False/None/不完整批量提交，绝不可越权进入付费 Provider `call()`。
+- Frame01 的 `EVIDENCE_ONLY` 还需要检查 CLI 与交互用户 Runner 的版本和可执行文件指纹完全一致；仅登录或找到 `codex` 命令都不是付费生图许可。只读检查不暴露用户路径、证书或密钥。
+- 本轮每次改动 RED→GREEN 的极速入口 `--slot gc-atomic|gateway-proof|native-route|r7-closure`；联合 `--slot all`；整轮 `--slot all --stress`。详见 `docs/StoryOS_R7_四槽原子退役与Codex同路由验收_20261013.md`。
+
 ## Story OS 当前执行入口
 
 涉及 `story` 分支的选题、分镜、出图、字幕、审核、发布、复盘任务，Codex 必须先读取仓库根目录 `START_HERE.md`，再读取 `SKILL.md`。

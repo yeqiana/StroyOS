@@ -47,6 +47,12 @@ SLOTS = {
     "provider-timeout": ["tests/system/test_storyos_autonomy_r6_receipt.py"],
     "codex-frame01": ["tests/system/test_storyos_autonomy_r6_canary.py"],
     "r6-e2e": ["tests/system/test_storyos_autonomy_r6_e2e.py"],
+    # R7: Git ref CAS, strict paid-edge post-commit proofs,
+    # native CLI/Runner binary+version agreement, end-to-end isolation.
+    "gc-atomic": ["tests/system/test_storyos_autonomy_r7_gc.py"],
+    "gateway-proof": ["tests/system/test_storyos_autonomy_r7_gateway.py"],
+    "native-route": ["tests/system/test_storyos_autonomy_r7_native.py"],
+    "r7-closure": ["tests/system/test_storyos_autonomy_r7_closure.py"],
 }
 FULL_STRESS = [
     "tests/platform/test_runtime_state_store.py",

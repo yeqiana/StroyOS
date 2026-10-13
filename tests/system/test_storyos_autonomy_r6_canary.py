@@ -26,7 +26,8 @@ def test_cli_bridge_unavailable_refuses_even_when_stage_valid(monkeypatch):
 def test_cli_login_drift_between_canary_probes_refuses(monkeypatch):
     setup(monkeypatch)
     reports=iter([{"status":"NATIVE_AUTH_CONTEXT_READY","model_calls":0,"sql_writes":0,
-                   "may_start_paid_production":False,"opencodex_used":False},
+                   "may_start_paid_production":False,"opencodex_used":False,
+                   "cli_runner_same_binary_verified":True},
                   {"status":"BLOCKED","model_calls":0,"sql_writes":0,
                    "may_start_paid_production":False,"opencodex_used":False}])
     monkeypatch.setattr(canary.native_cli,"report",lambda:next(reports))
@@ -41,7 +42,8 @@ def test_healthy_cli_is_evidence_only_not_paid_admission(monkeypatch):
                         lambda:{"status":"NATIVE_AUTH_CONTEXT_READY",
                                 "model_calls":0,"sql_writes":0,
                                 "may_start_paid_production":False,
-                                "opencodex_used":False})
+                                "opencodex_used":False,
+                                "cli_runner_same_binary_verified":True})
     result=canary.plan(EP)
     assert result["status"]=="EVIDENCE_ONLY"
     assert result["can_dispatch_image"] is False

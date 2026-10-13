@@ -85,6 +85,7 @@ def plan(episode: str) -> dict:
                 or first_cli.get("status")!="NATIVE_AUTH_CONTEXT_READY"
                 or first_cli.get("model_calls")!=0 or first_cli.get("sql_writes")!=0
                 or first_cli.get("may_start_paid_production") is not False
+                or first_cli.get("cli_runner_same_binary_verified") is not True
                 or first_cli.get("opencodex_used") is not False):
             return unavailable
         if first_cli != final_cli:

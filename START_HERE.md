@@ -24,6 +24,7 @@
 **R4 完整生产二次权威校验**：官方图片 Provider 发起前增加 MySQL Generation Attempt live Fence 复查，Windows Watchdog 加入实际 Task Scheduler 触发/单实例验真，原生单帧 Canary 双次对齐 Episode/Attempt/模型路由证据；全部 fail-closed，不替代真实生图 Canary。单槽极速命令 `python scripts/storyos_autonomy_fast_test.py --slot dispatch-fence|carrier-integrity|frame01-fence|r4-integration`；整轮 `--slot all --stress`。详见 `docs/StoryOS_R4_四槽自治二次Fence与极速验收_20261013.md`。
 **R5 自治治理与原生 Codex 只读验收**：`python scripts/storyos_autonomy_native_ready.py` 核对真实 CLI + 交互用户凭证可见性，零付费、不承诺模型资格。Provider 回执持久化失败按 UNKNOWN 处理不自动重试；退役分支/Worktree 先 `python scripts/storyos_retired_worktree_gc.py plan` 或 `branches-plan`，仅明确授权、二次核验后安全清理。四槽独立极速入口 `--slot retirement|provider-receipt|native-login|r5-integrated`，整体 `--slot all --stress`。见 `docs/StoryOS_R5_四槽治理_原生Codex与极速验收_20261013.md`。
 **R6 原生 Codex 与生产结果安全**：本地已登录的 Codex CLI 通过 `storyos_autonomy_native_ready.py` 仅证明 CLI/Runner 授权上下文，Frame01 只读准入额外双检；Provider 网络/CLI 超时应按 UNKNOWN 保护已消耗 Attempt，禁止自动重试。清理前先 `storyos_retired_worktree_gc.py plan`，仅删除可二次验证的退役对象。各槽极速 `--slot gc-fence|provider-timeout|codex-frame01|r6-e2e`，全轮 `--slot all --stress`。详见 `docs/StoryOS_R6_四槽续推与极限测试_20261013.md`。
+**R7 安全续推**：原生 Codex CLI 与交互 Runner 除授权上下文外还须证明同一版本/执行文件指纹，Frame01 只读门禁 fail-closed；Provider post-commit Fence 的返回值必须显式 `True`，批量提交完整才能发起真实生图。历史分支改用 Git ref 原子 CAS 安全退役，仍需避免活动 Worktree。各槽极速入口 `--slot gc-atomic|gateway-proof|native-route|r7-closure`，整体 `--slot all --stress`。见 `docs/StoryOS_R7_四槽原子退役与Codex同路由验收_20261013.md`。
 默认 `COLLABORATIVE` 配置保持不变。
 
 ```text

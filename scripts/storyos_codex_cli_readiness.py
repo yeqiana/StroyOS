@@ -7,6 +7,7 @@ filesystem isolation. On Windows the current StoryOS runner can use full access.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -17,6 +18,14 @@ from pathlib import Path
 
 VERSION_RE = re.compile(r"^(?:codex|codex-cli) \d+\.\d+\.\d+(?:[-+][\w.-]+)?$")
 REQUIRED_FLAGS = ("--ephemeral", "--skip-git-repo-check", "--json", "--sandbox")
+
+
+def executable_fingerprint(executable: str | None) -> str | None:
+    """Non-secret stable digest of the resolved local binary, never its path."""
+    if not isinstance(executable, str) or not executable.strip():
+        return None
+    path = os.path.normcase(os.path.realpath(os.path.abspath(executable)))
+    return hashlib.sha256(path.encode("utf-8", errors="replace")).hexdigest()
 
 
 def inspect_cli(executable: str, *, platform_name: str | None = None) -> dict:
@@ -38,6 +47,7 @@ def inspect_cli(executable: str, *, platform_name: str | None = None) -> dict:
         "status": "CLI_FLAGS_SUPPORTED" if VERSION_RE.fullmatch(version)
                   and all(flags.values()) else "CLI_FLAGS_INCOMPLETE",
         "version": version if VERSION_RE.fullmatch(version) else "INVALID_VERSION",
+        "executable_fingerprint": executable_fingerprint(executable),
         "flags": flags,
         "command_only": True,
         "runtime_model_calls": 0,
@@ -78,6 +88,8 @@ def inspect_storyos_bridge(*, health_provider=None) -> dict:
         "auth_context_present": health.get("codex_auth_present") is True,
         "model_execution_verified": False,
         "credentials_disclosed": False,
+        "codex_version": health.get("codex_version"),
+        "executable_fingerprint": executable_fingerprint(health.get("codex_executable")),
     }
 
 

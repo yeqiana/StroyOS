@@ -40,7 +40,8 @@ def _provider_generate_with_capacity(ep, lease: dict | None, fencing_token: int 
     try:
         # A newer Writer/Attempt fence may have appeared after the irreversible
         # dispatch commit but BEFORE any paid Provider operation.
-        authority.validate_committed_dispatch(ep, committed, int(fencing_token))
+        if authority.validate_committed_dispatch(ep, committed, int(fencing_token)) is not True:
+            raise authority.AttemptDenied("STALE_GENERATION_ATTEMPT_FENCE")
         provider_entered = True
         result = call()
         provider_returned = True
@@ -89,9 +90,14 @@ def _provider_generate_many_with_capacity(ep, leases: list[dict] | None, provide
     observed_count = 0
     try:
         committed = authority.commit_dispatch_many(ep, leases, provider=provider)
+        expected = {(x["episode_id"], x["logical_asset_key"]) for x in leases}
+        actual = {(x.get("episode_id"), x.get("logical_asset_key")) for x in committed}
+        if len(committed) != len(leases) or actual != expected:
+            raise authority.AttemptDenied("GENERATION_ATTEMPT_BATCH_COMMIT_INCOMPLETE")
         for lease in leases:
             lease["_phase"] = "DISPATCH_COMMITTED"
-        authority.validate_committed_dispatch_many(ep, committed)
+        if authority.validate_committed_dispatch_many(ep, committed) is not True:
+            raise authority.AttemptDenied("STALE_GENERATION_ATTEMPT_FENCE")
         provider_entered = True
         result = call()
         provider_returned = True

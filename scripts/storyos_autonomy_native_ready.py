@@ -15,8 +15,22 @@ import storyos_codex_cli_readiness as readiness
 def summarize(cli: dict, bridge: dict) -> dict:
     cli_ok = isinstance(cli, dict) and cli.get("status") == "CLI_FLAGS_SUPPORTED"
     bridge_ok = isinstance(bridge, dict) and bridge.get("status") == "BRIDGE_AUTH_PRESENT"
+    cli_digest = cli.get("executable_fingerprint") if isinstance(cli, dict) else None
+    bridge_digest = bridge.get("executable_fingerprint") if isinstance(bridge, dict) else None
+    cli_version = cli.get("version") if isinstance(cli, dict) else None
+    bridge_version = bridge.get("codex_version") if isinstance(bridge, dict) else None
+    # A CLI on PATH is not proof the interactive Runner will execute THAT CLI.
+    both_available = bool(cli_digest and bridge_digest and cli_version and bridge_version)
+    route_match = (both_available and cli_digest == bridge_digest
+                   and cli_version == bridge_version)
+    # Keep backwards-compatible auth-presence semantics with missing optional
+    # identity evidence, but explicit contradiction blocks even read-only readiness.
+    route_contradiction = (bool(cli_digest and bridge_digest and cli_digest != bridge_digest)
+                           or bool(cli_version and bridge_version and cli_version != bridge_version))
     return {
-        "status": "NATIVE_AUTH_CONTEXT_READY" if cli_ok and bridge_ok else "BLOCKED",
+        "status": ("NATIVE_AUTH_CONTEXT_READY" if cli_ok and bridge_ok
+                   and not route_contradiction else "BLOCKED"),
+        "cli_runner_same_binary_verified": bool(route_match),
         "native_cli_flags_verified": cli_ok,
         "interactive_codex_auth_context_present": bridge_ok,
         "model_entitlement_verified": False,

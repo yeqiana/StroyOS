@@ -266,7 +266,13 @@ def apply_branches(*, acknowledged: bool, max_count: int = 15) -> dict:
         rc, final_tip = _git("rev-parse", "--verify", "refs/heads/" + branch)
         if rc or final_tip != initial_tip:
             continue
-        rc, _ = _git("branch", "-d", branch)
+        # The final deletion itself is CAS: Git refuses to delete if another
+        # worktree/task moved the ref after our second read. Never force.
+        # A different executor may have checked out the ref since the
+        # eligibility snapshot; do not remove a branch now held by a worktree.
+        if branch in {w.get("branch") for w in _worktrees()}:
+            continue
+        rc, _ = _git("update-ref", "-d", "refs/heads/" + branch, initial_tip)
         if rc == 0:
             removed.append(branch)
     return {"status": "APPLIED", "deleted": removed, "deleted_count": len(removed)}
