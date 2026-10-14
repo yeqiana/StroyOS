@@ -450,8 +450,9 @@ def reviewed_story_lock(ep, review_file):
 def source_revision_lock(ep, review_file):
     """CAS-bind a materially repaired Story to an existing frozen Character Contract.
 
-    Only a real failed independent Story Review #7 may enter this one-time
-    revision epoch. Prior contract/review versions remain immutable in MySQL.
+    A real independent Story Review #1 FAIL may authorize the normal #2
+    story rewrite; the historical narrowly-scoped #7 -> #8 revision remains
+    supported. Prior contract/review versions stay immutable in MySQL.
     A model output, a filename or a hand-edited PASS is never authority.
     """
     from copy import deepcopy
@@ -477,12 +478,26 @@ def source_revision_lock(ep, review_file):
     if data.get("previous_contract_authority_sha256") != expected:
         raise ValueError("CHARACTER_SOURCE_REVISION_CONTRACT_SHA_DRIFT")
     prior = story_review.load_review(ep)
+    provenance = (prior or {}).get("critic_provenance") or {}
+    attempt = provenance.get("attempt")
+    early_repair = (
+        attempt == 1
+        and provenance.get("isolated_session") is True
+        and isinstance(prior.get("issue_codes"), list)
+        and bool(prior["issue_codes"])
+        and isinstance(prior.get("storyboard_sha256"), str)
+        and isinstance(prior.get("subtitle_source_sha256"), str)
+        and len(prior["subtitle_source_sha256"]) == 64
+    ) if isinstance(prior, dict) else False
+    legacy_a8 = (
+        attempt == 7
+        and set(prior.get("issue_codes") or ()) == {
+            "STORY_COMPREHENSION_FAIL", "CAUSAL_CHAIN_BROKEN", "CLIMAX_PAYOFF_WEAK"
+        }
+    ) if isinstance(prior, dict) else False
     if (not isinstance(prior, dict)
-            or (prior.get("critic_provenance") or {}).get("attempt") != 7
             or (prior.get("summary") or {}).get("passed") is not False
-            or set(prior.get("issue_codes") or ()) != {
-                "STORY_COMPREHENSION_FAIL", "CAUSAL_CHAIN_BROKEN", "CLIMAX_PAYOFF_WEAK"
-            }):
+            or not (early_repair or legacy_a8)):
         raise ValueError("CHARACTER_SOURCE_REVISION_PRIOR_REVIEW_NOT_ELIGIBLE")
     prior_review_sha = story_review.review_authority_sha256(ep)
     old_story_sha = (current.get("final_story_review") or {}).get("story_sha256")
@@ -502,6 +517,7 @@ def source_revision_lock(ep, review_file):
     subtitle_sha = hashlib.sha256(subtitle_path.read_bytes()).hexdigest()
     if (new_story_sha == old_story_sha
             or new_board_sha == prior.get("storyboard_sha256")
+            or (early_repair and subtitle_sha == prior["subtitle_source_sha256"])
             or data.get("story_sha256") != new_story_sha
             or data.get("storyboard_sha256") != new_board_sha
             or data.get("subtitle_sha256") != subtitle_sha):
@@ -517,7 +533,8 @@ def source_revision_lock(ep, review_file):
             or len(str(review.get("review_reason") or "").strip()) < 20
             or review.get("story_sha256") != new_story_sha):
         raise ValueError("CHARACTER_SOURCE_REVISION_ORDINARY_DAY_EVIDENCE_INVALID")
-    marker = ep / "meta/runtime/character-story-source-revision-a8.json"
+    marker = ep / ("meta/runtime/character-story-source-revision-a2.json"
+                   if early_repair else "meta/runtime/character-story-source-revision-a8.json")
     if marker.exists():
         raise ValueError("CHARACTER_SOURCE_REVISION_ALREADY_AUTHORIZED")
     attestation_sha = hashlib.sha256(candidate.read_bytes()).hexdigest()
@@ -537,7 +554,9 @@ def source_revision_lock(ep, review_file):
         "previous_story_sha256": old_story_sha,
     }
     binding = {
-        "schema_version": 1, "scope": "CHARACTER_STORY_SOURCE_REPAIR_AFTER_FAILED_A7",
+        "schema_version": 1,
+        "scope": ("CHARACTER_STORY_SOURCE_REPAIR_AFTER_FAILED_A1"
+                  if early_repair else "CHARACTER_STORY_SOURCE_REPAIR_AFTER_FAILED_A7"),
         "previous_contract_authority_sha256": expected,
         "previous_review_authority_sha256": prior_review_sha,
         "previous_story_sha256": old_story_sha,
@@ -545,6 +564,7 @@ def source_revision_lock(ep, review_file):
         "storyboard_sha256": new_board_sha,
         "subtitle_sha256": subtitle_sha,
         "attestation_sha256": attestation_sha,
+        "previous_review_attempt": attempt,
     }
     updated["source_revision"] = binding
     failures = validate(ep, require_locked=True, candidate=updated)

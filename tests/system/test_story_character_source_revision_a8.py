@@ -117,6 +117,50 @@ def test_relock_refuses_stale_and_false_evidence(tmp_path, monkeypatch, defect):
     assert not (ep / "meta/runtime/character-story-source-revision-a8.json").exists()
 
 
+def test_first_independent_failed_review_can_repair_story_once(tmp_path, monkeypatch):
+    ep, prior, current, evidence, attestation, auth = _setup(tmp_path)
+    prior["critic_provenance"] = {"attempt": 1, "isolated_session": True}
+    prior["issue_codes"] = ["CAUSAL_CHAIN_BROKEN", "MECHANISM_CONTRADICTION"]
+    prior["subtitle_source_sha256"] = "9" * 64
+    state = _mock_dependencies(monkeypatch, prior, current, auth)
+    result = character_contract.source_revision_lock(ep, "meta/" + attestation.name)
+    assert result["status"] == "LOCKED_REVISED"
+    revision = state["contract"]["source_revision"]
+    assert revision["scope"] == "CHARACTER_STORY_SOURCE_REPAIR_AFTER_FAILED_A1"
+    assert revision["previous_review_attempt"] == 1
+    assert revision["previous_review_authority_sha256"] == auth[1]
+    assert (ep / "meta/runtime/character-story-source-revision-a2.json").is_file()
+    assert state["calls"] == 1
+    with pytest.raises(ValueError, match="ALREADY_USED"):
+        character_contract.source_revision_lock(ep, "meta/" + attestation.name)
+
+
+@pytest.mark.parametrize("defect", ["not_isolated", "not_failed", "no_issues",
+                                     "subtitle_unchanged", "prior_board_drift", "wrong_attempt"])
+def test_first_review_repair_rejects_invalid_authority(tmp_path, monkeypatch, defect):
+    ep, prior, current, evidence, attestation, auth = _setup(tmp_path)
+    prior["critic_provenance"] = {"attempt": 1, "isolated_session": True}
+    prior["issue_codes"] = ["CAUSAL_CHAIN_BROKEN"]
+    prior["subtitle_source_sha256"] = "9" * 64
+    state = _mock_dependencies(monkeypatch, prior, current, auth)
+    if defect == "not_isolated":
+        prior["critic_provenance"]["isolated_session"] = False
+    elif defect == "not_failed":
+        prior["summary"]["passed"] = True
+    elif defect == "no_issues":
+        prior["issue_codes"] = []
+    elif defect == "subtitle_unchanged":
+        prior["subtitle_source_sha256"] = evidence["subtitle_sha256"]
+    elif defect == "prior_board_drift":
+        evidence["previous_story_sha256"] = "f" * 64
+    elif defect == "wrong_attempt":
+        prior["critic_provenance"]["attempt"] = 2
+    attestation.write_text(json.dumps(evidence, ensure_ascii=False), encoding="utf-8")
+    with pytest.raises(ValueError):
+        character_contract.source_revision_lock(ep, "meta/" + attestation.name)
+    assert state["calls"] == 0
+
+
 def test_review_a8_requires_revised_character_authority(tmp_path, monkeypatch):
     ep, prior, current, evidence, attestation, auth = _setup(tmp_path)
     revision = {
