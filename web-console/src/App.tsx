@@ -25,6 +25,7 @@ import { platformApi } from './api/platformApi';
 import { detachLocalDraftProject } from './api/localDraftProject';
 import {reviewDraftRestore} from './api/localDraftBackup';
 import { Episode, NavigationTab, ProductionStage, ThemeMode, ProjectItem } from './types';
+import {loadFontPreference,saveFontPreference,type FontPreference,type PreferencePersistence} from './utils/fontPreference';
 
 const STORY_PLACEHOLDER_IMAGE = 'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20800%201000%22%3E%3Crect%20width%3D%22800%22%20height%3D%221000%22%20fill%3D%22%23e4e4e7%22%2F%3E%3Cpath%20d%3D%22M160%20720%20340%20500l120%20140%2090-110%20110%20190H160Z%22%20fill%3D%22%23a1a1aa%22%2F%3E%3Ccircle%20cx%3D%22300%22%20cy%3D%22330%22%20r%3D%2270%22%20fill%3D%22%23a1a1aa%22%2F%3E%3C%2Fsvg%3E';
 import { Search, X, CheckCircle2, AlertCircle, Bell, Clock, ChevronDown } from 'lucide-react';
@@ -290,6 +291,14 @@ export default function App() {
     saveRecentStories(nextRecent);
   };
 
+  const [fontState,setFontState] = useState(loadFontPreference);
+  useEffect(()=>{document.documentElement.dataset.storyosFont=fontState.value;},[fontState.value]);
+  const handleFontPreferenceChange=(value:FontPreference)=>{
+    const persistence:PreferencePersistence=saveFontPreference(value);
+    setFontState({value,persistence});
+    showToast(persistence==='saved'?'字体偏好已保存到当前浏览器':'字体已切换，但本机保存失败；仅本次会话生效');
+  };
+
   // 主题模式: dark | light | light-gradient
   const [currentTheme, setCurrentTheme] = useState<ThemeMode>('dark');
 
@@ -486,6 +495,9 @@ export default function App() {
               <AntdSurface><SettingsView
                 currentTheme={currentTheme}
                 onThemeChange={handleThemeChange}
+                fontPreference={fontState.value}
+                fontPreferencePersistence={fontState.persistence}
+                onFontPreferenceChange={handleFontPreferenceChange}
               /></AntdSurface>
             </div>
           )}

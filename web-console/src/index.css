@@ -632,3 +632,23 @@ html,body {letter-spacing:0; font-size:13px;}
   stroke-width: 1.75;
   flex-shrink: 0;
 }
+
+/* REA font/settings review: enforce the documented console typography scale. */
+html[data-storyos-font="chinese"] {
+  --font-sans: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans SC", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
+#storyos-workspace-root .os-page-heading {
+  font-size:20px;
+  line-height:28px;
+  font-weight:600;
+  letter-spacing:-.01em;
+}
+#storyos-workspace-root .os-section-heading {
+  font-size:14px;
+  line-height:20px;
+  font-weight:600;
+  letter-spacing:0;
+}
+.font-mono,code,pre,kbd,samp {font-variant-numeric:tabular-nums;}
+#storyos-workspace-root .storyos-font-sample {font-family:var(--font-sans);font-feature-settings:"kern" 1;}
+#storyos-workspace-root .storyos-font-sample-number {font-family:var(--font-mono);font-variant-numeric:tabular-nums;}
