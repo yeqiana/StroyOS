@@ -49,6 +49,7 @@
     "test:rea-font-settings": "node scripts/test-rea-font-settings-browser.mjs",
     "test:rea-settings-account": "node scripts/test-rea-settings-account-browser.mjs",
     "test:rea-mock-auth": "node scripts/test-rea-mock-auth-browser.mjs",
+    "test:rea-account-fidelity": "node scripts/test-rea-account-fidelity-browser.mjs",
     "test:mock-auth-contract": "node --experimental-strip-types scripts/test-rea-mock-auth-adapter.mjs",
     "test:frame-evidence": "node scripts/test-frame-evidence-browser.mjs",
     "capture:r27": "node scripts/capture-r26-compare-cdp.mjs --r27",
