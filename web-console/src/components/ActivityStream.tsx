@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import {Button, Drawer, Pagination, Segmented, Select} from 'antd';
-import { AlertCircle, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock3, Copy, ExternalLink, Image as ImageIcon, Pin, PinOff, ShieldAlert, SlidersHorizontal } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock3, Copy, ExternalLink, Image as ImageIcon, LayoutGrid, Images, ClipboardCheck, Link2, Pin, PinOff, ShieldAlert, SlidersHorizontal } from 'lucide-react';
 import { Episode } from '../types';
 import {useLocalApprovedMedia} from '../api/localApprovedMedia';
+import {loadLocalReferenceDraft, saveLocalReferenceDraft, type LocalReferenceDraft} from '../utils/localReferenceDraft';
 
 interface ActivityStreamProps {
   activeEpisode: Episode;
@@ -30,6 +31,8 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode, o
   const [canvasMode,setCanvasMode]=useState<'approved'|'batch'>('approved');
   const [selectedFrame,setSelectedFrame]=useState<FrameSelection|null>(null);
   const [pinnedFrame,setPinnedFrame]=useState<FrameSelection|null>(null);
+  // Selected reference candidates are local UI drafts, not a production binding.
+  const [referenceDraft,setReferenceDraft]=useState<LocalReferenceDraft>(()=>loadLocalReferenceDraft(activeEpisode.id));
   const quickNavRef=React.useRef<HTMLDivElement|null>(null);
   const {findEpisode}=useLocalApprovedMedia();
   const approved=findEpisode(activeEpisode.title,activeEpisode.code);
@@ -53,11 +56,36 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode, o
   const attentionFrames=[...new Set(warnings.map(review=>review.frameIndex))].sort((a,b)=>a-b);
   const approvedNumbers=new Set((approved?.frames||[]).map(frame=>frame.frame));
   const batchNumbers=new Set((batch?.items||[]).map(frame=>frame.frameIndex));
+  // Revalidate the exact approved image URL; never silently relink to a replaced asset.
+  const verifiedLinks=Object.fromEntries(Object.entries(referenceDraft).filter(([target,link])=>
+    Number(target)!==link.sourceFrame && (approvedNumbers.has(Number(target))||batchNumbers.has(Number(target))) && approved?.frames.some(source=>source.frame===link.sourceFrame&&source.url===link.sourceUrl)
+  )) as LocalReferenceDraft;
+  const linkedCount=Object.keys(verifiedLinks).length;
+  const selectedReference=selectedFrame?verifiedLinks[selectedFrame.frame]:undefined;
+  const selectedReferenceImage=selectedReference?approved?.frames.find(frame=>frame.frame===selectedReference.sourceFrame&&frame.url===selectedReference.sourceUrl):undefined;
+  const setReferenceForFrame=(target:number,sourceFrame:number|null)=>{
+    if(!Number.isInteger(target)||target<1||target>20)return;
+    const next={...referenceDraft};
+    if(sourceFrame===null)delete next[target];
+    else {
+      const source=approved?.frames.find(frame=>frame.frame===sourceFrame&&frame.frame!==target&&hasVerifiedPreview(frame.url));
+      if(!source)return;
+      next[target]={sourceFrame:source.frame,sourceUrl:source.url};
+    }
+    setReferenceDraft(next);
+    if(!saveLocalReferenceDraft(activeEpisode.id,next))onShowToast('浏览器本地保存不可用，本页参考草稿仍可预览');
+  };
+  const jumpTo=(id:string)=>document.getElementById(id)?.scrollIntoView({block:'start',behavior:'smooth'});
   const openRecordedFrame=(frame:number)=>{
     if(!approvedNumbers.has(frame)&&!batchNumbers.has(frame))return;
     const kind=approvedNumbers.has(frame)?'approved':'batch';
     setCanvasMode(kind);
     setSelectedFrame({frame,kind});
+  };
+  const openReferenceTool=()=>{
+    if(selectedFrame)return;
+    const frame=approved?.frames[0]?.frame??batch?.items[0]?.frameIndex;
+    if(frame!==undefined)openRecordedFrame(frame);
   };
   const nextAttention=selectedFrame&&attentionFrames.length?(attentionFrames.find(frame=>frame>selectedFrame.frame)||attentionFrames[0]):null;
   const pinnedImageUrl=pinnedFrame?.kind==='approved'?approved?.frames.find(item=>item.frame===pinnedFrame.frame)?.url:(pinnedFrame?.kind==='batch'?batch?.items.find(item=>item.frameIndex===pinnedFrame.frame)?.imageUrl:undefined);
@@ -101,7 +129,16 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode, o
       <div><h2 className="text-[14px] font-semibold">制作与审核记录</h2><p className="mt-1 text-[12px] text-[var(--text-tertiary)]">素材与分镜优先 · 审核证据在右 · 本机工作区只读</p></div>
       <span className="text-[11px] text-[var(--text-tertiary)]">正式出图与返修需受控 Runtime 接口</span>
     </header>
-    <section aria-label="20帧快速定位" className="space-y-2 border-y border-[var(--border-subtle)] py-3">
+    <nav aria-label="创作工具快捷导航" className="flex flex-wrap items-center gap-1 border-y border-[var(--border-subtle)] py-1 text-[12px]">
+      {[
+        {label:'帧定位',icon:LayoutGrid,target:'storyos-creator-frame-index'},
+        {label:'素材画布',icon:Images,target:'storyos-creator-canvas'},
+        {label:'审核记录',icon:ClipboardCheck,target:'storyos-creator-review'}
+      ].map(tool=>{const Icon=tool.icon;return <button key={tool.target} type="button" onClick={()=>jumpTo(tool.target)} className="inline-flex h-8 items-center gap-1.5 rounded-[4px] px-2 text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"><Icon size={14} strokeWidth={1.75} aria-hidden="true"/>{tool.label}</button>;})}
+      <button type="button" disabled={!hasApproved&&!batch?.items.length} onClick={openReferenceTool} className="inline-flex h-8 items-center gap-1.5 rounded-[4px] px-2 text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-40"><Link2 size={14} strokeWidth={1.75} aria-hidden="true"/>参考关联{linkedCount>0&&<span className="tabular-nums text-[var(--text-tertiary)]">({linkedCount} 草稿)</span>}</button>
+      <span className="ml-auto text-[11px] text-[var(--text-tertiary)]">仅创作视图 · 不执行生产</span>
+    </nav>
+    <section id="storyos-creator-frame-index" aria-label="20帧快速定位" className="space-y-2 border-y border-[var(--border-subtle)] py-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-3">
           <h3 className="text-[12px] font-semibold">20 帧快速定位</h3>
@@ -125,14 +162,14 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode, o
             aria-label={'定位第 '+frame+' 帧'+(review?'，审核 '+review.verdict:'')+(approvedNumbers.has(frame)?'，有批准素材':'')}
             aria-pressed={selected}
             title={hasAsset?'第 '+frame+' 帧 · '+(review?.verdict||'无审核结论'):'第 '+frame+' 帧 · 未发现可检视帧证据'}
-            className={'min-h-8 rounded-[4px] border text-[11px] tabular-nums transition-colors '+color+' '+(hasAsset?'hover:bg-[var(--bg-hover)]':'cursor-not-allowed opacity-35')}>{String(frame).padStart(2,'0')}</button>;
+            className={'min-h-8 rounded-[4px] border text-[11px] tabular-nums transition-colors '+color+' '+(hasAsset?'hover:bg-[var(--bg-hover)]':'cursor-not-allowed opacity-35')}><span>{String(frame).padStart(2,'0')}</span>{verifiedLinks[frame]&&<span className="ml-0.5 text-[9px] text-[var(--info)]" aria-label="有本地参考草稿">↗</span>}</button>;
         })}
       </div>
       <p className="text-[11px] text-[var(--text-tertiary)]">可点击表示有可检视的批准图或批次帧；灰色表示无可检视帧证据。数字边框仅标记已有审核结论，不代表自动生成或通过。</p>
     </section>
 
     <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(330px,1fr)]" aria-label="当前批次与审核双栏工作区">
-    <section className="min-w-0 border border-[var(--border-subtle)] rounded-[6px] bg-[var(--bg-surface)]" aria-label="分镜与素材创作画布">
+    <section id="storyos-creator-canvas" className="min-w-0 border border-[var(--border-subtle)] rounded-[6px] bg-[var(--bg-surface)]" aria-label="分镜与素材创作画布">
       <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-[var(--border-subtle)]">
         <div><h3 className="text-[13px] font-semibold">分镜画布</h3><p className="mt-1 text-[11px] text-[var(--text-tertiary)]">{activeCanvasMode==='approved'?`已批准素材 · ${approved?.frames.length||0} 张`:(batch?.batchName || '暂无批次证据')}</p></div>
         <Segmented size="small" aria-label="分镜画布内容" value={activeCanvasMode} onChange={value=>{setCanvasMode(value as 'approved'|'batch');setSelectedFrame(null);setPinnedFrame(null);}} options={[{value:'batch',label:`当前批次 (${batch?.items.length||0})`},...(hasApproved?[{value:'approved',label:`已批准 (${approved?.frames.length||0})`}]:[])]}/>
@@ -185,7 +222,7 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode, o
         </div>
       </div>
     </section>
-    <section className="min-w-0 border-t border-[var(--border-subtle)] pt-3 xl:border-t-0 xl:border-l xl:pl-4 xl:pt-0" aria-label="逐帧审核检视区">
+    <section id="storyos-creator-review" className="min-w-0 border-t border-[var(--border-subtle)] pt-3 xl:border-t-0 xl:border-l xl:pl-4 xl:pt-0" aria-label="逐帧审核检视区">
       <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-[14px] font-semibold">逐帧审核</h3><p className="mt-1 text-[12px] text-[var(--text-tertiary)]">已记录 {reviews.length} 项 · 需检查 {warnings.length} 项</p></div>
         <div className="flex items-center gap-2">{warnings.length ? <Button size="small" onClick={()=>{setExpanded(true);setReviewVerdict('NEEDS_ATTENTION');setReviewPage(1);}}>只看待查 ({warnings.length})</Button> : <span className="text-[11px] text-[var(--text-tertiary)]">暂无待查记录</span>}<button type="button" onClick={() => {setExpanded(!expanded);setReviewPage(1);setReviewVerdict('ALL');}} aria-expanded={expanded} className="flex items-center gap-1 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]">{expanded ? <ChevronDown size={15}/> : <ChevronRight size={15}/>} {expanded ? '收起' : '查看全部'}</button></div></div>
       {expanded && <div className="os-console-filterbar mt-3 flex flex-wrap items-center justify-between gap-2 border-y border-[var(--border-subtle)] py-2"><Select aria-label="筛选审核结论" value={reviewVerdict} onChange={value=>{setReviewVerdict(value);setReviewPage(1);}} style={{width:150}} options={[{value:"ALL",label:"全部审核结论"},{value:"NEEDS_ATTENTION",label:"待检查（WARN/FAIL）"},{value:"PASS",label:"通过 PASS"},{value:"WARN",label:"待查 WARN"},{value:"FAIL",label:"失败 FAIL"}]}/><span className="text-[12px] tabular-nums text-[var(--text-tertiary)]">已匹配 {filteredReviews.length} / {reviews.length} 项 · 已加载记录</span></div>}
@@ -223,6 +260,27 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode, o
           <figure className="min-w-0"><figcaption className="mb-2 truncate text-[12px] font-medium">当前 Frame {String(selectedFrame.frame).padStart(2,'0')}</figcaption><img src={selectedImageUrl} alt={`当前 Frame ${selectedFrame.frame} 已验证图片`} className="h-[280px] w-full bg-[var(--bg-workspace)] object-contain"/></figure>
         </div>:selectedImageUrl?<img src={selectedImageUrl} alt={`Frame ${selectedFrame.frame} 可验证的图片证据`} className="max-h-[55vh] w-full object-contain bg-[var(--bg-workspace)]"/>:<div className="flex items-center gap-2 border border-dashed border-[var(--border-normal)] p-4 text-[12px] text-[var(--text-secondary)]"><ImageIcon size={16}/>尚无可验证的 Frame 图片</div>}
         {pinnedFrame&&(!comparing)&&<p role="status" className="text-[11px] text-[var(--text-tertiary)]">{pinnedFrame.frame===selectedFrame.frame?'已固定当前帧。切换到其他有可信图片的分镜，即可并排对照。':'当前帧缺少可信图片，无法展示双图对照。'} </p>}
+        <section aria-label="帧级参考素材草稿" className="space-y-2 border-y border-[var(--border-subtle)] py-3 text-[12px]">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="flex items-center gap-2 font-semibold"><Link2 size={14} strokeWidth={1.75} aria-hidden="true"/>参考素材关联</h3>
+            <span className="text-[11px] tabular-nums text-[var(--text-tertiary)]">本地草稿 {linkedCount} 帧</span>
+          </div>
+          <p className="text-[11px] leading-5 text-[var(--text-tertiary)]">仅建立浏览器内的拟参考关系，未提交生产；不代表此帧生成时实际使用了参考图。</p>
+          {approved?.frames.length ? <>
+            <Select aria-label={'为 Frame '+selectedFrame.frame+' 选择参考素材'} size="small" className="w-full" placeholder="选择同作品已批准图片作为参考"
+              value={selectedReferenceImage?.frame} allowClear
+              onChange={(sourceFrame:number|undefined)=>setReferenceForFrame(selectedFrame.frame,sourceFrame??null)}
+              options={approved.frames.filter(source=>source.frame!==selectedFrame.frame).map(source=>({value:source.frame,label:'已批准 Frame '+String(source.frame).padStart(2,'0')}))}/>
+            {selectedReferenceImage&&<div className="flex min-w-0 items-center gap-3 border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-2" aria-label="已选参考素材草稿">
+              <img src={selectedReferenceImage.url} alt={'参考候选 Frame '+selectedReferenceImage.frame} className="h-16 w-12 shrink-0 object-cover" loading="lazy"/>
+              <div className="min-w-0 flex-1"><p className="font-medium">Frame {String(selectedFrame.frame).padStart(2,'0')} ← Frame {String(selectedReferenceImage.frame).padStart(2,'0')}</p><p className="mt-1 text-[11px] text-[var(--text-tertiary)]">来源：本机已批准图片 · 仅拟引用</p></div>
+              <Button size="small" aria-label={'移除 Frame '+selectedFrame.frame+' 的参考素材草稿'} onClick={()=>setReferenceForFrame(selectedFrame.frame,null)}>移除</Button>
+            </div>}
+            {pinnedFrame?.kind==='approved'&&pinnedFrame.frame!==selectedFrame.frame&&approved.frames.some(frame=>frame.frame===pinnedFrame.frame)&&
+              <Button size="small" icon={<Pin size={13}/>} onClick={()=>setReferenceForFrame(selectedFrame.frame,pinnedFrame.frame)}>将固定 Frame {pinnedFrame.frame} 设为参考草稿</Button>}
+            {approved.frames.length===1&&approved.frames[0].frame===selectedFrame.frame&&<p className="text-[11px] text-[var(--text-tertiary)]">没有其他可选的已批准帧。</p>}
+          </>:<p className="text-[var(--text-tertiary)]">当前作品没有可验证的已批准图片，无法建立参考关联草稿。</p>}
+        </section>
         <dl className="divide-y divide-[var(--border-subtle)] text-[12px]">
           <div className="grid grid-cols-[100px_minmax(0,1fr)] gap-3 py-3"><dt className="text-[var(--text-tertiary)]">帧编号</dt><dd className="tabular-nums">{selectedFrame.frame}</dd></div>
           <div className="grid grid-cols-[100px_minmax(0,1fr)] gap-3 py-3"><dt className="text-[var(--text-tertiary)]">证据状态</dt><dd>{selectedFrame.kind==='approved'?'approved':selectedBatchFrame?.status||'未提供'}</dd></div>
