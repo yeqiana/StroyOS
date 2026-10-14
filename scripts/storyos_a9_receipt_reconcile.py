@@ -160,6 +160,22 @@ def canonical_a10_review_verified(ep: Path) -> bool:
         return False
 
 
+def canonical_a11_review_verified(ep: Path) -> bool:
+    """New source may supersede A9 only with its own SHA-bound MySQL PASS."""
+    try:
+        import story_review_a11_source_repair as a11
+        report = review.load_review(ep)
+        prov = report.get("critic_provenance") if isinstance(report, dict) else {}
+        return bool(isinstance(prov,dict)
+            and prov.get("attempt")==11
+            and prov.get("review_scope")==a11.REVIEW_SCOPE
+            and (report.get("summary") or {}).get("passed") is True
+            and a11.validate_epoch(ep,prov)
+            and not review.verify(ep))
+    except Exception:
+        return False
+
+
 def inspect(episode: Path, *, root: Path = ROOT) -> dict:
     base = decide(epoch_present=True,candidate=None,candidate_exists=False,
                   evidence_status="UNKNOWN",official_review_present=False)
@@ -183,6 +199,10 @@ def inspect(episode: Path, *, root: Path = ROOT) -> dict:
                     "may_start_driver":True}
         if canonical_a10_review_verified(ep):
             return {**base,"status":"CANONICAL_A10_PASS_VERIFIED",
+                    "episode":ep.relative_to(root).as_posix(),
+                    "may_start_driver":True}
+        if canonical_a11_review_verified(ep):
+            return {**base,"status":"CANONICAL_A11_PASS_VERIFIED",
                     "episode":ep.relative_to(root).as_posix(),
                     "may_start_driver":True}
         prompt_sha = expected_prompt_sha(ep)
@@ -243,7 +263,9 @@ def main(argv=None) -> int:
     print(json.dumps(report,ensure_ascii=False,sort_keys=True))
     return 0 if report["status"] in {
         "PAID_CRITIC_TIMEOUT_NO_AUTORETRY","PAID_CRITIC_FAILED_NO_AUTORETRY",
-        "RUNNER_SUCCEEDED_REQUIRES_CANONICAL_FINALIZATION"} else 2
+        "RUNNER_SUCCEEDED_REQUIRES_CANONICAL_FINALIZATION",
+        "CANONICAL_A9_PASS_VERIFIED","CANONICAL_A10_PASS_VERIFIED",
+        "CANONICAL_A11_PASS_VERIFIED"} else 2
 
 
 if __name__=="__main__":

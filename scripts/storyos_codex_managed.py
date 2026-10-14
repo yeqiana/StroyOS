@@ -168,7 +168,8 @@ def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
                 env, "scripts/storyos_a9_receipt_reconcile.py", ["--episode", rel])
             if (a9_rc != 0 or a9_report.get("status") not in {
                     "CANONICAL_A9_PASS_VERIFIED",
-                    "CANONICAL_A10_PASS_VERIFIED"}):
+                    "CANONICAL_A10_PASS_VERIFIED",
+                    "CANONICAL_A11_PASS_VERIFIED"}):
                 blockers.append("STORY_REVIEW_A9_RECONCILIATION_REQUIRED")
         recovery_rc, creative_recovery = _probe(
             env, "scripts/storyos_creative_recovery_readonly.py", ["--episode", rel]
@@ -199,6 +200,15 @@ def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
                     "reason": "VISUAL_LOCK_READONLY_AUTHORITY_CHECK_FAILED",
                     "read_only": True,
                 }
+    # Test-only historical pixel evidence is useful diagnostics, not a
+    # production Gateway permit or new-account entitlement attestation.
+    try:
+        import storyos_m00_native_evidence_readonly
+        pixel_proof=storyos_m00_native_evidence_readonly.inspect(root=ROOT)
+    except Exception:
+        pixel_proof={"status":"IMAGE_TEST_PROOF_UNVERIFIED",
+                     "production_authorization":False,
+                     "can_dispatch_image":False}
     return {
         "production_admission":admission_summary(
             stage=stage,visual=visual_lock_admission,
@@ -237,6 +247,7 @@ def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
             "exit_code": driver.get("exit_code"),
         } if episode else {},
         "visual_lock_admission": visual_lock_admission,
+        "test_only_native_pixel_evidence":pixel_proof,
         "creative_story_recovery": {
             "status": creative_recovery.get("status"),
             "contract_status": creative_recovery.get("contract_status"),

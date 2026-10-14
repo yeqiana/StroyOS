@@ -143,6 +143,10 @@ SLOTS = {
     "r19-predecessor": ["tests/system/test_storyos_r19_a11_repair.py::test_r19_one_shot_plan_readonly_and_old_fail_sha_binds"],
     "r19-one-shot": ["tests/system/test_storyos_r19_a11_repair.py::test_r19_a11_durable_ticket_only_once_prior_candidate_intact"],
     "r19-driver": ["tests/system/test_storyos_r19_a11_repair.py::test_r19_old_requests_not_replayed_and_driver_still_blocked"],
+    "r20-critic-authority": ["tests/system/test_storyos_r20_pixel_authority.py::test_a11_verified_mysql_pass_supersedes_a9_timeout_but_not_history"],
+    "r20-real-pixels": ["tests/system/test_storyos_r20_pixel_authority.py::test_pixel_test_receipt_sha_native_but_never_grants_production"],
+    "r20-driver": ["tests/system/test_storyos_r20_pixel_authority.py::test_a11_validated_driver_preflight_does_not_claim_image_ready"],
+    "r20-frame01": ["tests/system/test_storyos_r20_pixel_authority.py::test_frame01_cannot_borrow_m00_test_pixels_as_attempt"],
 }
 FULL_STRESS = [
     "tests/platform/test_runtime_state_store.py",
