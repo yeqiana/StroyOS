@@ -13,7 +13,13 @@ def test_real_migrated_story_has_exact_legacy_review_and_changed_formal_standard
     result=migration.plan(EP)
     # New V1.1 differs from the frozen V1.0 A9 input: historical
     # migration can no longer grant a *second* paid A9 call.
-    assert result["status"]=="HISTORICAL_PAYLOAD_INVALID"
+    # After a real native A9 dispatch the durable one-shot ticket exists:
+    # a post-production checkout must refuse retry BEFORE evaluating the
+    # historical V1.0 rubric drift. In hermetic pre-ticket checks the
+    # historical review remains invalid for current V1.2.
+    expected = ("ALREADY_AUTHORIZED_NO_RETRY" if (EP/migration.EPOCH_REL).is_file()
+                else "HISTORICAL_PAYLOAD_INVALID")
+    assert result["status"]==expected
     assert result["may_reuse_old_pass"] is False
     assert result["attempt"] is None
     assert result["provider_calls"]==0
@@ -22,7 +28,9 @@ def test_real_migrated_story_has_exact_legacy_review_and_changed_formal_standard
 def test_rubric_drift_requires_current_review_not_mutated_legacy(monkeypatch):
     monkeypatch.setattr(story_review,'load_review',lambda ep:None)
     result=migration.plan(EP)
-    assert result["status"]=="HISTORICAL_PAYLOAD_INVALID"
+    expected = ("ALREADY_AUTHORIZED_NO_RETRY" if (EP/migration.EPOCH_REL).is_file()
+                else "HISTORICAL_PAYLOAD_INVALID")
+    assert result["status"]==expected
     assert result["old_review_still_readonly"] is True
     assert result["provider_calls"]==result["sql_writes"]==0
 
