@@ -48,20 +48,20 @@ export const AccountMenu:React.FC<Props>=({session,onLogin,onLogout,onProfile,on
    if(next&&fromKeyboard)requestAnimationFrame(()=>focusEntry(0));
  };
  const action=(callback:()=>void)=>()=>{setOpen(false);callback()};
- return <div ref={anchor} className="relative" aria-label="Mock 账号入口">
+ return <div ref={anchor} className="storyos-account-anchor relative" aria-label="Mock 账号入口">
    <button ref={trigger} type="button" aria-label="账号菜单" aria-haspopup="menu" aria-controls="storyos-account-menu" aria-expanded={open}
      onKeyDown={e=>{if(['ArrowDown','ArrowUp'].includes(e.key)&&!open){e.preventDefault();changeOpen(true,true)}}}
-     onClick={()=>changeOpen(!open)} className="flex min-h-11 w-full items-center gap-2 rounded-[6px] border border-[var(--border-normal)] bg-[var(--bg-surface)] px-2.5 py-2 text-left hover:bg-[var(--bg-hover)] focus-visible:outline-2 focus-visible:outline-[var(--focus)]">
-     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--bg-selected)] text-[var(--text-primary)]">
+     onClick={()=>changeOpen(!open)} className="storyos-account-trigger flex min-h-11 w-full items-center gap-2 rounded-[6px] px-1.5 py-1.5 text-left transition-colors hover:bg-[var(--bg-hover)] focus-visible:outline-2 focus-visible:outline-[var(--focus)]">
+     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border-normal)] bg-[var(--bg-surface)] text-[var(--text-primary)]">
        {session.status==='mock'?<MockAvatarIcon avatar={session.profile?.avatar??null}/>:<UserRound size={17}/>}
      </span>
-     <span className="min-w-0 flex-1">
+     <span className="storyos-account-copy min-w-0 flex-1">
        <span className="block truncate text-[12px] font-semibold">{session.status==='mock'?session.profile?.displayName:'访客'}</span>
        <span className="block truncate text-[10px] text-[var(--text-tertiary)]">{session.status==='mock'?'Mock 演示账号':session.status==='expired'?'Mock 会话已过期':'未登录 · 可体验 Mock'}</span>
      </span>
-     <ChevronDown size={14} className={'text-[var(--text-secondary)] transition-transform '+(open?'rotate-180':'')}/>
+     <ChevronDown size={13} className={'storyos-account-chevron text-[var(--text-tertiary)] transition-transform '+(open?'rotate-180':'')}/>
    </button>
-   {open&&<div id="storyos-account-menu" ref={menu} role="menu" aria-label="账号操作" className="absolute bottom-full left-0 z-50 mb-2 w-full min-w-[206px] rounded-[7px] border border-[var(--border-normal)] bg-[var(--bg-elevated)] p-1.5 shadow-xl text-[12px]">
+   {open&&<div id="storyos-account-menu" ref={menu} role="menu" aria-label="账号操作" className="storyos-account-menu absolute bottom-full left-0 z-50 mb-2 w-full min-w-[206px] rounded-[7px] border border-[var(--border-normal)] bg-[var(--bg-elevated)] p-1.5 shadow-xl text-[12px]">
      <p className="px-2 py-2 text-[11px] text-[var(--text-tertiary)]">仅浏览器演示 · 不是生产授权</p>
      <button role="menuitem" type="button" onClick={action(onProfile)} aria-label="个人资料" className="flex w-full items-center gap-2 rounded-[4px] px-2 py-2 text-left hover:bg-[var(--bg-hover)] focus-visible:bg-[var(--bg-selected)]"><UserRound size={15}/>个人资料</button>
      <button role="menuitem" type="button" onClick={action(onSettings)} aria-label="系统设置（账号菜单）" className="flex w-full items-center gap-2 rounded-[4px] px-2 py-2 text-left hover:bg-[var(--bg-hover)] focus-visible:bg-[var(--bg-selected)]"><Settings size={15}/>系统设置</button>

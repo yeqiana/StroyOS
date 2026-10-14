@@ -652,3 +652,13 @@ html[data-storyos-font="chinese"] {
 .font-mono,code,pre,kbd,samp {font-variant-numeric:tabular-nums;}
 #storyos-workspace-root .storyos-font-sample {font-family:var(--font-sans);font-feature-settings:"kern" 1;}
 #storyos-workspace-root .storyos-font-sample-number {font-family:var(--font-mono);font-variant-numeric:tabular-nums;}
+
+/* Compact workspace footer: quiet utility strip and one unobtrusive account row. */
+@media(max-width:1120px){
+ .storyos-sidebar-footer{padding:8px 5px!important;gap:6px!important}
+ .storyos-sidebar-utility{justify-content:center;padding:0!important}
+ .storyos-sidebar-utility>button{width:42px!important;height:42px!important;border-radius:6px}
+ .storyos-account-trigger{width:42px!important;height:42px!important;padding:0!important;justify-content:center;margin-inline:auto}
+ .storyos-account-copy,.storyos-account-chevron{display:none!important}
+ .storyos-account-menu{left:calc(100% + 8px);bottom:0;width:218px;margin-bottom:0}
+}
