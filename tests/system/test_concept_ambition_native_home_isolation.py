@@ -90,3 +90,32 @@ def test_concept_critic_cli_failure_keeps_review_unlocked(tmp_path, monkeypatch)
         concept.run_critic(episode, 1, codex_raw="codex")
     assert seen == ["isolated"]
     assert not (episode / "meta/concept-ambition-review.json").exists()
+
+
+def test_windows_isolated_codex_home_must_use_user_runner_even_for_interactive_worker(monkeypatch):
+    """Nested native Codex inside a scoped Worker must not reuse inaccessible arg0."""
+    import os
+    import subprocess
+    import codex_user_runner as runner
+
+    if os.name != "nt":
+        pytest.skip("Windows nested Codex arg0 ACL regression")
+
+    sent = []
+    monkeypatch.setattr(runner, "bridge_required", lambda: False)
+    monkeypatch.setattr(runner, "pin_windows_sandbox", lambda cmd: cmd)
+    monkeypatch.setattr(runner, "resolve_provider_transport", lambda *args, **kw: None)
+    monkeypatch.setattr(runner, "execute_codex", lambda task: sent.append(task) or runner.ExecResult(0, b"{}"))
+
+    def forbid_direct(*args, **kwargs):
+        raise AssertionError("isolated home must not spawn direct Codex")
+    monkeypatch.setattr(subprocess, "run", forbid_direct)
+
+    result = runner.run_codex(
+        ["codex", "exec", "--json", "-"], input="review prompt", text=True,
+        stdout=subprocess.PIPE, task_type="critic", codex_home_mode="isolated"
+    )
+    assert result.returncode == 0
+    assert result.stdout == "{}"
+    assert len(sent) == 1
+    assert sent[0].codex_home_mode == "isolated"

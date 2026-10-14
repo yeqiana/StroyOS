@@ -1807,7 +1807,10 @@ def run_codex(
         for key in PROVIDER_EVIDENCE_KEYS
         if provider_route and provider_route.get(key) is not None
     }
-    if not bridge_required():
+    # Isolated task homes are owned by the authenticated user Runner. On
+    # Windows direct Codex ignores that isolation and may hit arg0 ACL errors.
+    use_user_runner = bridge_required() or (os.name == "nt" and codex_home_mode == "isolated")
+    if not use_user_runner:
         direct_guard = None
         if request_id:
             prior=task_result_path(str(request_id))
