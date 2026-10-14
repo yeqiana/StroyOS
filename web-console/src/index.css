@@ -12,31 +12,31 @@
   --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, ui-monospace, monospace;
 
   /* 背景色系 */
-  --bg-app:        #0B0D10; /* 全局最底画布 */
-  --bg-workspace:  #0F1115; /* 侧边栏/导航条 */
-  --bg-surface:    #13161B; /* 卡片容器表面 */
-  --bg-elevated:   #171B21; /* 弹出菜单、下拉列表、模态窗 */
-  --bg-hover:      #1B2027; /* 悬浮高亮 */
-  --bg-selected:   #20262E; /* 选中条目 */
+  --bg-app:        #0A0B0D; /* 全局最底画布 */
+  --bg-workspace:  #171717; /* 侧边栏/导航条 */
+  --bg-surface:    #1C1E21; /* 卡片容器表面 */
+  --bg-elevated:   #25282C; /* 弹出菜单、下拉列表、模态窗 */
+  --bg-hover:      #292D32; /* 悬浮高亮 */
+  --bg-selected:   #343940; /* 选中条目 */
 
   /* 边框色系 */
-  --border-subtle: #232830;
-  --border-normal: #2D333D;
-  --border-strong: #3A424E;
+  --border-subtle: #30343A;
+  --border-normal: #41474F;
+  --border-strong: #56606A;
 
   /* 文字色系 */
-  --text-primary:   #F1F3F5;
-  --text-secondary: #A7AFBA;
-  --text-tertiary:  #737D8A;
-  --text-disabled:  #505864;
+  --text-primary:   #F4F6F8;
+  --text-secondary: #BEC5CC;
+  --text-tertiary:  #969FA8;
+  --text-disabled:  #737C86;
 
   /* 业务状态色系 */
   --success: #3FB950;
   --warning: #D29922;
   --retry:   #E3A008;
   --danger:  #F85149;
-  --info:    #58A6FF;
-  --focus:   #58A6FF;
+  --info:    #72A6F7;
+  --focus:   #8AB7FF;
 
   --radius-xs: 3px;
   --radius-sm: 4px;
@@ -52,7 +52,7 @@
   --space-8: 32px;
 
   --sidebar-width: 224px;
-  --header-height: 48px;
+  --header-height: 52px;
   --control-height: 32px;
   --table-header-height: 36px;
   --table-row-height: 44px;
@@ -66,28 +66,28 @@
 /* 2. 浅色中性主题 (Light Theme) */
 .theme-light {
   color-scheme: light;
-  --bg-app:        #F6F8FA; /* 全局浅灰画布 */
-  --bg-workspace:  #FFFFFF; /* 侧边栏/导航条纯白 */
+  --bg-app:        #FAFAFA; /* 全局浅灰画布 */
+  --bg-workspace:  #F1F2F4; /* 侧边栏/导航条纯白 */
   --bg-surface:    #FFFFFF; /* 卡片白底 */
   --bg-elevated:   #FFFFFF; /* 弹出菜单、下拉列表白底 */
-  --bg-hover:      #F0F3F6; /* 悬停浅灰 */
-  --bg-selected:   #E6ECF2; /* 选中淡蓝灰 */
+  --bg-hover:      #E6E9ED; /* 悬停浅灰 */
+  --bg-selected:   #DEE5ED; /* 选中淡蓝灰 */
 
-  --border-subtle: #E8ECF0;
-  --border-normal: #D8DFE6;
-  --border-strong: #BAC3CD;
+  --border-subtle: #E1E5EA;
+  --border-normal: #C9D0D8;
+  --border-strong: #A5AFBB;
 
-  --text-primary:   #1A1F26; /* 高清晰墨黑 */
-  --text-secondary: #4A5462; /* 次级深灰 */
-  --text-tertiary:  #6E7987; /* 弱化说明灰 */
+  --text-primary:   #1C2127; /* 高清晰墨黑 */
+  --text-secondary: #505B66; /* 次级深灰 */
+  --text-tertiary:  #6E7985; /* 弱化说明灰 */
   --text-disabled:  #98A2B0;
 
   --success: #1A7F37;
   --warning: #9A6700;
   --retry:   #BC4C00;
   --danger:  #CF222E;
-  --info:    #0969DA;
-  --focus:   #0969DA;
+  --info:    #326FCD;
+  --focus:   #326FCD;
 
   --scrollbar-thumb: #D8DFE6;
   --app-bg-image: none;
@@ -97,34 +97,31 @@
 /* 3. 浅色渐变主题 (Light Gradient Theme) */
 .theme-light-gradient {
   color-scheme: light;
-  --bg-app:        #F4F7FC;
-  --bg-workspace:  rgba(255, 255, 255, 0.9);
-  --bg-surface:    rgba(255, 255, 255, 0.95);
+  --bg-app:        #FAFAFA;
+  --bg-workspace:  #F1F2F4;
+  --bg-surface:    #FFFFFF;
   --bg-elevated:   #FFFFFF;
-  --bg-hover:      rgba(235, 242, 252, 0.9);
-  --bg-selected:   rgba(223, 232, 246, 0.95);
+  --bg-hover:      #E9EDF1;
+  --bg-selected:   #E2E8EF;
 
-  --border-subtle: rgba(210, 222, 238, 0.85);
-  --border-normal: #CBD5E1;
-  --border-strong: #94A3B8;
+  --border-subtle: #E1E5EA;
+  --border-normal: #C9D0D8;
+  --border-strong: #A5AFBB;
 
-  --text-primary:   #0F172A;
-  --text-secondary: #334155;
-  --text-tertiary:  #64748B;
-  --text-disabled:  #94A3B8;
+  --text-primary:   #1C2127;
+  --text-secondary: #505B66;
+  --text-tertiary:  #6E7985;
+  --text-disabled:  #98A2B0;
 
   --success: #16A34A;
   --warning: #D97706;
   --retry:   #EA580C;
   --danger:  #DC2626;
-  --info:    #2563EB;
-  --focus:   #2563EB;
+  --info:    #326FCD;
+  --focus:   #326FCD;
 
   --scrollbar-thumb: #CBD5E1;
-  --app-bg-image: radial-gradient(at 0% 0%, rgba(219, 234, 254, 0.75) 0px, transparent 55%),
-                  radial-gradient(at 100% 0%, rgba(243, 232, 255, 0.6) 0px, transparent 55%),
-                  radial-gradient(at 50% 100%, rgba(224, 242, 254, 0.6) 0px, transparent 55%),
-                  linear-gradient(135deg, #F8FAFD 0%, #EEF4FB 100%);
+  --app-bg-image: linear-gradient(180deg, #FAFAFA 0%, #F6F7F9 100%);
   --popover-shadow: 0 16px 40px rgba(37, 99, 235, 0.08);
 }
 
@@ -458,13 +455,6 @@ html, body {
 }
 
 /* StoryOS R10 design system: accessible studio UI */
-.theme-dark {
-  --bg-app:#0b1019; --bg-workspace:#101724; --bg-surface:#151e2c; --bg-elevated:#1c2736;
-  --bg-hover:#243143; --bg-selected:#253650; --border-subtle:#293548;
-  --border-normal:#36445a; --border-strong:#4b5d75; --text-primary:#f3f7fc;
-  --text-secondary:#b0bdd0; --text-tertiary:#91a0b6; --info:#79b3ff; --focus:#91c4ff;
-  --sidebar-width:240px; --header-height:60px; --app-card-shadow:0 10px 28px rgba(2,8,23,.12);
-}
 .theme-light,.theme-light-gradient { --app-card-shadow:0 7px 28px rgba(27,39,65,.06); }
 html,body {letter-spacing:.005em;}
 :where(button,a,input,select,textarea):focus-visible {outline:2px solid var(--focus);outline-offset:2px;}
@@ -476,8 +466,6 @@ button:not(:disabled) {cursor:pointer;}
 .os-eyebrow {color:var(--text-tertiary);font-size:11px;font-weight:650;letter-spacing:.095em;text-transform:uppercase;}
 .os-action {border:1px solid var(--border-normal);border-radius:9px;height:36px;padding:0 14px;font-size:12px;font-weight:600;color:var(--text-secondary);background:var(--bg-elevated);display:inline-flex;align-items:center;justify-content:center;gap:8px;}
 .os-action:hover {border-color:var(--focus);color:var(--text-primary);background:var(--bg-hover);}
-.os-action-primary {color:#fff;background:#346fe5;border-color:#346fe5;box-shadow:0 5px 14px rgba(37,99,235,.18);}
-.os-action-primary:hover {color:#fff;background:#2864d2;border-color:#2864d2;}
 .os-stat {border:1px solid var(--border-subtle);border-radius:12px;background:var(--bg-surface);padding:18px 20px;min-height:116px;}
 .os-stat-label {color:var(--text-secondary);font-size:12px;font-weight:550;}
 .os-stat-number {margin-top:10px;color:var(--text-primary);font-size:29px;font-weight:720;letter-spacing:-.04em;font-variant-numeric:tabular-nums;}
@@ -503,34 +491,13 @@ button:not(:disabled) {cursor:pointer;}
 @media(max-width:1279px) {.os-page-heading {font-size:20px;}}
 
 /* R14 — a single restrained console finish for both native and Ant Design surfaces. */
-.theme-dark {
-  --bg-app:#0c1119; --bg-workspace:#111923; --bg-surface:#141d29;
-  --bg-elevated:#1a2634; --bg-hover:#1b2a3a; --bg-selected:#21344b;
-  --border-subtle:#263342; --border-normal:#354557; --border-strong:#4a5d72;
-  --text-primary:#edf3f9; --text-secondary:#aebccb; --text-tertiary:#8b9bab;
-  --text-disabled:#6c7b8c; --info:#72aaff; --focus:#86b9ff;
-  --sidebar-width:224px; --header-height:52px;
-}
-.theme-light {
-  --bg-app:#f7f9fc; --bg-workspace:#ffffff; --bg-surface:#fff;
-  --bg-elevated:#f5f7fa; --bg-hover:#eef3f9; --bg-selected:#e9f0fb;
-  --border-subtle:#e0e7f0; --border-normal:#cad5e2; --border-strong:#aab8c9;
-  --text-primary:#172333; --text-secondary:#526278; --text-tertiary:#65758b;
-  --info:#326fcd;
-}
-.theme-light-gradient {
-  --bg-app:#f5f8fd; --bg-workspace:#fff; --bg-surface:#fff;
-  --bg-elevated:#f3f7fc; --bg-hover:#edf3fb; --bg-selected:#e7f0fc;
-  --border-subtle:#dce6f1; --border-normal:#c6d4e6;
-  --text-primary:#182638; --text-secondary:#50617a; --text-tertiary:#62748d;
-}
 html,body {letter-spacing:0; font-size:13px;}
 .os-page-heading {font-size:23px;line-height:1.32;font-weight:680;letter-spacing:-.024em;}
 .os-section-heading {font-size:15px;line-height:1.45;font-weight:620;letter-spacing:-.015em;}
 .os-eyebrow {font-size:11px;line-height:16px;letter-spacing:.08em;font-weight:650;}
 .os-action {font-size:12px;min-height:32px;}
-.os-action-primary {background:#326ed5;border-color:#326ed5;color:#fff;}
-.os-action-primary:hover {background:#3e7ae6;border-color:#3e7ae6;}
+.os-action-primary {background:var(--text-primary);border-color:var(--text-primary);color:var(--bg-app);}
+.os-action-primary:hover {background:var(--text-secondary);border-color:var(--text-secondary);color:var(--bg-app);}
 .os-source-info,.os-source-warning {border-radius:5px;}
 #storyos-workspace-root main {min-width:0;}
 /* AntD is the UI control system: refine through theme tokens and modest shared CSS only. */

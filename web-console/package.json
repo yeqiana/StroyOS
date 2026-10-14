@@ -30,6 +30,7 @@
     "test:workbench-run": "node scripts/test-workbench-run-detail-r12.mjs",
     "test:paging": "node scripts/test-antd-pagination-r13-browser.mjs",
     "test:theme": "node scripts/test-antd-theme-r13-browser.mjs",
+    "test:theme-reverse": "node scripts/test-theme-reverse-browser.mjs",
     "test:media": "node scripts/test-local-approved-media-r16.mjs",
     "test:r19": "node scripts/test-r19-layout-interaction.mjs",
     "test:r20": "node scripts/test-r20-console-layout.mjs",

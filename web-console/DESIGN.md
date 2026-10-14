@@ -50,27 +50,27 @@ StoryOS Web Console 属于：
 
 ### 3.1 Surfaces & Backgrounds
 ```css
---bg-app:        #0B0D10; /* 底层应用背景：极深中性青黑 */
---bg-workspace:  #0F1115; /* 工作区背景：表头、侧栏与次级面板底色 */
---bg-surface:    #13161B; /* 主要表面底色：主数据网格、状态条、容器卡片 */
---bg-elevated:   #171B21; /* 浮动/检视底色：Inspector Drawer、浮层、二级控件 */
---bg-hover:      #1B2027; /* 悬停交互底色：数据行与按钮 hover */
---bg-selected:   #20262E; /* 选中行指示底色 */
+--bg-app:        #0A0B0D; /* 底层应用背景：极深中性青黑 */
+--bg-workspace:  #171717; /* 工作区背景：表头、侧栏与次级面板底色 */
+--bg-surface:    #1C1E21; /* 主要表面底色：主数据网格、状态条、容器卡片 */
+--bg-elevated:   #25282C; /* 浮动/检视底色：Inspector Drawer、浮层、二级控件 */
+--bg-hover:      #292D32; /* 悬停交互底色：数据行与按钮 hover */
+--bg-selected:   #343940; /* 选中行指示底色 */
 ```
 
 ### 3.2 Borders & Dividers
 ```css
---border-subtle: #232830; /* 默认极细分割线与普通边框 */
---border-normal: #2D333D; /* 控件边框、激活面板边框 */
---border-strong: #3A424E; /* 焦点高亮边框、强调区分线 */
+--border-subtle: #30343A; /* 默认极细分割线与普通边框 */
+--border-normal: #41474F; /* 控件边框、激活面板边框 */
+--border-strong: #56606A; /* 焦点高亮边框、强调区分线 */
 ```
 
 ### 3.3 Typography Contrast (文字对比度阶梯)
 ```css
---text-primary:   #F1F3F5; /* 主要文本：标题、当前任务名、核心指标数值 (高对比) */
---text-secondary: #A7AFBA; /* 次要文本：字段标签、阶段名称、辅助说明 */
---text-tertiary:  #737D8A; /* 第三级文本：时间戳、次级计数、单位标识 */
---text-disabled:  #505864; /* 占位与禁用：技术占位符 `-`、无数据状态 */
+--text-primary:   #F4F6F8; /* 主要文本：标题、当前任务名、核心指标数值 (高对比) */
+--text-secondary: #BEC5CC; /* 次要文本：字段标签、阶段名称、辅助说明 */
+--text-tertiary:  #969FA8; /* 第三级文本：时间戳、次级计数、单位标识 */
+--text-disabled:  #737C86; /* 占位与禁用：技术占位符 `-`、无数据状态 */
 ```
 
 ### 3.4 Semantic Status Tokens (语义状态契约)
@@ -79,8 +79,10 @@ StoryOS Web Console 属于：
 --waiting: #C9A227; /* QUEUED / WAITING 等待槽位调度 */
 --retry:   #D28B26; /* RETRYING 自动退避重试 */
 --danger:  #E05252; /* BLOCKED (需人工) / FAILED (致命阻断) */
---info:    #4C8DFF; /* FOCUS / ACTIVE / 调度链路高亮 */
+--info:    #72A6F7; /* FOCUS / ACTIVE / 调度链路高亮 */
 ```
+**主题取舍**：深色参考可灵近黑工作区与即梦 #171717 侧栏；浅色使用 #FAFAFA 画布、#F1F2F4 侧栏和白色内容区。主创作按钮采用主文字色反相，焦点与运行信息仍用蓝色，成功仍用绿色。Ant Design 与 CSS Token 一致。
+
 **关键约束**：
 - 绿色不得作为 StoryOS 通用品牌色，绿色仅服务于健康与顺利完结；
 - 状态颜色只做信号指示（6px dot、文本、2px 高亮条），严禁大面积彩色背景铺色。
