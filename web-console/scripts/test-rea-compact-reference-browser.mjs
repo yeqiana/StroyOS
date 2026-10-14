@@ -50,6 +50,11 @@ const scenario=async function(c){
    if(!action)throw Error('pin to reference action absent');
    action.click();
    await wait(()=>section.querySelector('[aria-label="已选参考素材草稿"]'),'linked preview');
+   const proofButton=[...section.querySelectorAll('button')].find(b=>b.textContent?.includes('核验源图 SHA-256'));
+   if(!proofButton)throw Error('source fingerprint action missing');
+   proofButton.click();
+   const proof=await wait(()=>section.querySelector('[aria-label="参考源图内容核验"] [role="status"]'),'source fingerprint receipt');
+   if(!/[a-f0-9]{64}/.test(proof.textContent||'')||!proof.textContent.includes('未提交生产')||!proof.textContent.includes('未确认生图时使用'))throw Error('source proof authority boundary violated');
    const key=Object.keys(localStorage).find(k=>k.startsWith('storyos:reference-draft:v1:'));
    if(!key)throw Error('draft did not persist');
    const data=JSON.parse(localStorage.getItem(key));

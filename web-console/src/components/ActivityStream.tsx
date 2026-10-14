@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {Button, Drawer, Pagination, Segmented, Select} from 'antd';
 import { AlertCircle, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock3, Copy, ExternalLink, Image as ImageIcon, LayoutGrid, Images, ClipboardCheck, Link2, Pin, PinOff, ScanEye, ShieldAlert, SlidersHorizontal } from 'lucide-react';
 import { Episode } from '../types';
-import {useLocalApprovedMedia} from '../api/localApprovedMedia';
+import {fetchApprovedSourceFingerprint, useLocalApprovedMedia} from '../api/localApprovedMedia';
 import {loadLocalReferenceDraft, saveLocalReferenceDraft, type LocalReferenceDraft} from '../utils/localReferenceDraft';
 import {summarizeConsistency} from '../utils/consistencySummary';
 
@@ -35,6 +35,8 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode, o
   const [pinnedFrame,setPinnedFrame]=useState<FrameSelection|null>(null);
   // Selected reference candidates are local UI drafts, not a production binding.
   const [referenceDraft,setReferenceDraft]=useState<LocalReferenceDraft>(()=>loadLocalReferenceDraft(activeEpisode.id));
+  const [sourceProof,setSourceProof]=useState<{key:string;status:'ready'|'error';sha256?:string}|null>(null);
+  const [sourceProofLoading,setSourceProofLoading]=useState<string|null>(null);
   const quickNavRef=React.useRef<HTMLDivElement|null>(null);
   const {findEpisode}=useLocalApprovedMedia();
   const approved=findEpisode(activeEpisode.title,activeEpisode.code);
@@ -66,6 +68,21 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode, o
   const linkedCount=Object.keys(verifiedLinks).length;
   const selectedReference=selectedFrame?verifiedLinks[selectedFrame.frame]:undefined;
   const selectedReferenceImage=selectedReference?approved?.frames.find(frame=>frame.frame===selectedReference.sourceFrame&&frame.url===selectedReference.sourceUrl):undefined;
+  const referenceProofKey=selectedReferenceImage&&approved?approved.episode_ref+':'+selectedReferenceImage.url:null;
+  const currentSourceProof=sourceProof?.key===referenceProofKey?sourceProof:null;
+  const verifySource=async()=>{
+    if(!approved||!selectedReferenceImage||!referenceProofKey)return;
+    const key=referenceProofKey;
+    setSourceProofLoading(key);
+    setSourceProof(null);
+    try {
+      const proof=await fetchApprovedSourceFingerprint(approved.episode_ref,selectedReferenceImage.url);
+      if(proof.frame!==selectedReferenceImage.frame)throw Error('FRAME_IDENTITY_MISMATCH');
+      setSourceProof({key,status:'ready',sha256:proof.sha256});
+    } catch {
+      setSourceProof({key,status:'error'});
+    } finally {setSourceProofLoading(value=>value===key?null:value);}
+  };
   const setReferenceForFrame=(target:number,sourceFrame:number|null)=>{
     if(!Number.isInteger(target)||target<1||target>20)return;
     const next={...referenceDraft};
@@ -308,6 +325,12 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode, o
               <img src={selectedReferenceImage.url} alt={'参考候选 Frame '+selectedReferenceImage.frame} className="h-16 w-12 shrink-0 object-cover" loading="lazy"/>
               <div className="min-w-0 flex-1"><p className="font-medium">Frame {String(selectedFrame.frame).padStart(2,'0')} ← Frame {String(selectedReferenceImage.frame).padStart(2,'0')}</p><p className="mt-1 text-[11px] text-[var(--text-tertiary)]">来源：本机已批准图片 · 仅拟引用</p></div>
               <Button size="small" aria-label={'移除 Frame '+selectedFrame.frame+' 的参考素材草稿'} onClick={()=>setReferenceForFrame(selectedFrame.frame,null)}>移除</Button>
+            </div>}
+            {selectedReferenceImage&&<div className="space-y-1" aria-label="参考源图内容核验">
+              <Button size="small" loading={sourceProofLoading===referenceProofKey} onClick={()=>void verifySource()}>核验源图 SHA-256</Button>
+              {currentSourceProof?.status==='ready'&&<p role="status" className="break-words text-[11px] text-[var(--text-secondary)]">本机批准源图 SHA-256：<code className="font-mono">{currentSourceProof.sha256}</code> · 仅核验当前文件字节，未提交生产，也未确认生图时使用。</p>}
+              {currentSourceProof?.status==='error'&&<p role="alert" className="text-[11px] text-[var(--danger)]">无法核验源图身份；请刷新素材后重新选择。没有产生正式绑定。</p>}
+              {!currentSourceProof&&<p className="text-[11px] text-[var(--text-tertiary)]">可按需核验源图内容 SHA；本机图片地址不是内容哈希，核验结果不提供生产授权。</p>}
             </div>}
             {pinnedFrame?.kind==='approved'&&pinnedFrame.frame!==selectedFrame.frame&&approved.frames.some(frame=>frame.frame===pinnedFrame.frame)&&
               <Button size="small" icon={<Pin size={13}/>} onClick={()=>setReferenceForFrame(selectedFrame.frame,pinnedFrame.frame)}>将固定 Frame {pinnedFrame.frame} 设为参考草稿</Button>}

@@ -164,6 +164,8 @@ class LocalEpisodeFileStatuses:
 MEDIA_NAME = re.compile(r"^(0[1-9]|1[0-9]|20)\.(png|jpg|jpeg|webp)$", re.IGNORECASE)
 MEDIA_TOKEN = re.compile(r"^[0-9a-f]{32}$")
 MEDIA_PREFIX = "/api/v1/local-media/images/"
+FINGERPRINT_PREFIX = "/api/v1/local-media/source-fingerprint/"
+LOCAL_EPISODE_REF = re.compile(r"^LOCAL_[0-9a-f]{24}$")
 MEDIA_MAX_BYTES = 12 * 1024 * 1024
 MEDIA_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
 
@@ -235,6 +237,31 @@ class LocalApprovedMedia:
                 continue
         return records, by_token
 
+    def source_fingerprint(self, episode_ref: str, token: str) -> dict | None:
+        """Read-only source bytes proof, NOT a production binding or provider receipt."""
+        if not LOCAL_EPISODE_REF.fullmatch(episode_ref) or not MEDIA_TOKEN.fullmatch(token):
+            return None
+        catalog, _ = self.scan()
+        candidates = [(row, frame) for row in catalog if row["episode_ref"] == episode_ref
+                      for frame in row["frames"] if frame["url"] == MEDIA_PREFIX + token]
+        if len(candidates) != 1:
+            return None
+        # Revalidate approved ownership, signature and bytes at lookup time.
+        current = self.image(token)
+        if current is None:
+            return None
+        _, frame = candidates[0]
+        return {
+            "source": "local_workspace_approved_only",
+            "episode_ref": episode_ref,
+            "frame": frame["frame"],
+            "url": frame["url"],
+            "sha256": hashlib.sha256(current[0]).hexdigest(),
+            "evidence_kind": "LOCAL_APPROVED_SOURCE_BYTES",
+            "production_reference_binding": "NOT_SUBMITTED",
+            "provider_execution": "UNVERIFIED",
+        }
+
     def image(self, token: str) -> tuple[bytes, str] | None:
         if not MEDIA_TOKEN.fullmatch(token):
             return None
@@ -288,7 +315,7 @@ class LocalReadOnlyHandler(PlatformApiRequestHandler):
             self._send(200, {"code": "OK", "data": observe_local_redis_heartbeats()})
             return
         media = getattr(self.server, "approved_media", None)
-        if media is not None and (route.path == "/api/v1/local-media/catalog" or route.path.startswith(MEDIA_PREFIX)):
+        if media is not None and (route.path == "/api/v1/local-media/catalog" or route.path.startswith(MEDIA_PREFIX) or route.path.startswith(FINGERPRINT_PREFIX)):
             # Additional guard for browser cross-site reads; the Vite proxy sends Host 127.0.0.1.
             site = self.headers.get("Sec-Fetch-Site", "")
             origin = self.headers.get("Origin", "")
@@ -304,6 +331,14 @@ class LocalReadOnlyHandler(PlatformApiRequestHandler):
             if route.path == "/api/v1/local-media/catalog":
                 catalog, _ = media.scan()
                 self._send(200, {"code": "OK", "data": {"items": catalog, "source": "local_workspace_approved_only"}})
+                return
+            if route.path.startswith(FINGERPRINT_PREFIX):
+                parts = route.path[len(FINGERPRINT_PREFIX):].split("/")
+                evidence = media.source_fingerprint(*parts) if len(parts) == 2 else None
+                if evidence is None:
+                    self._send(404, {"code": "MEDIA_NOT_FOUND", "data": None})
+                else:
+                    self._send(200, {"code": "OK", "data": evidence})
                 return
             result = media.image(route.path[len(MEDIA_PREFIX):])
             if result is None:

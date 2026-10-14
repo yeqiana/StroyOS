@@ -270,3 +270,9 @@ Production Monitor 顶部严禁堆放 6 个等权 KPI Card，统一设计为单�
 - 已实测即梦的 `/` 技能入口，但 StoryOS 的 `/分镜`、`/角色`、`/提示词`、`/阻断` **只填写可编辑的生产指令草稿**。用户按 Enter 或点击技能不会下发任务；只有复制文本后在经过授权的生产入口才能进一步执行。切换作品时草稿重置，避免跨作品误用。
 - 20 帧一致性检视只聚合当前作品 `frameReviews` 的 `WARN`/`FAIL` 问题标签，分为人物/画风与光影/场景。分类为文本标签匹配，不是视觉模型评分，也不等于对角色或场景一致性的正式认证。没有标签或审核记录时标记「未验证」，不伪造通过。
 - 参考素材正式写入需 **目标 Frame 的稳定身份、来源已批准图的内容身份、授权写入 API、生成指令实际参考参数、provider 调用和执行回执** 共同闭环。现有 `localReferenceDraft` 永远仅是浏览器拟引用，不得基于 UI 或帧号匹配宣传正式绑定；Runtime writer 接口实现、审核后另议。
+
+## REA 参考源身份核验（本机只读 P0）
+
+- Frame 参考草稿依然只存浏览器，不可直接生成为正式绑定。为了避免“匿名展示 URL 代表内容 SHA”的误判，来源图片需通过本机只读 `GET /api/v1/local-media/source-fingerprint/{episode_ref}/{token}` 重新读取原始图片字节计算 SHA-256。服务端只接受同作品、已批准图库的精确 opaque ref + token；拒绝跨作品、跨域、路径穿越、查询参数和所有写方法。
+- 核验返回完整 SHA 仅作为 **LOCAL_APPROVED_SOURCE_BYTES**，明确 `production_reference_binding=NOT_SUBMITTED`、`provider_execution=UNVERIFIED`；界面显示的是核验时的源图内容，不是生产 Writer 授权，也不是已传给 Provider 的回执。源图重绘／替换后必须重新核验。
+- 下一阶段正式接入须走现有 `image_scheduler.contract_references`、`reference_arbitrator.MAX_REFS=2`、锁定身份锚点、`image_worker_pool._payload_reference_evidence` 与 `production_ledger_run.merge_provider_reference_evidence`，由授权 Writer 进行 Attempt 写入并在 provider receipt 后校验；禁止从浏览器 localStorage 直接写 ledger、MySQL 或人设契约。
