@@ -1,7 +1,7 @@
 import React, {useMemo, useState} from 'react';
 import {Button, Checkbox, Drawer, Input, Pagination, Progress, Segmented, Select, Table} from 'antd';
 import type {TableColumnsType} from 'antd';
-import {Clapperboard, Plus} from 'lucide-react';
+import {ArrowUpRight, Eye, Image as ImageIcon, Images, List, Plus} from 'lucide-react';
 import type {Episode,ProjectItem} from '../../types';
 import {useLocalApprovedMedia} from '../../api/localApprovedMedia';
 import {CanonicalRuntimeDirectory} from '../catalog/CanonicalRuntimeDirectory';
@@ -29,11 +29,11 @@ export const SeriesLibraryView: React.FC<Props> = ({episodes,activeEpisode,onSel
   const galleryItems=gallerySortedRows.slice((visiblePage-1)*pageSize,visiblePage*pageSize);
   const open=(ep:Episode)=>{onSelectEpisode(ep);setSelectedEpisode(null);onGoToWorkbench();};
   const columns:TableColumnsType<Episode>=[
-    {title:'作品',dataIndex:'title',key:'title',ellipsis:true,sorter:(a,b)=>a.title.localeCompare(b.title,'zh-CN'),render:(_,ep)=><div className="flex min-w-0 items-center gap-3"><div className="flex h-[48px] w-10 shrink-0 items-center justify-center overflow-hidden rounded-[5px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]">{coverFor(ep)?<img src={coverFor(ep)} alt="" loading="lazy" className="h-full w-full object-cover"/>:<Clapperboard size={16} className="text-[var(--text-tertiary)]"/>}</div><div className="min-w-0"><Button type="link" size="small" onClick={()=>open(ep)} aria-label={`打开故事 ${ep.title}`} className="!h-auto !p-0 !text-[14px] !font-semibold !text-[var(--text-primary)] hover:!text-[var(--info)]"><span className="block max-w-[35vw] truncate text-left">{ep.title}</span></Button><p className="mt-1 truncate text-[12px] text-[var(--text-tertiary)]">{ep.code} · {ep.genre||'未分类'}</p></div></div>},
+    {title:'作品',dataIndex:'title',key:'title',ellipsis:true,sorter:(a,b)=>a.title.localeCompare(b.title,'zh-CN'),render:(_,ep)=><div className="flex min-w-0 items-center gap-3"><div className="flex h-[48px] w-10 shrink-0 items-center justify-center overflow-hidden rounded-[5px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]">{coverFor(ep)?<img src={coverFor(ep)} alt="" loading="lazy" className="h-full w-full object-cover"/>:<ImageIcon size={16} strokeWidth={1.75} className="text-[var(--text-tertiary)]"/>}</div><div className="min-w-0"><Button type="link" size="small" onClick={()=>open(ep)} aria-label={`打开故事 ${ep.title}`} title="直接进入故事制作" className="!h-auto !p-0 !text-[14px] !font-semibold !text-[var(--text-primary)] hover:!text-[var(--info)]"><span className="block max-w-[35vw] truncate text-left">{ep.title}</span></Button><p className="mt-1 truncate text-[12px] text-[var(--text-tertiary)]">{ep.code} · {ep.genre||'未分类'}</p></div></div>},
     {title:'生产阶段',dataIndex:'currentStage',key:'stage',width:148,render:(value:string)=><span className="inline-flex items-center gap-2 text-[13px] text-[var(--text-secondary)]"><span className="h-1.5 w-1.5 rounded-full bg-[var(--text-tertiary)]" />{STAGES[value]||value}</span>},
     {title:'帧进度',key:'frames',width:158,render:(_,ep)=>{const percent=ep.totalFrames?Math.round(ep.completedFrames/ep.totalFrames*100):0;return <div className="max-w-[132px] text-[13px] tabular-nums"><span>{ep.completedFrames}<span className="text-[var(--text-tertiary)]"> / {ep.totalFrames}</span></span><Progress percent={Math.min(100,Math.max(0,percent))} showInfo={false} size="small" strokeColor="var(--info)" trailColor="var(--border-normal)" className="!my-0 !mt-1"/></div>;}},
     {title:'更新时间',dataIndex:'updatedAt',key:'updatedAt',width:148,ellipsis:true,sorter:(a,b)=>(Date.parse(a.updatedAt||'')||0)-(Date.parse(b.updatedAt||'')||0),render:(value:string)=><span title={value||''} className="text-[12px] tabular-nums text-[var(--text-secondary)]">{readableTime(value)}</span>},
-    {title:'操作',key:'action',width:90,render:(_,ep)=><Button type="link" onClick={()=>open(ep)} size="small" className="!font-semibold">查看 →</Button>},
+    {title:'操作',key:'action',width:90,render:(_,ep)=><Button type="link" onClick={()=>setSelectedEpisode(ep)} size="small" icon={<Eye size={14} strokeWidth={1.75} aria-hidden="true"/>} aria-label={'预览作品 '+ep.title} className="!font-semibold">预览</Button>},
   ];
   return <section id="series-library-view" className="w-full min-w-0 space-y-3 pb-6 text-[var(--text-primary)]">
     <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-3">
@@ -52,7 +52,7 @@ export const SeriesLibraryView: React.FC<Props> = ({episodes,activeEpisode,onSel
       <Input.Search aria-label="搜索故事标题、编号或类型" value={query} onChange={e=>{setQuery(e.target.value);setPage(1);}} placeholder="搜索作品 / 编号 / 类型" allowClear className="min-w-[220px] max-w-[360px] flex-1"/>
       <Select aria-label="筛选生产阶段" value={stage} onChange={v=>{setStage(v);setPage(1);}} className="w-[170px]" options={[{value:'ALL',label:'全部阶段'},...Object.entries(STAGES).map(([value,label])=>({value,label}))]}/>
       <Checkbox checked={approvedOnly} onChange={event=>{setApprovedOnly(event.target.checked);setPage(1);}}>只看有批准图片</Checkbox>
-      <Segmented size="small" aria-label="作品显示方式" value={viewMode} onChange={value=>{setViewMode(value as 'gallery'|'list');setPage(1);setPageSize(value==='gallery'?15:10);}} options={[{value:'gallery',label:'封面画廊'},{value:'list',label:'列表'}]}/>
+      <Segmented size="small" aria-label="作品显示方式" value={viewMode} onChange={value=>{setViewMode(value as 'gallery'|'list');setPage(1);setPageSize(value==='gallery'?15:10);}} options={[{value:'gallery',label:<span className="inline-flex items-center gap-1.5"><Images size={14} strokeWidth={1.75} aria-hidden="true"/>封面画廊</span>},{value:'list',label:<span className="inline-flex items-center gap-1.5"><List size={14} strokeWidth={1.75} aria-hidden="true"/>列表</span>}]}/>
       <span className="ml-auto text-[12px] tabular-nums text-[var(--text-tertiary)]">显示 {rows.length} / {episodes.length} 部</span>
     </div>
     {viewMode==='gallery'?<section aria-label="作品封面画廊" className="space-y-3">
@@ -63,7 +63,7 @@ export const SeriesLibraryView: React.FC<Props> = ({episodes,activeEpisode,onSel
             {cover&&<img src={cover} alt={ep.title+'的已批准素材封面'} loading="lazy" className="h-full w-full object-cover object-top transition-transform duration-150 group-hover:scale-[1.02]"/>}
             {media?.frames.length?<span className="absolute bottom-2 right-2 border border-[var(--border-normal)] bg-[var(--bg-workspace)] px-2 py-1 text-[11px] tabular-nums text-[var(--text-primary)]">已批准 {media.frames.length} 帧</span>:null}
           </div>
-          <div className="space-y-1 px-3 py-2"><h3 className="truncate text-[13px] font-semibold text-[var(--text-primary)]">{ep.title}</h3><p className="truncate text-[11px] text-[var(--text-tertiary)]">{ep.code} · {ep.genre||'未分类'}</p><div className="flex items-center justify-between gap-2 pt-1 text-[11px] text-[var(--text-secondary)]"><span>{STAGES[ep.currentStage]||ep.currentStage}</span><span className="tabular-nums">工作区 {ep.completedFrames}/{ep.totalFrames} 帧</span></div></div>
+          <div className="space-y-1 px-3 py-2"><div className="flex items-center gap-2"><h3 className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--text-primary)]">{ep.title}</h3><span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-[var(--text-tertiary)]"><Eye size={13} strokeWidth={1.75} aria-hidden="true"/>预览</span></div><p className="truncate text-[11px] text-[var(--text-tertiary)]">{ep.code} · {ep.genre||'未分类'}</p><div className="flex items-center justify-between gap-2 pt-1 text-[11px] text-[var(--text-secondary)]"><span>{STAGES[ep.currentStage]||ep.currentStage}</span><span className="tabular-nums">工作区 {ep.completedFrames}/{ep.totalFrames} 帧</span></div></div>
         </button>;})}
         </div></section>}
         {galleryItems.some(ep=>!findEpisode(ep.title,ep.code)?.frames.length)&&<section aria-label="无批准图片作品紧凑列表" className="space-y-2"><div className="flex items-center justify-between gap-3"><h2 className="os-section-heading">其他作品</h2><span className="text-[11px] text-[var(--text-tertiary)]">未找到可验证批准封面 · 保留作品入口</span></div><div className="divide-y divide-[var(--border-subtle)] border-y border-[var(--border-subtle)]">
@@ -76,11 +76,11 @@ export const SeriesLibraryView: React.FC<Props> = ({episodes,activeEpisode,onSel
       locale={{emptyText:'暂无符合条件的作品，请修改筛选条件'}}/>}
     <Drawer open={selectedEpisode!==null} onClose={()=>setSelectedEpisode(null)} width="min(440px, 100vw)" destroyOnClose title="作品详情 · 只读预览" className="storyos-episode-preview-inspector">
       {selectedEpisode&&<section aria-label="作品预览详情" className="space-y-4">
-        {coverFor(selectedEpisode)?<img src={coverFor(selectedEpisode)} alt={selectedEpisode.title+'的真实封面'} className="max-h-[240px] w-full object-contain bg-[var(--bg-surface)]"/>:<div className="flex items-center gap-2 border border-dashed border-[var(--border-normal)] p-4 text-[12px] text-[var(--text-tertiary)]"><Clapperboard size={18}/>暂无可验证封面，仍可查看作品记录</div>}
+        {coverFor(selectedEpisode)?<img src={coverFor(selectedEpisode)} alt={selectedEpisode.title+'的真实封面'} className="max-h-[240px] w-full object-contain bg-[var(--bg-surface)]"/>:<div className="flex items-center gap-2 border border-dashed border-[var(--border-normal)] p-4 text-[12px] text-[var(--text-tertiary)]"><ImageIcon size={18} strokeWidth={1.75}/>暂无可验证封面，仍可查看作品记录</div>}
         <div><h2 className="text-[17px] font-semibold">{selectedEpisode.title}</h2><p className="mt-1 text-[12px] text-[var(--text-secondary)]">{selectedEpisode.code} · {selectedEpisode.genre||'未分类'}</p></div>
         <dl className="divide-y divide-[var(--border-subtle)] text-[12px]">{[['阶段',STAGES[selectedEpisode.currentStage]||selectedEpisode.currentStage],['工作区帧进度',`${selectedEpisode.completedFrames} / ${selectedEpisode.totalFrames}`],['已批准素材',`${findEpisode(selectedEpisode.title,selectedEpisode.code)?.frames.length||0} 张（本机只读）`],['更新时间',readableTime(selectedEpisode.updatedAt)]].map(([label,value])=><div key={label} className="grid grid-cols-[100px_minmax(0,1fr)] gap-3 py-3"><dt className="text-[var(--text-tertiary)]">{label}</dt><dd className="break-words">{value}</dd></div>)}</dl>
         <div><h3 className="text-[13px] font-semibold">故事简介</h3><p className="mt-2 whitespace-pre-wrap text-[12px] leading-6 text-[var(--text-secondary)]">{selectedEpisode.synopsis||'未提供剧情简介'}</p></div>
-        <Button type="primary" block onClick={()=>open(selectedEpisode)}>进入故事制作</Button>
+        <Button type="primary" block icon={<ArrowUpRight size={15} strokeWidth={1.75} aria-hidden="true"/>} onClick={()=>open(selectedEpisode)}>进入故事制作</Button>
         <p className="text-[11px] leading-5 text-[var(--text-tertiary)]">仅展示可验证的工作区记录。进入创作台不会触发生产、生成或审核写入。</p>
       </section>}
     </Drawer>

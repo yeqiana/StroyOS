@@ -623,3 +623,12 @@ html,body {letter-spacing:0; font-size:13px;}
     opacity: 1 !important;
   }
 }
+
+/* REA interaction polish: single-weight line icons, with explicit text labels. */
+#storyos-workspace-root .storyos-sidebar nav svg,
+#storyos-workspace-root .os-console-filterbar svg,
+.storyos-episode-preview-inspector svg,
+#storyos-workspace-root #storyboard-progress-card svg {
+  stroke-width: 1.75;
+  flex-shrink: 0;
+}

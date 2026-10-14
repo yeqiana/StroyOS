@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Input, Pagination, Segmented, Table } from 'antd';
 import CSSMotion from '@rc-component/motion';
-import { ArrowRight, CheckCircle2, ChevronRight, CircleAlert, Clapperboard, Clock3, Image as ImageIcon, Plus, RefreshCw, SlidersHorizontal } from 'lucide-react';
+import { ArrowRight, CheckCircle2, ChevronRight, CircleAlert, BookOpenText, Clock3, Image as ImageIcon, Images, List, Plus, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import type { Episode, NavigationTab, ProjectItem } from '../../types';
 import { platformApi, type RuntimeStatusSummary, stageLabel } from '../../api/platformApi';
 import { reconcileRuntimeCatalog } from '../../api/runtimeCatalogReconciliation';
@@ -110,7 +110,7 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
           <Button type="primary" size="small" onClick={onNewStory}>新建故事</Button>
         </div>
         <div className="os-home-entry flex min-w-0 items-center gap-3 bg-[var(--bg-surface)] px-3 py-3">
-          <span className="os-home-entry-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-[4px] bg-[var(--bg-elevated)] text-[var(--text-secondary)]"><Clapperboard size={18}/></span>
+          <span className="os-home-entry-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-[4px] bg-[var(--bg-elevated)] text-[var(--text-secondary)]"><BookOpenText size={18} strokeWidth={1.75}/></span>
           <div className="min-w-0 flex-1"><p className="truncate text-[12px] font-medium">接着制作</p><p className="mt-1 truncate text-[11px] text-[var(--text-tertiary)]">{featured?.title||'暂无作品'}</p></div>
           <Button size="small" disabled={!featured} onClick={()=>featured&&onSelectEpisode(featured)}>继续制作</Button>
         </div>
@@ -176,13 +176,13 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
       <div className="os-console-filterbar flex min-w-0 flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] pb-2">
         <Segmented aria-label="首页作品范围" size="small" value={scope} onChange={value=>{setScope(value as typeof scope);setStoryPage(1);}} options={[{label:'全部',value:'all'},{label:'未发布',value:'unfinished'},{label:'有批准图片',value:'approved'}]}/>
         <Input.Search aria-label="搜索作品" value={query} onChange={event=>{setQuery(event.target.value);setStoryPage(1);}} placeholder="搜索名称 / 编号 / 类型" allowClear className="!w-[260px] max-w-full"/>
-        <Segmented aria-label="作品管理显示方式" size="small" className="ml-auto" value={viewMode} onChange={value=>{setHasChangedViewMode(true);setViewMode(value as 'list'|'gallery');setStoryPage(1);}} options={[{label:'列表',value:'list'},{label:'画廊',value:'gallery'}]}/>
+        <Segmented aria-label="作品管理显示方式" size="small" className="ml-auto" value={viewMode} onChange={value=>{setHasChangedViewMode(true);setViewMode(value as 'list'|'gallery');setStoryPage(1);}} options={[{label:<span className="inline-flex items-center gap-1.5"><List size={14} strokeWidth={1.75} aria-hidden="true"/>列表</span>,value:'list'},{label:<span className="inline-flex items-center gap-1.5"><Images size={14} strokeWidth={1.75} aria-hidden="true"/>画廊</span>,value:'gallery'}]}/>
       </div>
       {viewMode==='list'?<CSSMotion key="list" visible motionAppear={hasChangedViewMode} motionName="os-home-view" motionDeadline={220}>{({className,style},ref)=><div ref={ref} className={`os-home-mode-content ${className||''}`} style={style}><Table<Episode> rowKey="id" size="small" className="storyos-home-episode-grid" dataSource={filtered} scroll={{x:800}}
         onRow={episode=>({onClick:()=>onSelectEpisode(episode),className:'os-home-list-row cursor-pointer'})}
         locale={{emptyText:'没有符合条件的作品，可清除搜索后继续查看。'}}
         columns={[
-          {title:'作品',key:'title',render:(_,episode)=><div className="flex min-w-0 items-center gap-3"><span className="flex h-10 w-9 shrink-0 items-center justify-center overflow-hidden rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)]">{approvedCover(episode)?<img loading="lazy" src={approvedCover(episode)} alt="" className="h-full w-full object-cover object-top"/>:<Clapperboard size={16} className="text-[var(--text-tertiary)]"/>}</span><div className="min-w-0"><button type="button" aria-label={'打开故事 '+episode.title} onClick={event=>{event.stopPropagation();onSelectEpisode(episode);}} className="block max-w-[36vw] truncate text-left text-[13px] font-semibold hover:text-[var(--info)]">{episode.title}</button><span className="block max-w-[36vw] truncate text-[11px] text-[var(--text-tertiary)]">{episode.code} · {episode.genre||'未分类'}</span></div></div>},
+          {title:'作品',key:'title',render:(_,episode)=><div className="flex min-w-0 items-center gap-3"><span className="flex h-10 w-9 shrink-0 items-center justify-center overflow-hidden rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)]">{approvedCover(episode)?<img loading="lazy" src={approvedCover(episode)} alt="" className="h-full w-full object-cover object-top"/>:<ImageIcon size={16} strokeWidth={1.75} className="text-[var(--text-tertiary)]"/>}</span><div className="min-w-0"><button type="button" aria-label={'打开故事 '+episode.title} onClick={event=>{event.stopPropagation();onSelectEpisode(episode);}} className="block max-w-[36vw] truncate text-left text-[13px] font-semibold hover:text-[var(--info)]">{episode.title}</button><span className="block max-w-[36vw] truncate text-[11px] text-[var(--text-tertiary)]">{episode.code} · {episode.genre||'未分类'}</span></div></div>},
           {title:'制作阶段',key:'stage',width:155,render:(_,episode)=><span className="text-[12px] text-[var(--text-secondary)]">{STAGES[episode.currentStage]??episode.currentStage}</span>},
           {title:'工作区帧',key:'frames',width:150,render:(_,episode)=><div className="flex items-center gap-2 tabular-nums text-[12px]"><span>{episode.completedFrames}/{episode.totalFrames}</span><div className="h-1 w-12 overflow-hidden rounded-[2px] bg-[var(--border-normal)]"><div className="h-full bg-[var(--info)]" style={{width:percentage(episode)+'%'}}/></div></div>},
           {title:'已批准图片',key:'approved',width:135,render:(_,episode)=><span className="inline-flex items-center gap-1 text-[12px] tabular-nums text-[var(--text-secondary)]"><ImageIcon size={13}/>{approvedFrames(episode).length?approvedFrames(episode).length+' 张':'—'}</span>},

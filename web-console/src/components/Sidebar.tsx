@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Activity, Bell, Bot, ChevronDown, ChevronRight, Clapperboard, FileClock, Folder, GitBranch, LayoutDashboard, Moon, Plus, Search, Settings, Sun, X, MoreHorizontal } from 'lucide-react';
+import { Activity, Bell, Bot, ChevronDown, ChevronRight, BookOpenText, FileClock, Folder, GitBranch, LayoutDashboard, Moon, Plus, Search, Settings, Sun, X, MoreHorizontal } from 'lucide-react';
 import { Episode, NavigationTab, ProjectItem } from '../types';
 import { StoryOSMark } from './StoryOSMark';
 const CompactProjectsDrawer = React.lazy(() => import('./CompactProjectsDrawer'));
@@ -33,7 +33,7 @@ interface SidebarProps {
 const nav = [
   { label: '工作台', id: 'overview', icon: LayoutDashboard },
   { label: '作品与项目', id: 'episodes', icon: Folder },
-  { label: '故事制作', id: 'workbench', icon: Clapperboard },
+  { label: '故事制作', id: 'workbench', icon: BookOpenText },
   { label: '生产监控', id: 'production_monitor', icon: Activity },
   { label: '工作流', id: 'pipeline', icon: GitBranch },
   { label: 'Agents', id: 'agents', icon: Bot },
@@ -90,7 +90,7 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
         </button>
         <div className="storyos-sidebar-header-actions flex items-center gap-1">
           <button type="button" onClick={onOpenSearch} className="p-1.5 rounded-[4px] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]" title="搜索 Ctrl+K" aria-label="搜索"><Search size={16}/></button>
-          <button type="button" onClick={onOpenNotifications} className="relative p-1.5 rounded-[4px] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]" title="通知" aria-label="通知"><Bell size={16}/>{unreadCount > 0 && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-[#58A6FF]" />}</button>
+          <button type="button" onClick={onOpenNotifications} className="relative p-1.5 rounded-[4px] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]" title="通知" aria-label="通知"><Bell size={16}/>{unreadCount > 0 && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-[var(--info)]" />}</button>
         </div>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto px-2.5 py-3 space-y-4">
@@ -102,12 +102,12 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
             const Icon = item.icon;
             return <button key={item.id} type="button" onClick={() => onSelectTab(item.id)} aria-label={item.label} title={item.label} aria-current={currentTab === item.id ? 'page' : undefined}
               className={`relative w-full h-9 flex items-center gap-3 px-3 rounded-[6px] text-left transition-colors ${currentTab === item.id ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-semibold shadow-[inset_2px_0_0_var(--info)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}>
-              <Icon size={16} aria-hidden="true"/><span className="storyos-sidebar-nav-label">{item.label}</span>
+              <Icon size={16} strokeWidth={1.75} aria-hidden="true"/><span className="storyos-sidebar-nav-label">{item.label}</span>
             </button>;
           })}
           <div className="mx-2 my-3 border-t border-[var(--border-subtle)]" />
           <p className="storyos-sidebar-section-label px-3 pb-2 os-eyebrow">运行与管理</p>
-          {nav.slice(3).map(item => {const Icon=item.icon;return <button key={item.id} type="button" onClick={()=>onSelectTab(item.id)} aria-label={item.label} title={item.label} aria-current={currentTab===item.id?'page':undefined} className={`relative flex h-9 w-full items-center gap-3 rounded-[6px] px-3 text-left transition-colors ${currentTab===item.id?'bg-[var(--bg-selected)] font-semibold text-[var(--text-primary)] shadow-[inset_2px_0_0_var(--info)]':'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}`}><Icon size={16} aria-hidden="true"/><span className="storyos-sidebar-nav-label">{item.label}</span></button>})}
+          {nav.slice(3).map(item => {const Icon=item.icon;return <button key={item.id} type="button" onClick={()=>onSelectTab(item.id)} aria-label={item.label} title={item.label} aria-current={currentTab===item.id?'page':undefined} className={`relative flex h-9 w-full items-center gap-3 rounded-[6px] px-3 text-left transition-colors ${currentTab===item.id?'bg-[var(--bg-selected)] font-semibold text-[var(--text-primary)] shadow-[inset_2px_0_0_var(--info)]':'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}`}><Icon size={16} strokeWidth={1.75} aria-hidden="true"/><span className="storyos-sidebar-nav-label">{item.label}</span></button>})}
         </nav>
         <button type="button" className="storyos-compact-project-trigger" onClick={()=>setCompactProjectsOpen(true)} title="打开项目快捷面板" aria-label="打开项目快捷面板"><Folder size={19} aria-hidden="true"/></button>
         <section aria-label="项目列表" className="storyos-sidebar-projects pt-2 border-t border-[var(--border-subtle)]">
@@ -130,7 +130,7 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
                   <button type="button" onClick={() => setProjectMenu(projectMenu === project.id ? null : project.id)} aria-label={`管理项目 ${project.name}`} className="px-1 text-[var(--text-tertiary)] opacity-60 focus:opacity-100 group-hover:opacity-100"><MoreHorizontal size={15}/></button>
                 </div>
                 {projectMenu === project.id && <div className="ml-3 mb-1 flex flex-wrap gap-2 px-2 py-2 text-[11px] border-l border-[var(--border-normal)]">
-                  <button type="button" onClick={() => openModal('story', project)} className="text-[#58A6FF]">新增故事</button>
+                  <button type="button" onClick={() => openModal('story', project)} className="text-[var(--info)]">新增故事</button>
                   <button type="button" onClick={() => openModal('rename', project)}>重命名</button>
                   <button type="button" onClick={() => { if(window.confirm(`删除项目「${project.name}」？`)) onDeleteProject(project.id); setProjectMenu(null); }} className="text-[var(--danger)]">删除</button>
                 </div>}
@@ -167,7 +167,7 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
             <button type="button" onClick={() => setModal(null)} aria-label="关闭"><X size={17}/></button>
           </div>
           <label className="block text-[12px] text-[var(--text-secondary)]">{modal === 'project' || modal === 'rename' ? '项目名称' : '故事名称'}
-            <input autoFocus required maxLength={100} value={draft} onChange={e => setDraft(e.target.value)} placeholder="输入名称" className="mt-2 w-full h-10 rounded-[5px] px-3 bg-[var(--bg-app)] border border-[var(--border-normal)] text-[var(--text-primary)] focus:outline-2 focus:outline-[#58A6FF]" />
+            <input autoFocus required maxLength={100} value={draft} onChange={e => setDraft(e.target.value)} placeholder="输入名称" className="mt-2 w-full h-10 rounded-[5px] px-3 bg-[var(--bg-app)] border border-[var(--border-normal)] text-[var(--text-primary)] focus:outline-2 focus:outline-[var(--focus)]" />
           </label>
           <div className="flex items-center justify-end gap-2"><button type="button" onClick={() => setModal(null)} className="px-3 py-2 text-[var(--text-secondary)]">取消</button><button type="submit" className="rounded-[5px] px-4 py-2 bg-[var(--text-primary)] text-[var(--bg-app)] font-semibold">确认</button></div>
         </form>
