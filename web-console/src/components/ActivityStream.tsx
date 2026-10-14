@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import {Button, Drawer, Pagination, Segmented, Select} from 'antd';
-import { AlertCircle, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock3, Copy, ExternalLink, Image as ImageIcon, LayoutGrid, Images, ClipboardCheck, Link2, Pin, PinOff, ShieldAlert, SlidersHorizontal } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock3, Copy, ExternalLink, Image as ImageIcon, LayoutGrid, Images, ClipboardCheck, Link2, Pin, PinOff, ScanEye, ShieldAlert, SlidersHorizontal } from 'lucide-react';
 import { Episode } from '../types';
 import {useLocalApprovedMedia} from '../api/localApprovedMedia';
 import {loadLocalReferenceDraft, saveLocalReferenceDraft, type LocalReferenceDraft} from '../utils/localReferenceDraft';
+import {summarizeConsistency} from '../utils/consistencySummary';
 
 interface ActivityStreamProps {
   activeEpisode: Episode;
@@ -26,6 +27,7 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode, o
     }
   };
   const [expanded, setExpanded] = useState(false);
+  const [consistencyOpen,setConsistencyOpen]=useState(false);
   const [reviewPage, setReviewPage] = useState(1);
   const [reviewVerdict, setReviewVerdict] = useState<'ALL'|'PASS'|'WARN'|'FAIL'|'NEEDS_ATTENTION'>('ALL');
   const [canvasMode,setCanvasMode]=useState<'approved'|'batch'>('approved');
@@ -39,6 +41,7 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode, o
   const reviews = activeEpisode.frameReviews ?? [];
   const batch = activeEpisode.currentBatch;
   const warnings = reviews.filter(x => x.verdict !== 'PASS');
+  const consistency=summarizeConsistency(reviews);
   const hasPreview=Boolean(batch?.items.some(item=>hasVerifiedPreview(item.imageUrl)));
   const hasApproved=Boolean(approved?.frames.length);
   const activeCanvasMode=hasApproved?canvasMode:'batch';
@@ -135,6 +138,10 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode, o
         {label:'素材画布',icon:Images,target:'storyos-creator-canvas'},
         {label:'审核记录',icon:ClipboardCheck,target:'storyos-creator-review'}
       ].map(tool=>{const Icon=tool.icon;return <button key={tool.target} type="button" onClick={()=>jumpTo(tool.target)} className="inline-flex h-8 items-center gap-1.5 rounded-[4px] px-2 text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"><Icon size={14} strokeWidth={1.75} aria-hidden="true"/>{tool.label}</button>;})}
+      <button type="button" aria-expanded={consistencyOpen} onClick={()=>{
+        setConsistencyOpen(true);
+        requestAnimationFrame(()=>jumpTo('storyos-creator-consistency'));
+      }} className="inline-flex h-8 items-center gap-1.5 rounded-[4px] px-2 text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"><ScanEye size={14} strokeWidth={1.75} aria-hidden="true"/>一致性检视</button>
       <button type="button" disabled={!hasApproved&&!batch?.items.length} onClick={openReferenceTool} className="inline-flex h-8 items-center gap-1.5 rounded-[4px] px-2 text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-40"><Link2 size={14} strokeWidth={1.75} aria-hidden="true"/>参考关联{linkedCount>0&&<span className="tabular-nums text-[var(--text-tertiary)]">({linkedCount} 草稿)</span>}</button>
       <span className="ml-auto text-[11px] text-[var(--text-tertiary)]">仅创作视图 · 不执行生产</span>
     </nav>
@@ -166,6 +173,32 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode, o
         })}
       </div>
       <p className="text-[11px] text-[var(--text-tertiary)]">可点击表示有可检视的批准图或批次帧；灰色表示无可检视帧证据。数字边框仅标记已有审核结论，不代表自动生成或通过。</p>
+    </section>
+
+    <section id="storyos-creator-consistency" aria-label="20帧一致性检视" className="border-y border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0"><h3 className="text-[12px] font-semibold">20 帧一致性线索</h3>
+          <p className="mt-1 text-[11px] tabular-nums text-[var(--text-tertiary)]">已有审核记录 {consistency.reviewed}/20 帧 · 无审核记录 {consistency.unreviewed} 帧 · 待查 {consistency.alerts} 帧</p>
+        </div>
+        <button type="button" aria-controls="storyos-consistency-details" aria-expanded={consistencyOpen} aria-label={consistencyOpen?'收起一致性线索':'展开一致性线索'} onClick={()=>setConsistencyOpen(open=>!open)}
+          className="inline-flex h-8 items-center gap-1 rounded-[4px] px-2 text-[12px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]">{consistencyOpen?'收起':'展开'}{consistencyOpen?<ChevronDown size={14}/>:<ChevronRight size={14}/>}</button>
+      </div>
+      {consistencyOpen&&<div id="storyos-consistency-details" className="mt-3 space-y-3 text-[12px]">
+        <p className="text-[11px] text-[var(--text-tertiary)]">仅按已有 WARN / FAIL 的审核问题标签归类，帮助定位人物、画风、场景问题；没有命中不代表一致性通过，不执行图像相似度计算。</p>
+        {consistency.reviewed===0?<p role="status" className="py-2 text-[var(--text-secondary)]">暂无真实逐帧审核记录，无法判断角色、画风或场景是否一致。</p>:
+          <div className="grid gap-2 lg:grid-cols-3">
+            {consistency.categories.map(category=><div key={category.id} className="min-w-0 border-l-2 border-[var(--border-normal)] pl-3" aria-label={category.label+'审核标签'}>
+              <div className="flex items-center justify-between gap-2"><h4 className="font-semibold">{category.label}</h4><span className="text-[11px] tabular-nums text-[var(--text-tertiary)]">{category.frames.length} 帧标签命中</span></div>
+              <div className="mt-2 flex flex-wrap items-center gap-1">
+                {category.frames.length?category.frames.map(frame=>(approvedNumbers.has(frame)||batchNumbers.has(frame))?
+                  <button type="button" key={frame} aria-label={'从'+category.label+'定位 Frame '+frame} onClick={()=>openRecordedFrame(frame)} className="min-h-7 rounded-[4px] border border-[var(--border-subtle)] px-2 tabular-nums text-[11px] hover:border-[var(--info)]">F{String(frame).padStart(2,'0')}</button>
+                  :<span key={frame} title="仅有审核记录，没有可检视图片或批次证据" className="rounded-[4px] border border-dashed border-[var(--border-subtle)] px-2 py-1 tabular-nums text-[11px] text-[var(--text-tertiary)]">F{String(frame).padStart(2,'0')} · 无图</span>)
+                  :<span className="text-[11px] text-[var(--text-tertiary)]">未命中标签 · 未验证是否一致</span>}
+              </div>
+            </div>)}
+          </div>}
+        {!!consistency.unclassified.length&&<p className="text-[11px] text-[var(--text-secondary)]">另有 {consistency.unclassified.length} 帧 WARN / FAIL 无对应分类标签：{consistency.unclassified.map(frame=>'F'+String(frame).padStart(2,'0')).join('、')}。请查看原始审核意见。</p>}
+      </div>}
     </section>
 
     <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(330px,1fr)]" aria-label="当前批次与审核双栏工作区">

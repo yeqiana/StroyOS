@@ -532,6 +532,7 @@ export default function App() {
         {/* 3. 悬浮极简输入坞（纯黑底白字） */}
         {currentTab === 'workbench' && !isHistoricalEpisodeIndex(activeEpisode) && (
           <CommandDock
+            key={activeEpisode.id}
             onSendMessage={handleCommandSubmit}
             isLoading={isGeneratingBatch}
           />

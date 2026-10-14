@@ -1,0 +1,87 @@
+import assert from 'node:assert/strict';import fs from 'node:fs';import os from 'node:os';import path from 'node:path';
+import {spawnSync} from 'node:child_process';import {transform} from 'esbuild';
+const load=async file=>{const out=await transform(fs.readFileSync(file,'utf8'),{loader:'ts',format:'esm'});return import('data:text/javascript;base64,'+Buffer.from(out.code).toString('base64'))};
+const {matchDraftSkills}=await load('src/utils/draftSkills.ts');
+assert.equal(matchDraftSkills('/').length,4);
+assert.equal(matchDraftSkills('/角色')[0]?.id,'character');
+assert.equal(matchDraftSkills('/提示')[0]?.id,'prompt');
+assert.equal(matchDraftSkills('normal text').length,0);
+assert.equal(matchDraftSkills('/unknown').length,0);
+const {summarizeConsistency}=await load('src/utils/consistencySummary.ts');
+const make=(frameIndex,verdict,issueTags=[])=>({frameIndex,verdict,issueTags,frameId:String(frameIndex)});
+const result=summarizeConsistency([make(1,'WARN',['角色面容']),make(2,'FAIL',['场景偏差','光影冲突']),make(3,'PASS',['角色面容']),make(4,'WARN',['骨骼异常'])]);
+assert.equal(result.reviewed,4);assert.equal(result.unreviewed,16);assert.equal(result.alerts,3);
+assert.deepEqual(result.categories.map(x=>x.frames),[[1],[2],[2]]);assert.deepEqual(result.unclassified,[4]);
+assert.equal(summarizeConsistency([]).reviewed,0);
+console.log('REA_QUICK_SKILLS_CONSISTENCY_PURE_TESTS_PASS');
+const base=new URL(process.env.STORYOS_LOCAL_CONSOLE_URL||'http://127.0.0.1:3117/');assert.equal(base.hostname,'127.0.0.1');
+const catalog=await fetch(new URL('/api/v1/local-media/catalog',base)).then(r=>r.json());
+assert.equal(catalog.data?.source,'local_workspace_approved_only');
+const media=catalog.data.items.find(x=>x.frames?.length);assert.ok(media,'requires approved media story');
+const chrome=process.env.CHROME_PATH||'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+const profile=fs.mkdtempSync(path.join(os.tmpdir(),'storyos-rea-skills-'));
+const html=fs.readFileSync('index.html','utf8');
+const scenario=async function(c){
+ const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+ const wait=async(fn,label)=>{for(let i=0;i<335;i++){const v=fn();if(v)return v;await sleep(90)}throw Error('timeout '+label)};
+ try{
+  const nav=await wait(()=>document.querySelector('nav[aria-label="主要页面"]'),'nav');
+  const epButton=[...nav.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')==='作品与项目');
+  if(!epButton)throw Error('library nav absent');
+  epButton.click();
+  const lib=await wait(()=>document.querySelector('#series-library-view'),'library');
+  const input=await wait(()=>lib.querySelector('input[aria-label="搜索故事标题、编号或类型"]'),'search');
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,c.title);
+  input.dispatchEvent(new Event('input',{bubbles:true}));
+  const card=await wait(()=>[...lib.querySelectorAll('button[aria-label^="预览作品"]')].find(b=>b.getAttribute('aria-label')?.includes(c.title)&&b.querySelector('img[src^="/api/v1/local-media/images/"]')),'approved project');
+  card.click();
+  const drawer=await wait(()=>document.querySelector('.storyos-episode-preview-inspector .ant-drawer-body'),'episode detail');
+  const enter=await wait(()=>[...drawer.querySelectorAll('button')].find(b=>b.textContent?.trim()==='进入故事制作'),'story action');
+  enter.click();
+  const dock=await wait(()=>document.querySelector('section[aria-label="生产指令草稿"]'),'draft dock');
+  const launcher=await wait(()=>dock.querySelector('button[aria-label="打开斜杠快捷技能"]'),'slash launcher');
+  launcher.click();
+  const menu=await wait(()=>dock.querySelector('[role="listbox"][aria-label="创作快捷技能"]'),'skill list');
+  const choices=menu.querySelectorAll('[role="option"]');
+  if(choices.length!==4)throw Error('expected 4 draft skills got '+choices.length);
+  const area=await wait(()=>dock.querySelector('textarea[aria-label="生产指令草稿内容"]'),'draft text');
+  if(area.value!=='/'||area.getAttribute('aria-expanded')!=='true')throw Error('menu not tied to slash');
+  area.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}));
+  await wait(()=>menu.querySelector('[aria-selected="true"]')?.textContent?.includes('/角色'),'arrow selection');
+  area.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
+  await wait(()=>area.value.includes('角色契约')&&!area.value.startsWith('/'),'insert only');
+  if(dock.textContent.includes('已执行'))throw Error('draft claimed executed');
+  const setter=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set;
+  setter.call(area,'/提示');
+  area.dispatchEvent(new Event('input',{bubbles:true}));
+  const filtered=await wait(()=>dock.querySelectorAll('[role="option"]').length===1?dock.querySelector('[role="option"]'):null,'filter');
+  if(!filtered.textContent.includes('/提示词'))throw Error('filter wrong command');
+  area.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+  await wait(()=>!dock.querySelector('[role="listbox"]'),'escape dismiss');
+  if(area.value!=='/提示')throw Error('escape changed text');
+  const creatorNav=await wait(()=>document.querySelector('nav[aria-label="创作工具快捷导航"]'),'creator toolbar');
+  const tool=[...creatorNav.querySelectorAll('button')].find(b=>b.textContent?.includes('一致性检视'));
+  if(!tool)throw Error('consistency nav missing');
+  tool.click();
+  const consistency=await wait(()=>document.querySelector('section[aria-label="20帧一致性检视"]'),'consistency region');
+  await wait(()=>consistency.querySelector('#storyos-consistency-details'),'consistency detail');
+  const names=['人物与角色','画风与光影','场景与环境'];
+  for(const name of names)if(!consistency.querySelector('[aria-label="'+name+'审核标签"]')&& !consistency.textContent.includes('暂无真实逐帧审核记录'))throw Error('category absent '+name);
+  if(!consistency.textContent.includes('不代表一致性通过')&&!consistency.textContent.includes('无法判断'))throw Error('explicit evidence boundary missing');
+  if(!consistency.textContent.includes('已')||!consistency.textContent.includes('/20 帧'))throw Error('twenty-frame coverage missing');
+  if(consistency.querySelector('[aria-label^="从人物与角色定位 Frame "]')){
+   const go=consistency.querySelector('[aria-label^="从人物与角色定位 Frame "]');
+   go.click();
+   await wait(()=>document.querySelector('.storyos-creator-frame-inspector .ant-drawer-body'),'review jump');
+  }
+  document.body.dataset.reaSkillsResult='pass';
+ }catch(e){document.body.dataset.reaSkillsResult='fail:'+String(e.message||e)}
+};
+const c={title:media.title};const entry='qa-rea-skills-consistency.html';
+fs.writeFileSync(entry,html.replace('</body>','<script>('+scenario.toString()+')('+JSON.stringify(c)+');</script></body>'));
+try{
+ const r=spawnSync(chrome,['--headless=new','--no-sandbox','--disable-gpu','--disable-dev-shm-usage','--disable-extensions','--virtual-time-budget=47000','--window-size=1280,900','--user-data-dir='+profile,'--dump-dom',new URL('/'+entry,base).href],{encoding:'utf8',timeout:115000,maxBuffer:8500000});
+ const state=r.stdout?.match(/data-rea-skills-result="([^"]+)"/)?.[1]||'missing';
+ assert.equal(state,'pass','skills & consistency browser: '+state+' '+(r.stderr||'').slice(-450));
+ console.log('REA_QUICK_SKILLS_CONSISTENCY_CHROME_PASS');
+}finally{try{fs.unlinkSync(entry)}catch{}try{fs.rmSync(profile,{recursive:true,force:true})}catch{}}
