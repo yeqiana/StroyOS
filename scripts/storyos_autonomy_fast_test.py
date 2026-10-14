@@ -147,6 +147,10 @@ SLOTS = {
     "r20-real-pixels": ["tests/system/test_storyos_r20_pixel_authority.py::test_pixel_test_receipt_sha_native_but_never_grants_production"],
     "r20-driver": ["tests/system/test_storyos_r20_pixel_authority.py::test_a11_validated_driver_preflight_does_not_claim_image_ready"],
     "r20-frame01": ["tests/system/test_storyos_r20_pixel_authority.py::test_frame01_cannot_borrow_m00_test_pixels_as_attempt"],
+    "r21-driver-env": ["tests/system/test_storyos_r21_driver_runtime_env.py::test_child_native_ignores_inherited_stale_db_and_proxy"],
+    "r21-fail-closed": ["tests/system/test_storyos_r21_driver_runtime_env.py::test_native_fails_closed_without_local_db_binding"],
+    "r21-legacy-compat": ["tests/system/test_storyos_r21_driver_runtime_env.py::test_legacy_non_native_maintains_explicit_test_env"],
+    "r21-review-image": ["tests/system/test_storyos_r21_driver_runtime_env.py::test_native_review_reuse_is_not_image_permission"],
 }
 FULL_STRESS = [
     "tests/platform/test_runtime_state_store.py",

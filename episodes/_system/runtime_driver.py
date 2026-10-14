@@ -548,9 +548,31 @@ def _load_child_runtime_environment(
     root = str(REPO_ROOT)
     if root not in sys.path:
         sys.path.insert(0, root)
-    from scripts.phase9_runtime_launcher import load_runtime_env_file
+    from scripts.phase9_runtime_launcher import RUNTIME_ENV_KEYS, load_runtime_env_file
 
-    merged, _loaded = load_runtime_env_file(RUNTIME_ENV_PATH, dict(os.environ))
+    inherited = dict(os.environ)
+    if production_mode == "CODEX_MANAGED":
+        # A Windows Task Scheduler process belongs to the interactive user:
+        # inherited STORYOS_MYSQL_* may point at an OLD database even though
+        # the initiating native Codex process used canonical runtime.env.
+        # Match storyos_codex_managed.native_environment: this file, not the
+        # Task Scheduler account's environment, owns native DB identity.
+        if not RUNTIME_ENV_PATH.is_file():
+            raise ValueError("NATIVE_DRIVER_RUNTIME_ENV_MISSING")
+        for key in RUNTIME_ENV_KEYS:
+            inherited.pop(key, None)
+    merged, _loaded = load_runtime_env_file(RUNTIME_ENV_PATH, inherited)
+    if production_mode == "CODEX_MANAGED":
+        required = {"STORYOS_MYSQL_HOST", "STORYOS_MYSQL_PORT",
+                    "STORYOS_MYSQL_USER", "STORYOS_MYSQL_PWD", "STORYOS_MYSQL_DB"}
+        if hot_state_mode == "redis":
+            required.update({"STORYOS_REDIS_HOST", "STORYOS_REDIS_PORT",
+                             "STORYOS_REDIS_DB"})
+        if any(not merged.get(key) for key in required):
+            raise ValueError("NATIVE_DRIVER_RUNTIME_DB_IDENTITY_UNCONFIGURED")
+        # Dict.update alone does not remove stale values absent from merged.
+        for key in RUNTIME_ENV_KEYS:
+            os.environ.pop(key, None)
     os.environ.update(merged)
     os.environ["STORYOS_RUNTIME_STORE_MODE"] = runtime_store_mode
     os.environ["STORYOS_EPISODE_META_STORE_MODE"] = episode_meta_store_mode

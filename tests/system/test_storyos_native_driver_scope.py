@@ -28,7 +28,15 @@ def test_native_scope_is_serialized_only_when_both_authorities_match(monkeypatch
 
 def test_task_carrier_child_reloads_native_mode_without_proxy(monkeypatch, tmp_path):
     envfile = tmp_path / "runtime.env"
-    envfile.write_text("STORYOS_MYSQL_HOST=127.0.0.1\n", encoding="utf-8")
+    # Native Task Scheduler must use the complete canonical runtime identity,
+    # never inherit MySQL credentials or database names from its Windows user.
+    envfile.write_text(
+        "STORYOS_MYSQL_HOST=127.0.0.1\n"
+        "STORYOS_MYSQL_PORT=3307\n"
+        "STORYOS_MYSQL_USER=test-only\n"
+        "STORYOS_MYSQL_PWD=test-only-secret\n"
+        "STORYOS_MYSQL_DB=canonical-test\n",
+        encoding="utf-8")
     monkeypatch.setattr(driver, "RUNTIME_ENV_PATH", envfile)
     monkeypatch.setenv("STORY_OS_PRODUCTION_MODE", "COLLABORATIVE")
     monkeypatch.setenv("STORY_OS_IMAGE_EXECUTOR", "PRODUCT_RUNTIME")
