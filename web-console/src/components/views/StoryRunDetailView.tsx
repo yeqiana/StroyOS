@@ -72,6 +72,7 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
   // 默认打开 Frame 09（方便展示异常排错诊断）或 Frame 08（展示 PASSED 态）
   const [selectedFrame, setSelectedFrame] = useState<FrameDetailItem | null>(null);
   const [frameLayoutChoice,setFrameLayoutChoice] = useState<'GRID'|'LIST'|null>(null);
+  const [frameFocus,setFrameFocus] = useState<'ALL'|'ATTENTION'|'PENDING'>('ALL');
   // Approved images arrive asynchronously. Derive the default from current verified evidence,
   // while preserving an explicit user switch rather than resetting it on media refresh.
   const frameLayout=frameLayoutChoice ?? (run.frames.some(frame => hasVerifiedPreview(frame.thumbnail) || Boolean(approvedUrl(frame.frameNo))) ? 'GRID' : 'LIST');
@@ -220,6 +221,10 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
 
   // 选中的 Stage
   const currentSelectedStage = run.pipelineStages.find(s => s.key === selectedStageKey) || run.pipelineStages[0];
+  const visibleFrames=run.frames.filter(frame=>frameFocus==='ALL'
+    ||(frameFocus==='ATTENTION'&&(frame.status==='BLOCKED'||frame.status==='RETRYING'||Boolean(frame.lastError)))
+    ||(frameFocus==='PENDING'&&frame.status!=='PASSED'));
+  const attentionCount=run.frames.filter(frame=>frame.status==='BLOCKED'||frame.status==='RETRYING'||Boolean(frame.lastError)).length;
   const selectedPreview=selectedFrame&&(hasVerifiedPreview(selectedFrame.thumbnail) ? selectedFrame.thumbnail : approvedUrl(selectedFrame.frameNo));
 
   return (
@@ -449,10 +454,17 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-[11px] text-[var(--text-tertiary)]">{run.frames.length} 帧历史快照 · 未验证的预览不展示图片</span><Segmented size="small" aria-label="分镜展示方式" value={frameLayout} onChange={value=>setFrameLayoutChoice(value as 'GRID'|'LIST')} options={[{label:'缩略矩阵',value:'GRID'},{label:'状态列表',value:'LIST'}]}/></div>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[11px] text-[var(--text-tertiary)]">当前显示 {visibleFrames.length} / {run.frames.length} 帧历史快照 · 不代表实时执行</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Segmented size="small" aria-label="分镜问题筛选" value={frameFocus} onChange={value=>setFrameFocus(value as typeof frameFocus)} options={[{label:'全部',value:'ALL'},{label:'异常 '+attentionCount,value:'ATTENTION'},{label:'未通过',value:'PENDING'}]}/>
+                    <Segmented size="small" aria-label="分镜展示方式" value={frameLayout} onChange={value=>setFrameLayoutChoice(value as 'GRID'|'LIST')} options={[{label:'缩略矩阵',value:'GRID'},{label:'状态列表',value:'LIST'}]}/>
+                  </div>
+                </div>
+                {visibleFrames.length===0&&<p role="status" className="border border-dashed border-[var(--border-normal)] p-3 text-[12px] text-[var(--text-tertiary)]">当前条件下没有匹配的历史分镜记录；未命中不代表实时生产正常。</p>}
                 {frameLayout==='LIST' ? <Table<FrameDetailItem>
                   aria-label="历史分镜状态列表"
-                  size="small" rowKey="frameNo" dataSource={run.frames} scroll={{x:680}}
+                  size="small" rowKey="frameNo" dataSource={visibleFrames} scroll={{x:680}}
                   onRow={frame=>({onClick:()=>setSelectedFrame(frame),className:'cursor-pointer'})}
                   columns={[
                     {title:'帧',dataIndex:'frameNo',key:'frame',width:72,render:(v:number)=><span className="font-mono font-semibold tabular-nums">{String(v).padStart(2,'0')}</span>},
@@ -460,11 +472,11 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
                     {title:'状态',dataIndex:'status',key:'status',width:140,render:(v:FrameStatus)=><span className="font-mono text-[12px] text-[var(--text-primary)]">{v}</span>},
                     {title:'耗时',dataIndex:'duration',key:'duration',width:85,render:(v?:string)=><span className="tabular-nums text-[12px] text-[var(--text-secondary)]">{v||'未提供'}</span>},
                     {title:'尝试',dataIndex:'attempt',key:'attempt',width:90,render:(v:string)=><span className="tabular-nums text-[12px] text-[var(--text-secondary)]">{v||'未提供'}</span>},
-                    {title:'原图',key:'preview',width:95,render:(_,frame)=> <span className="text-[12px] text-[var(--text-tertiary)]">{hasVerifiedPreview(frame.thumbnail)||Boolean(approvedUrl(frame.frameNo))?'已验证':'未提供'}</span>}
+                    {title:'原图',key:'preview',width:95,render:(_,frame)=> <span className="text-[12px] text-[var(--text-tertiary)]">{hasVerifiedPreview(frame.thumbnail)?'Run 图片记录':approvedUrl(frame.frameNo)?'本机批准素材':'未提供'}</span>}
                   ]}
                   pagination={{defaultPageSize:10,pageSizeOptions:['10','20'],showSizeChanger:true,showTotal:count=>`已记录 ${count} 帧`}}
                 /> : <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-10 gap-2">
-                  {run.frames.map((f) => {
+                  {visibleFrames.map((f) => {
                     const framePreview = hasVerifiedPreview(f.thumbnail) ? f.thumbnail : approvedUrl(f.frameNo);
                     const isPassed = f.status === 'PASSED';
                     const isGen = f.status === 'GENERATING';
@@ -477,6 +489,8 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
                       <button
                         key={f.frameNo}
                         type="button"
+                        aria-label={'检视历史 Frame '+f.frameNo+' · '+f.status}
+                        aria-pressed={isSelected}
                         onClick={() => setSelectedFrame(f)}
                         className={`p-1.5 rounded-[4px] border text-left flex flex-col justify-between ${framePreview?'aspect-[4/5]':'min-h-[72px]'} transition-colors cursor-pointer relative overflow-hidden group ${
                           isSelected ? 'ring-1 ring-[#4C8DFF] border-[#4C8DFF]' : ''
@@ -1015,17 +1029,17 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
                   <div className="p-3 rounded-[4px] bg-[#0F1115] border border-[#D28B26]/30 space-y-2 text-xs">
                     <div className="flex justify-between">
                       <span className="text-[#737D8A]">Error:</span>
-                      <span className="text-[#D28B26] font-semibold">{selectedFrame.lastError || 'NETWORK_ERROR'}</span>
+                      <span className="text-[#D28B26] font-semibold">{selectedFrame.lastError || '未记录'}</span>
                     </div>
 
                     <div className="flex justify-between">
                       <span className="text-[#737D8A]">Failure Stage:</span>
-                      <span className="text-[#A7AFBA]">{selectedFrame.failureStage || 'provider_download'}</span>
+                      <span className="text-[#A7AFBA]">{selectedFrame.failureStage || '未记录'}</span>
                     </div>
 
                     <div className="flex justify-between">
                       <span className="text-[#737D8A]">Last Attempt:</span>
-                      <span className="text-[#A7AFBA] tabular-nums">{selectedFrame.failedAt || '11:18:22'}</span>
+                      <span className="text-[#A7AFBA] tabular-nums">{selectedFrame.failedAt || '未记录'}</span>
                     </div>
 
                     <div className="flex justify-between">
@@ -1036,7 +1050,7 @@ export const StoryRunDetailView: React.FC<StoryRunDetailViewProps> = ({
                     {selectedFrame.status === 'RETRYING' && (
                       <div className="flex justify-between text-[#D28B26] font-semibold pt-1 border-t border-[#D28B26]/20">
                         <span>Next Retry:</span>
-                        <span className="tabular-nums">{selectedFrame.nextRetryInSeconds || 17}s 倒计时</span>
+                        <span className="tabular-nums">{selectedFrame.nextRetryInSeconds !== undefined ? selectedFrame.nextRetryInSeconds+'s（历史保存值）' : '未记录预计时间'}</span>
                       </div>
                     )}
                   </div>

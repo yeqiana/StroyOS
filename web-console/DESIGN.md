@@ -276,3 +276,11 @@ Production Monitor 顶部严禁堆放 6 个等权 KPI Card，统一设计为单�
 - Frame 参考草稿依然只存浏览器，不可直接生成为正式绑定。为了避免“匿名展示 URL 代表内容 SHA”的误判，来源图片需通过本机只读 `GET /api/v1/local-media/source-fingerprint/{episode_ref}/{token}` 重新读取原始图片字节计算 SHA-256。服务端只接受同作品、已批准图库的精确 opaque ref + token；拒绝跨作品、跨域、路径穿越、查询参数和所有写方法。
 - 核验返回完整 SHA 仅作为 **LOCAL_APPROVED_SOURCE_BYTES**，明确 `production_reference_binding=NOT_SUBMITTED`、`provider_execution=UNVERIFIED`；界面显示的是核验时的源图内容，不是生产 Writer 授权，也不是已传给 Provider 的回执。源图重绘／替换后必须重新核验。
 - 下一阶段正式接入须走现有 `image_scheduler.contract_references`、`reference_arbitrator.MAX_REFS=2`、锁定身份锚点、`image_worker_pool._payload_reference_evidence` 与 `production_ledger_run.merge_provider_reference_evidence`，由授权 Writer 进行 Attempt 写入并在 provider receipt 后校验；禁止从浏览器 localStorage 直接写 ledger、MySQL 或人设契约。
+
+## REA 状态、批量分镜、素材关系与多作品分流（P0）
+
+- REA 的公开界面/本地 CDP 观察只用于 UI 信息层级与互动模式；无登录态证据不宣称竞品后台实现细节。StoryOS 历史 Run 不代替在线 Runtime 权威。
+- 历史 Run Frame 矩阵和状态列表共用「全部 / 异常 / 未通过」过滤。异常仅来自 BLOCKED、RETRYING 或明确的 lastError，未通过包含其余非 PASSED 记录；这是只读定位，不是批量审批或重新生图。筛选后空集要说明证据范围，切换矩阵/列表不重置条件。
+- 历史异常详情不为缺失的错误码、失败阶段、失败时间和重试时间填入假数据；未知写「未记录」。重试预计秒数若有值也仅作为保存时历史数值，不是实时倒计时。
+- 多作品关注索引由已载入的作品级 preflight blocking 与 Frame FAIL 审核记录派生，按数量排序展示最高优先级 4 部；不能推断实时调度或未载入的作品状态。
+- 参考源关系显示「目标帧 ← 拟引用源已批准帧 → 当前 SHA 核验状态」，并始终明确「生产未提交 / Provider 使用未验证」。不改变 Runtime、审批、MySQL、数据模型或生图链路。

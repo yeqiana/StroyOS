@@ -326,6 +326,15 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode, o
               <div className="min-w-0 flex-1"><p className="font-medium">Frame {String(selectedFrame.frame).padStart(2,'0')} ← Frame {String(selectedReferenceImage.frame).padStart(2,'0')}</p><p className="mt-1 text-[11px] text-[var(--text-tertiary)]">来源：本机已批准图片 · 仅拟引用</p></div>
               <Button size="small" aria-label={'移除 Frame '+selectedFrame.frame+' 的参考素材草稿'} onClick={()=>setReferenceForFrame(selectedFrame.frame,null)}>移除</Button>
             </div>}
+            {selectedReferenceImage&&<div aria-label="参考素材来源关系" className="border border-[var(--border-subtle)] bg-[var(--bg-workspace)] px-3 py-2">
+              <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                <span className="font-medium">目标 F{String(selectedFrame.frame).padStart(2,'0')}</span>
+                <span className="text-[var(--text-tertiary)]">← 拟引用 ←</span>
+                <span className="font-medium">已批准源 F{String(selectedReferenceImage.frame).padStart(2,'0')}</span>
+                <span className="text-[var(--text-tertiary)]">· {currentSourceProof?.status==='ready'?'源图 SHA 已核验':currentSourceProof?.status==='error'?'核验失败':'源图 SHA 待核验'}</span>
+              </div>
+              <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">关系状态：本机候选 · 生产未提交 · Provider 使用未验证</p>
+            </div>}
             {selectedReferenceImage&&<div className="space-y-1" aria-label="参考源图内容核验">
               <Button size="small" loading={sourceProofLoading===referenceProofKey} onClick={()=>void verifySource()}>核验源图 SHA-256</Button>
               {currentSourceProof?.status==='ready'&&<p role="status" className="break-words text-[11px] text-[var(--text-secondary)]">本机批准源图 SHA-256：<code className="font-mono">{currentSourceProof.sha256}</code> · 仅核验当前文件字节，未提交生产，也未确认生图时使用。</p>}

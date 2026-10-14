@@ -45,6 +45,7 @@
     "test:rea-interactions": "node scripts/test-rea-interaction-icons-browser.mjs",
     "test:rea-compact-reference": "node scripts/test-rea-compact-reference-browser.mjs",
     "test:rea-skills-consistency": "node scripts/test-rea-skills-consistency-browser.mjs",
+    "test:rea-ops-four": "node scripts/test-rea-ops-four-slots-browser.mjs",
     "test:frame-evidence": "node scripts/test-frame-evidence-browser.mjs",
     "capture:r27": "node scripts/capture-r26-compare-cdp.mjs --r27",
     "test:r28": "node scripts/test-r28-all-menu-browser.mjs",

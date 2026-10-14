@@ -80,7 +80,7 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
     const blocked = episode.preflightChecks?.filter(check => check.status === 'blocking') ?? [];
     const failed = episode.frameReviews?.filter(review => review.verdict === 'FAIL') ?? [];
     return blocked.length || failed.length ? [{ episode, blocked: blocked.length, failed: failed.length }] : [];
-  }), [episodes]);
+  }).sort((a,b)=>(b.blocked+b.failed)-(a.blocked+a.failed)||a.episode.title.localeCompare(b.episode.title,'zh-CN')), [episodes]);
 
   const search = query.trim().toLocaleLowerCase();
   const filtered = sorted.filter(episode => {
@@ -166,10 +166,23 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
 
     <section aria-label="工作台关注事项与快捷入口" className="flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-3 text-[12px]">
       <div className="flex items-center gap-2 text-[var(--text-secondary)]">{attention.length?<CircleAlert size={15} className="shrink-0 text-[var(--danger)]"/>:<CheckCircle2 size={15} className="shrink-0 text-[var(--text-tertiary)]"/>}
-        {attention.length?<span>已载入记录中 {attention.length} 部作品存在阻塞或失败审核 · <button type="button" onClick={()=>onSelectEpisode(attention[0].episode)} className="text-[var(--info)]">查看首项</button></span>:<span>已载入记录未发现明确的阻塞或失败审核</span>}
+        {attention.length?<span>已载入记录中 {attention.length} 部作品有阻塞或失败审核 · <a href="#storyos-attention-episodes" className="text-[var(--info)]">逐项查看</a></span>:<span>已载入记录未发现明确的阻塞或失败审核</span>}
       </div>
       <div className="flex items-center gap-4"><button type="button" onClick={()=>onNavigate('production_monitor')} className="inline-flex items-center gap-1 text-[var(--text-secondary)] hover:text-[var(--info)]"><SlidersHorizontal size={14}/>生产监控</button><button type="button" onClick={()=>onNavigate('pipeline')} className="inline-flex items-center gap-1 text-[var(--text-secondary)] hover:text-[var(--info)]"><Clock3 size={14}/>工作流</button></div>
     </section>
+
+    {attention.length>0&&<section id="storyos-attention-episodes" aria-label="多作品待处理索引" className="space-y-2 border-b border-[var(--border-subtle)] pb-3">
+      <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-[12px] font-semibold">需人工关注的作品 · 已载入历史记录</h2><span className="text-[11px] text-[var(--text-tertiary)]">按阻塞检查与 FAIL 审核数量排序 · 非实时队列</span></div>
+      <div className="grid gap-px border border-[var(--border-subtle)] bg-[var(--border-subtle)] sm:grid-cols-2">
+        {attention.slice(0,4).map(({episode,blocked,failed})=><button key={episode.id} type="button" onClick={()=>onSelectEpisode(episode)} aria-label={'检视需关注作品 '+episode.title}
+          className="flex min-w-0 items-center justify-between gap-3 bg-[var(--bg-surface)] px-3 py-2.5 text-left hover:bg-[var(--bg-hover)]">
+          <span className="min-w-0"><span className="block truncate text-[12px] font-medium">{episode.title}</span><span className="mt-1 block truncate text-[11px] text-[var(--text-tertiary)]">{episode.code} · {episode.currentStage}</span></span>
+          <span className="shrink-0 text-right text-[11px] tabular-nums text-[var(--text-secondary)]">{blocked>0&&<span className="block text-[var(--danger)]">阻塞检查 {blocked}</span>}{failed>0&&<span className="block text-[var(--warning)]">FAIL 审核 {failed}</span>}</span>
+          <ChevronRight size={14} className="shrink-0 text-[var(--text-tertiary)]"/>
+        </button>)}
+      </div>
+      {attention.length>4&&<p className="text-[11px] text-[var(--text-tertiary)]">另有 {attention.length-4} 部；可在下方作品管理中查找，或进入生产监控查看独立的 Runtime 证据。</p>}
+    </section>}
 
     <section aria-label="工作台继续制作主列表" className="min-w-0 space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="os-section-heading">作品管理</h2><p className="mt-1 text-[11px] text-[var(--text-tertiary)]">检索、筛选、进入已有制作流程</p></div><span className="text-[11px] text-[var(--text-tertiary)]">匹配 {filtered.length} / {episodes.length} 部</span></div>

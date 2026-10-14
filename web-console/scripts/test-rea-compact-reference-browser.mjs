@@ -50,11 +50,15 @@ const scenario=async function(c){
    if(!action)throw Error('pin to reference action absent');
    action.click();
    await wait(()=>section.querySelector('[aria-label="已选参考素材草稿"]'),'linked preview');
+   const lineage=await wait(()=>section.querySelector('[aria-label="参考素材来源关系"]'),'reference lineage');
+   if(!lineage.textContent.includes('本机候选')||!lineage.textContent.includes('生产未提交')||!lineage.textContent.includes('Provider 使用未验证'))throw Error('asset lineage authority states absent');
+   if(!lineage.textContent.includes('源图 SHA 待核验'))throw Error('source SHA premature verification');
    const proofButton=[...section.querySelectorAll('button')].find(b=>b.textContent?.includes('核验源图 SHA-256'));
    if(!proofButton)throw Error('source fingerprint action missing');
    proofButton.click();
    const proof=await wait(()=>section.querySelector('[aria-label="参考源图内容核验"] [role="status"]'),'source fingerprint receipt');
    if(!/[a-f0-9]{64}/.test(proof.textContent||'')||!proof.textContent.includes('未提交生产')||!proof.textContent.includes('未确认生图时使用'))throw Error('source proof authority boundary violated');
+   await wait(()=>lineage.textContent.includes('源图 SHA 已核验'),'lineage proof updated');
    const key=Object.keys(localStorage).find(k=>k.startsWith('storyos:reference-draft:v1:'));
    if(!key)throw Error('draft did not persist');
    const data=JSON.parse(localStorage.getItem(key));
