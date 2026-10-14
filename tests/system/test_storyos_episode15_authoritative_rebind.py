@@ -37,7 +37,8 @@ def frozen(tmp_path, monkeypatch):
 def test_v11_source_candidate_and_captions_are_manifest_bound_without_pass():
     m=json.loads((EP/"meta/release-manifest.json").read_text("utf-8-sig"))
     paths=m["artifacts"]
-    assert paths["storyboard"].endswith("20张分镜修订草稿_V1.1.md")
+    # The current candidate is V1.2; V1.1 stays intact as A10 evidence.
+    assert paths["storyboard"].endswith("20张分镜修订草稿_V1.2.md")
     assert paths["captions"].endswith("docs/subtitles.yaml")
     assert m["quality"]["production_gate"]=="pending"
     assert m["quality"]["publish_decision"]=="hold"

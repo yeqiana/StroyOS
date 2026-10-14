@@ -33,8 +33,21 @@ def decide(*, dag_attempt: int, official_review: dict | None,
                 and prov.get("review_scope")=="EPISODE_SOURCE_REVISION_AFTER_A9_TIMEOUT"
                 and prov.get("direct_user_continuation_review") is True
                 and prov.get("review_epoch")==9 and prov.get("epoch_attempt")==1)
+            or (prov.get("attempt")==11
+                and prov.get("review_scope")=="EPISODE_SOURCE_REPAIR_AFTER_A10_DELETE_FRAME_FAIL"
+                and prov.get("direct_user_continuation_review") is True
+                and prov.get("review_epoch")==10 and prov.get("epoch_attempt")==1)
         ) and (official_review.get("summary") or {}).get("passed") is True:
             return {**base,"status":"EXISTING_REVIEW_MUST_BE_REVALIDATED"}
+    # An independently recorded A10 FAIL is not a pending legacy WORK
+    # #1 request; it requires a new explicit SHA-bound source repair.
+    if isinstance(official_review,dict):
+        p=official_review.get("critic_provenance") or {}
+        if (p.get("attempt")==10
+                and p.get("review_scope")=="EPISODE_SOURCE_REVISION_AFTER_A9_TIMEOUT"
+                and (official_review.get("summary") or {}).get("passed") is False
+                and "DELETE_FRAME_TEST_FAIL" in (official_review.get("issue_codes") or [])):
+            return {**base,"status":"A10_FAIL_REQUIRES_NEW_SOURCE_REVIEW_AUTHORITY"}
     for i,row in sorted(request_rows.items()):
         if row.get("status")=="FINALIZED" and not isinstance(official_review,dict):
             return {**base,"status":"FINALIZED_REVIEW_WITHOUT_CANONICAL_PROOF"}

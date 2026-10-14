@@ -139,6 +139,10 @@ SLOTS = {
         "tests/system/test_storyos_r18_a10_reconciliation.py::test_a10_past_review_sha_optional_preserves_candidate_on_fail",
         "tests/system/test_storyos_r18_a10_reconciliation.py::test_fenced_record_fail_uses_existing_payload_never_model"],
     "r18-content": ["tests/system/test_storyos_r18_a10_reconciliation.py::test_two_frame_concrete_fix_is_only_a_draft"],
+    "r19-story": ["tests/system/test_storyos_r19_a11_repair.py::test_r19_real_content_all_20_and_source_not_formally_passed"],
+    "r19-predecessor": ["tests/system/test_storyos_r19_a11_repair.py::test_r19_one_shot_plan_readonly_and_old_fail_sha_binds"],
+    "r19-one-shot": ["tests/system/test_storyos_r19_a11_repair.py::test_r19_a11_durable_ticket_only_once_prior_candidate_intact"],
+    "r19-driver": ["tests/system/test_storyos_r19_a11_repair.py::test_r19_old_requests_not_replayed_and_driver_still_blocked"],
 }
 FULL_STRESS = [
     "tests/platform/test_runtime_state_store.py",

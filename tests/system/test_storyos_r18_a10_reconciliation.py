@@ -49,7 +49,9 @@ def test_a10_past_review_sha_optional_preserves_candidate_on_fail():
     code=inspect.getsource(review.run_critic)
     assert 'if "previous_review_sha256" in continuation:' in code
     finalize=inspect.getsource(review._finalize_review)
-    assert 'if attempt != 10 or decision == "PASS":' in finalize
+    assert 'if attempt in (10, 11):' in finalize
+    assert 'if decision == "PASS":' in finalize
+    assert 'story_review_a11_source_repair.CANDIDATE_REL' in finalize
     source=inspect.getsource(result.inspect)
     assert "RUNNER_SUCCEEDED_REQUIRES_CANONICAL_FINALIZATION" in source
     assert "recover_completed_agent_json" in source
@@ -85,4 +87,5 @@ def test_two_frame_concrete_fix_is_only_a_draft():
     assert "未锁定" in s and "A10" in s and "PASS" in s
     # The published V1.1 source remains untouched by this revision proposal.
     manifest=json.loads((p.parent.parent/"meta/release-manifest.json").read_text("utf-8-sig"))
-    assert manifest["artifacts"]["storyboard"].endswith("_V1.1.md")
+    assert manifest["artifacts"]["storyboard"].endswith("_V1.2.md")
+    assert (p.parent/"03_天界普通女生的一天_20张分镜修订草稿_V1.1.md").is_file()

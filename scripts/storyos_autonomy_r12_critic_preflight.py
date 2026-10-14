@@ -41,6 +41,8 @@ def decide(*, stage:dict, paid:dict, driver:dict, codex:dict, review:dict)->dict
             "MIGRATED_EPISODE_RUBRIC_REVALIDATION",
         ("ONE_SHOT_REVISED_SOURCE_READY",10):
             "EPISODE_SOURCE_REVISION_AFTER_A9_TIMEOUT",
+        ("ONE_SHOT_A11_SOURCE_REPAIR_READY",11):
+            "EPISODE_SOURCE_REPAIR_AFTER_A10_DELETE_FRAME_FAIL",
     }
     pair=(review.get("status"),review.get("attempt"))
     if pair not in allowed:
@@ -50,7 +52,8 @@ def decide(*, stage:dict, paid:dict, driver:dict, codex:dict, review:dict)->dict
             "review_attempt":pair[1],"review_scope":allowed[pair]}
 
 
-def inspect(episode:str, *, source_revision_after_a9:bool=False)->dict:
+def inspect(episode:str, *, source_revision_after_a9:bool=False,
+            source_repair_after_a10:bool=False)->dict:
     try:
         # An isolated feature Worktree is an evidence fixture, not the live
         # production checkout; it intentionally lacks runtime.env and may
@@ -72,7 +75,11 @@ def inspect(episode:str, *, source_revision_after_a9:bool=False)->dict:
         codex=ready.report()
         os.environ.update(env)
         if str(native.SYSTEM) not in sys.path: sys.path.insert(0,str(native.SYSTEM))
-        if source_revision_after_a9:
+        if source_revision_after_a9 and source_repair_after_a10:
+            return decide(stage={},paid={},driver={},codex={},review={})
+        if source_repair_after_a10:
+            import story_review_a11_source_repair as review
+        elif source_revision_after_a9:
             import story_review_a10_source_revision as review
         else:
             import story_review_rubric_migration as review
@@ -89,9 +96,11 @@ def main(argv=None):
     ap=argparse.ArgumentParser(description=__doc__)
     ap.add_argument("episode")
     ap.add_argument("--source-revision-after-a9",action="store_true")
+    ap.add_argument("--source-repair-after-a10",action="store_true")
     options=ap.parse_args(argv)
     r=inspect(options.episode,
-              source_revision_after_a9=options.source_revision_after_a9)
+              source_revision_after_a9=options.source_revision_after_a9,
+              source_repair_after_a10=options.source_repair_after_a10)
     print(json.dumps(r,ensure_ascii=False,sort_keys=True))
     return 0 if r["may_start_new_text_review"] else 2
 
