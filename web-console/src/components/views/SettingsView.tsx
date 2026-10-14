@@ -4,10 +4,15 @@ import {Bell, LockKeyhole, Palette, ShieldCheck, SlidersHorizontal, Type, UserRo
 import {UserProfileSection} from './UserProfileSection';
 import type {ThemeMode} from '../../types';
 import type {FontPreference,PreferencePersistence} from '../../utils/fontPreference';
+import type {MockAuthState,MockProfile} from '../../utils/mockAuth';
 
 export type SettingsSection = 'appearance'|'profile'|'notifications'|'security'|'pipeline';
 
 interface SettingsViewProps {
+  mockSession?:MockAuthState;
+  onOpenMockLogin?:()=>void;
+  onSaveMockProfile?:(profile:MockProfile)=>MockAuthState['persistence'];
+  onExpireMock?:()=>void;
   activeSection?: SettingsSection;
   onSectionChange?: (section:SettingsSection)=>void;
   unreadNotifications?:number;
@@ -28,7 +33,8 @@ const persistenceNames:Record<PreferencePersistence,string>={
 export const SettingsView:React.FC<SettingsViewProps>=({
   currentTheme='dark',onThemeChange,fontPreference='balanced',
   fontPreferencePersistence='default',onFontPreferenceChange,
-  activeSection='appearance',onSectionChange,unreadNotifications=0,onOpenNotifications
+  activeSection='appearance',onSectionChange,unreadNotifications=0,onOpenNotifications,
+  mockSession={status:'guest',profile:null,persistence:'none'},onOpenMockLogin,onSaveMockProfile,onExpireMock
 })=>{
   return <section id="codex-appearance-settings-view" className="w-full min-w-0 space-y-3 pb-6 text-[var(--text-primary)]">
     <header className="border-b border-[var(--border-subtle)] pb-3">
@@ -78,7 +84,7 @@ export const SettingsView:React.FC<SettingsViewProps>=({
           </aside>
         </div>},
       {key:'profile',label:<span className="inline-flex items-center gap-1.5"><UserRound size={14}/>个人资料</span>,
-        children:<UserProfileSection/>},
+        children:<UserProfileSection session={mockSession} onLogin={onOpenMockLogin} onSave={onSaveMockProfile}/>},
       {key:'notifications',label:<span className="inline-flex items-center gap-1.5"><Bell size={14}/>通知与提醒</span>,
         children:<div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(280px,.8fr)]" aria-label="通知设置工作区">
           <section className="min-w-0 space-y-4">
@@ -98,7 +104,13 @@ export const SettingsView:React.FC<SettingsViewProps>=({
         children:<div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(280px,.8fr)]" aria-label="账号安全工作区">
           <section className="min-w-0 space-y-4">
             <h2 className="os-section-heading">账号安全</h2>
-            <Alert type="warning" showIcon message="尚未接入已验证的账号和会话权限"
+            <div aria-label="Mock 会话状态" className="space-y-2 border border-[var(--border-subtle)] p-3 text-[12px]">
+              <p className="font-medium">演示身份：{mockSession.status==='mock'?'Mock 已进入':mockSession.status==='expired'?'Mock 会话已过期':'访客'}</p>
+              <p className="text-[var(--text-secondary)]">这个状态只在浏览器演示界面有效，不能作为生产 API 或 Runtime 授权。</p>
+              {mockSession.status==='mock'&&<button type="button" aria-label="模拟会话过期" onClick={onExpireMock} className="os-action">模拟会话过期</button>}
+              {mockSession.status==='expired'&&<button type="button" aria-label="重新进入演示账号" onClick={onOpenMockLogin} className="os-action">重新进入演示账号</button>}
+            </div>
+            <Alert type="warning" showIcon message="尚未接入真实账号和会话权限"
               description="无法检索可信的登录会话、绑定设备、密码、多因素认证或访问令牌。此处不会显示模拟状态，也不提供没有权限的修改、登出或密钥操作。"/>
             <div className="divide-y divide-[var(--border-subtle)] border-y border-[var(--border-subtle)] text-[12px]" aria-label="安全能力列表">
               {([['账号登录态','未验证'],['多因素认证','未接入'],['设备与登录会话','未接入'],['访问密钥管理','无授权入口']] as const).map(([name,value])=>

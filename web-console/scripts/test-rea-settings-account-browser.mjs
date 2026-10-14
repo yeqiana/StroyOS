@@ -42,8 +42,10 @@ const journey=async function(view){
   const pipeline=await wait(()=>page.querySelector('[aria-label="生产配置双栏工作区"]'),'pipeline tab');
   if(!pipeline.textContent.includes('尚无已授权的生产配置读写接口'))throw Error('pipeline bypass');
   if(pipeline.querySelector('input,textarea,form'))throw Error('fake pipeline form');
-  const profileEntry=document.querySelector('button[aria-label="个人资料"]');
-  if(!profileEntry)throw Error('profile sidebar entry missing');
+  const accountMenu=document.querySelector('button[aria-label="账号菜单"]');
+  if(!accountMenu)throw Error('sidebar account entry missing');
+  accountMenu.click();
+  const profileEntry=await wait(()=>document.querySelector('[role="menu"] button[aria-label="个人资料"]'),'profile account menu entry');
   profileEntry.click();
   await wait(()=>page.querySelector('[aria-label="用户资料工作区"]'),'sidebar profile navigation');
   if(!findTab('个人资料').classList.contains('ant-tabs-tab-active'))throw Error('profile sidebar not selected');

@@ -30,6 +30,8 @@ import {loadFontPreference,saveFontPreference,type FontPreference,type Preferenc
 const STORY_PLACEHOLDER_IMAGE = 'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20800%201000%22%3E%3Crect%20width%3D%22800%22%20height%3D%221000%22%20fill%3D%22%23e4e4e7%22%2F%3E%3Cpath%20d%3D%22M160%20720%20340%20500l120%20140%2090-110%20110%20190H160Z%22%20fill%3D%22%23a1a1aa%22%2F%3E%3Ccircle%20cx%3D%22300%22%20cy%3D%22330%22%20r%3D%2270%22%20fill%3D%22%23a1a1aa%22%2F%3E%3C%2Fsvg%3E';
 import { Search, X, CheckCircle2, AlertCircle, Bell, Clock, ChevronDown } from 'lucide-react';
 import type {SettingsSection} from './components/views/SettingsView';
+import {MockLoginDialog} from './components/MockLoginDialog';
+import {createMockAuthAdapter,type AuthAdapter,type MockProfile} from './utils/mockAuth';
 
 const DEFAULT_PROJECTS: ProjectItem[] = [
   {
@@ -341,6 +343,31 @@ export default function App() {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 2500);
   };
+  const mockAuthRef=useRef<AuthAdapter|null>(null);
+  if(!mockAuthRef.current)mockAuthRef.current=createMockAuthAdapter();
+  const [mockAuth,setMockAuth]=useState(()=>mockAuthRef.current!.read());
+  const [mockLoginOpen,setMockLoginOpen]=useState(false);
+  const enterMock=()=>{
+    const result=mockAuthRef.current!.signIn();
+    setMockAuth(result);
+    setMockLoginOpen(false);
+    showToast(result.persistence==='saved'?'已进入本机 Mock 演示账号':'已进入演示账号，存储不可用，仅本次页面生效');
+  };
+  const logoutMock=()=>{
+    const result=mockAuthRef.current!.signOut();
+    setMockAuth(result);
+    showToast(result.persistence==='session-only'?'已退出本次会话，浏览器存储清除失败':'已退出 Mock 演示账号');
+  };
+  const saveMockProfile=(profile:MockProfile)=>{
+    const next=mockAuthRef.current!.updateProfile(profile);
+    setMockAuth(next);
+    return next.persistence;
+  };
+  const expireMock=()=>{
+    const next=mockAuthRef.current!.expire();
+    setMockAuth(next);
+    showToast('Mock 会话已模拟过期，不影响任何生产身份');
+  };
 
   // Keyboard shortcut Ctrl/Cmd + K for quick search & Escape to dismiss
   useEffect(() => {
@@ -385,6 +412,7 @@ export default function App() {
           本机隔离测试模式 · Platform API 仅使用内存样例数据 · 非真实生产状态
         </div>
       )}
+      {mockLoginOpen&&<MockLoginDialog onCancel={()=>setMockLoginOpen(false)} onConfirm={enterMock}/>}
       {/* 1. 纯黑底白字极简左侧边栏 */}
       <Sidebar
         currentTab={currentTab}
@@ -406,6 +434,10 @@ export default function App() {
         onOpenSearch={() => setSearchModalOpen(true)}
         onOpenNotifications={() => setNotificationsOpen(true)}
         onOpenProfile={() => {setSettingsSection('profile');setCurrentTab('settings');}}
+        onOpenSecurity={() => {setSettingsSection('security');setCurrentTab('settings');}}
+        mockSession={mockAuth}
+        onMockLogin={()=>setMockLoginOpen(true)}
+        onMockLogout={logoutMock}
         unreadCount={notifications.filter(n => n.unread).length}
         onToggleContextPanel={() => setContextPanelOpen(!contextPanelOpen)}
         contextPanelOpen={contextPanelOpen}
@@ -502,6 +534,10 @@ export default function App() {
                 onSectionChange={setSettingsSection}
                 unreadNotifications={notifications.filter(n=>n.unread).length}
                 onOpenNotifications={()=>setNotificationsOpen(true)}
+                mockSession={mockAuth}
+                onOpenMockLogin={()=>setMockLoginOpen(true)}
+                onSaveMockProfile={saveMockProfile}
+                onExpireMock={expireMock}
                 fontPreference={fontState.value}
                 fontPreferencePersistence={fontState.persistence}
                 onFontPreferenceChange={handleFontPreferenceChange}
