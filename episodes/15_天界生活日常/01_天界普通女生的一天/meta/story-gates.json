@@ -641,5 +641,14 @@
     "semantic_contract": "actual_frame_v2",
     "sha_bound": true,
     "fresh_isolated_critic": true
+  },
+  "review_authority_bindings": {
+    "story": {
+      "authority_sha256": "4552a5c59990070a7576673bf6a88b1daf0ae0b2c20c116e92454b6f5a4c1152",
+      "story_sha256": "f0123089568b626465a9c47fcb5ae61dac956061a251a81a5244c8eb419e6990",
+      "storyboard_sha256": "f85c44d2443890b2e85aee01148b36b44249aafd06f04275b5a2e825f7b79c45",
+      "attempt": 11,
+      "review_scope": "EPISODE_SOURCE_REPAIR_AFTER_A10_DELETE_FRAME_FAIL"
+    }
   }
 }
