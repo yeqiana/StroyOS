@@ -31,7 +31,9 @@ try{for(const phase of phases){
    await wait(()=>!document.querySelector('[role="dialog"][aria-labelledby="mock-login-title"]'),'dialog close');
    await enter();
    const section=await profile();
-   const field=section.querySelector('input[aria-label="演示昵称"]');
+   if(section.querySelector('form'))throw Error('profile should open in view mode');
+   section.querySelector('button[aria-label="编辑演示资料"]')?.click();
+   const field=await wait(()=>section.querySelector('input[aria-label="演示昵称"]'),'edit form');
    if(!field)throw Error('mock profile editor not visible');
    type(field,'山地故事创作者');
    const photo=section.querySelector('button[aria-label="选择山峰头像"]');photo.click();
@@ -43,7 +45,7 @@ try{for(const phase of phases){
   }else if(phase==='restore'){
    await wait(()=>trigger.textContent.includes('山地故事创作者'),'saved nickname reload');
    const section=await profile();
-   if(section.querySelector('input[aria-label="演示昵称"]')?.value!=='山地故事创作者')throw Error('profile not restored');
+   if(!section.querySelector('[aria-label="演示资料概览"]')?.textContent?.includes('山地故事创作者'))throw Error('profile not restored');
    await click('账号与安全（账号菜单）');
    const security=await wait(()=>document.querySelector('[aria-label="账号安全工作区"]'),'security tab');
    if(!security.textContent.includes('不能作为生产'))throw Error('missing separation of authority');
@@ -72,7 +74,8 @@ try{for(const phase of phases){
    await enter();
    const section=await profile();
    if(!section.textContent.includes('仅当前页面可用'))throw Error('denied persistence falsely claimed');
-   const field=section.querySelector('input[aria-label="演示昵称"]');type(field,'临时用户');
+   section.querySelector('button[aria-label="编辑演示资料"]')?.click();
+   const field=await wait(()=>section.querySelector('input[aria-label="演示昵称"]'),'denied editing');type(field,'临时用户');
    section.querySelector('button[type="submit"]').click();
    await wait(()=>section.textContent.includes('浏览器存储不可用'),'blocked storage failure feedback');
    if(!trigger.textContent.includes('临时用户'))throw Error('session-only save failed');
