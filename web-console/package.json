@@ -47,6 +47,7 @@
     "test:rea-skills-consistency": "node scripts/test-rea-skills-consistency-browser.mjs",
     "test:rea-ops-four": "node scripts/test-rea-ops-four-slots-browser.mjs",
     "test:rea-font-settings": "node scripts/test-rea-font-settings-browser.mjs",
+    "test:rea-settings-account": "node scripts/test-rea-settings-account-browser.mjs",
     "test:frame-evidence": "node scripts/test-frame-evidence-browser.mjs",
     "capture:r27": "node scripts/capture-r26-compare-cdp.mjs --r27",
     "test:r28": "node scripts/test-r28-all-menu-browser.mjs",

@@ -39,8 +39,10 @@ const validate=async function scenario(c){
   if(primaryCss.backgroundColor!==toRGB(c.tokens['--text-primary']))throw Error('CTA background '+primaryCss.backgroundColor);
   if(primaryCss.color!==toRGB(c.tokens['--bg-app']))throw Error('CTA text '+primaryCss.color);
   if(contrast(primaryCss.backgroundColor,primaryCss.color)<7)throw Error('CTA contrast below 7');
-  const active=getComputedStyle(nav.querySelector('button[aria-current="page"]'));
-  if(active.backgroundColor!==toRGB(c.tokens['--bg-selected']))throw Error('selected nav background '+active.backgroundColor);
+  // Nav selection uses a color transition; wait for the settled state before asserting an exact RGB.
+  const activeEl=nav.querySelector('button[aria-current="page"]');
+  await wait(()=>getComputedStyle(activeEl).backgroundColor===toRGB(c.tokens['--bg-selected']),'selected nav color transition');
+  const active=getComputedStyle(activeEl);
   if(contrast(active.color,active.backgroundColor)<4.5)throw Error('nav contrast below 4.5');
   if(cssProp('--success')===cssProp('--info'))throw Error('semantic status colors merged');
   if(cssProp('--info')===cssProp('--text-primary'))throw Error('focus color became brand primary');

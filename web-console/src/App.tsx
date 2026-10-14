@@ -29,6 +29,7 @@ import {loadFontPreference,saveFontPreference,type FontPreference,type Preferenc
 
 const STORY_PLACEHOLDER_IMAGE = 'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20800%201000%22%3E%3Crect%20width%3D%22800%22%20height%3D%221000%22%20fill%3D%22%23e4e4e7%22%2F%3E%3Cpath%20d%3D%22M160%20720%20340%20500l120%20140%2090-110%20110%20190H160Z%22%20fill%3D%22%23a1a1aa%22%2F%3E%3Ccircle%20cx%3D%22300%22%20cy%3D%22330%22%20r%3D%2270%22%20fill%3D%22%23a1a1aa%22%2F%3E%3C%2Fsvg%3E';
 import { Search, X, CheckCircle2, AlertCircle, Bell, Clock, ChevronDown } from 'lucide-react';
+import type {SettingsSection} from './components/views/SettingsView';
 
 const DEFAULT_PROJECTS: ProjectItem[] = [
   {
@@ -97,6 +98,7 @@ export default function App() {
     } catch { /* restricted local storage; draft selection remains in memory */ }
   }, [activeEpisode.id]);
   const [currentTab, setCurrentTab] = useState<NavigationTab>('overview');
+  const [settingsSection,setSettingsSection] = useState<SettingsSection>('appearance');
   const [runtimeFocus,setRuntimeFocus] = useState<string|null>(null);
   const openRuntimeEpisode = (ref:string) => {
     if(!/^LOCAL_[a-f0-9]{24}$/.test(ref))return;
@@ -386,7 +388,7 @@ export default function App() {
       {/* 1. 纯黑底白字极简左侧边栏 */}
       <Sidebar
         currentTab={currentTab}
-        onSelectTab={(tab) => setCurrentTab(tab)}
+        onSelectTab={(tab) => {if(tab==='settings')setSettingsSection('appearance');setCurrentTab(tab);}}
         activeEpisode={activeEpisode}
         allEpisodes={episodes}
         onSelectEpisode={(ep) => setActiveEpisode(ep)}
@@ -403,6 +405,7 @@ export default function App() {
         }}
         onOpenSearch={() => setSearchModalOpen(true)}
         onOpenNotifications={() => setNotificationsOpen(true)}
+        onOpenProfile={() => {setSettingsSection('profile');setCurrentTab('settings');}}
         unreadCount={notifications.filter(n => n.unread).length}
         onToggleContextPanel={() => setContextPanelOpen(!contextPanelOpen)}
         contextPanelOpen={contextPanelOpen}
@@ -495,6 +498,10 @@ export default function App() {
               <AntdSurface><SettingsView
                 currentTheme={currentTheme}
                 onThemeChange={handleThemeChange}
+                activeSection={settingsSection}
+                onSectionChange={setSettingsSection}
+                unreadNotifications={notifications.filter(n=>n.unread).length}
+                onOpenNotifications={()=>setNotificationsOpen(true)}
                 fontPreference={fontState.value}
                 fontPreferencePersistence={fontState.persistence}
                 onFontPreferenceChange={handleFontPreferenceChange}
@@ -640,6 +647,7 @@ export default function App() {
               </div>
               <button
                 type="button"
+                aria-label="关闭通知中心"
                 onClick={() => setNotificationsOpen(false)}
                 className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] text-xs cursor-pointer"
               >
@@ -648,6 +656,7 @@ export default function App() {
             </div>
 
             <div className="flex-1 overflow-y-auto space-y-2">
+              {notifications.length===0 && <p role="status" className="py-6 text-center text-[12px] text-[var(--text-tertiary)]">本次会话暂无通知记录 · 非服务端历史查询</p>}
               {notifications.map(n => (
                 <div
                   key={n.id}

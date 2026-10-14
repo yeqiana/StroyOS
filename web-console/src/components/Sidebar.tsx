@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Activity, Bell, Bot, ChevronDown, ChevronRight, BookOpenText, FileClock, Folder, GitBranch, LayoutDashboard, Moon, Plus, Search, Settings, Sun, X, MoreHorizontal } from 'lucide-react';
+import { Activity, Bell, Bot, ChevronDown, ChevronRight, BookOpenText, FileClock, Folder, GitBranch, LayoutDashboard, Moon, Plus, Search, Settings, Sun, X, MoreHorizontal, UserRound } from 'lucide-react';
 import { Episode, NavigationTab, ProjectItem } from '../types';
 import { StoryOSMark } from './StoryOSMark';
 const CompactProjectsDrawer = React.lazy(() => import('./CompactProjectsDrawer'));
@@ -22,6 +22,7 @@ interface SidebarProps {
   onNewConversation?: () => void;
   onOpenSearch?: () => void;
   onOpenNotifications?: () => void;
+  onOpenProfile?: () => void;
   unreadCount?: number;
   onToggleContextPanel?: () => void;
   contextPanelOpen?: boolean;
@@ -158,6 +159,7 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
           </div>
         </div>
         <button type="button" onClick={() => onSelectTab('settings')} aria-label="系统设置" title="系统设置" className="h-8 w-full flex items-center gap-2 px-2 rounded-[5px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"><Settings size={15}/><span className="storyos-sidebar-settings-label">系统设置</span></button>
+        <button type="button" onClick={props.onOpenProfile} aria-label="个人资料" title="个人资料" className="h-8 w-full flex items-center gap-2 px-2 rounded-[5px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"><UserRound size={15}/><span className="storyos-sidebar-settings-label">个人资料</span></button>
       </div>
       <React.Suspense fallback={null}>{compactProjectsOpen&&<CompactProjectsDrawer projects={projects} episodes={allEpisodes} onClose={()=>setCompactProjectsOpen(false)} onOpenLibrary={()=>onSelectTab('episodes')} onSelectEpisode={pickStory}/>}</React.Suspense>
       {modal && <div role="dialog" aria-modal="true" aria-label={modal === 'project' ? '新建项目' : modal === 'rename' ? '重命名项目' : '新建故事'} className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
