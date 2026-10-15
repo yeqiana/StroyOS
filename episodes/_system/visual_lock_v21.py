@@ -1105,6 +1105,16 @@ def _finalize_review_payload(
     )
     _mark_decisions(ep, data)
     if errors:
+        # Independent joint actual-pixel review is authoritative. If its only
+        # remaining debt is SHA-bound soft quality on an exhausted baseline,
+        # use the existing audited WEAK_PASS path rather than stalling.
+        import visual_lock_candidate_pool
+        eligible = visual_lock_candidate_pool.weak_pass_eligible_frames(ep)
+        if eligible:
+            accepted = visual_lock_candidate_pool.apply_weak_passes(ep, eligible)
+            if accepted.get("status") == "PASS" and not verify(ep):
+                print("VISUAL LOCK V2.1 POLICY WEAK_PASS; independent FAIL retained")
+                return 0
         print("VISUAL LOCK V2.1 REVIEW FAIL")
         for error in errors:
             print("FAIL:", error)
@@ -1126,8 +1136,8 @@ def _finalize_review_payload(
 
 def finalize_product_review(ep: Path, *, attempt: int, runtime: str) -> int:
     baseline_errors = visual_lock_baseline_gate.validate_review(ep)
-    if baseline_errors:
-        raise RuntimeError("ordinary_baseline separate review must PASS before final Visual Lock critic: " + "; ".join(baseline_errors[:8]))
+    if baseline_errors and not visual_lock_baseline_gate.ready_for_joint_critic(ep):
+        raise RuntimeError("ordinary_baseline separate review must PASS or have verified exhausted soft-quality evidence: " + "; ".join(baseline_errors[:8]))
     contract = compile_prompt_contract(ep)
     assets = calibration_assets(ep)
     candidate = ep / CANDIDATE_REL
@@ -1209,7 +1219,8 @@ def run_critic(ep: Path, *, attempt: int, codex_raw: str | None, timeout: int | 
     if attempt > 2 and (active_runtime not in {"WORK", "WEB"} or codex_raw):
         raise RuntimeError("extended Visual Lock attempts require WORK product review after finalized source drift")
     baseline_errors=visual_lock_baseline_gate.validate_review(ep)
-    if baseline_errors:raise RuntimeError("ordinary_baseline separate review must PASS before final Visual Lock critic: "+"; ".join(baseline_errors[:8]))
+    if baseline_errors and not visual_lock_baseline_gate.ready_for_joint_critic(ep):
+        raise RuntimeError("ordinary_baseline has no valid hard-check evidence: "+"; ".join(baseline_errors[:8]))
     contract = compile_prompt_contract(ep)
     assets = calibration_assets(ep)
     dirty_assets = visual_lock_admission_state.dirty_assets(

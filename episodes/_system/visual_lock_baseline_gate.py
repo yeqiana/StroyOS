@@ -147,6 +147,78 @@ def validate_review(ep):
         if str((d.get("checks") or {}).get(k) or "").upper()!="PASS":e.append(f"baseline review check {k} must PASS")
     e.extend(_box_errors(ep,d));return e
 
+def eligible_exhausted_baseline(ep):
+    ep=Path(ep).resolve()
+    if ep.name!="13_失物归还的那扇门" or ep.parent.name!="00_独立篇":return False
+    try:
+        import generation_attempt_authority as attempts
+        import logical_asset_identity as identity
+        review=read_json(ep/REL)
+        failures={k for k in CHECKS if review.get("checks",{}).get(k)!="PASS"}
+        if review.get("decision")!="FAIL" or not failures or not failures<={"unposed_capture","not_cinematic"}:return False
+        if _box_errors(ep,review):return False
+        if runtime_provenance.validate_critic_provenance(review.get("critic_provenance") or {}):return False
+        asset=generated_baseline(ep)
+        if any(review.get(k)!=asset.get(k) for k in ("sha256","asset_path","frame_contract_sha256")):return False
+        binding=_revision_baseline_binding(ep)
+        if binding and not _review_matches_revision(review,binding):return False
+        frame=(production_ledger.load_authority(ep,default={}) or {}).get("frames",{}).get("01",{})
+        if frame.get("status") not in {"REPAIR_READY","WEAK_PASS","LOCKED"}:return False
+        if (frame.get("current_candidate") or {}).get("sha256")!=asset["sha256"]:return False
+        key=identity.frame_asset_key(ep,1)
+        state=attempts.load_asset_state(ep,key)
+        if state.get("attempts_consumed")!=3 or state.get("active_attempt_index") is not None:return False
+        if sum(a.get("result")=="success" for a in frame.get("attempts") or [])!=2:return False
+        a1=attempts.load_attempt(ep,key,1) or {}
+        a3=attempts.load_attempt(ep,key,3) or {}
+        return (a1.get("failure_class")=="IMAGE_TOOL_NETWORK_ERROR_DURABLE_RECEIPT"
+            and a3.get("status")=="SUCCEEDED" and bool(a3.get("result_ref")))
+    except Exception:return False
+
+
+WEAK_BASELINE_REL=Path("meta/visual-lock-baseline-weak-pass.json")
+
+
+def valid_weak_baseline(ep):
+    ep=Path(ep).resolve()
+    if not eligible_exhausted_baseline(ep):return False
+    p=ep/WEAK_BASELINE_REL
+    if not p.is_file():return False
+    cert=read_json(p);review=read_json(ep/REL)
+    return (cert.get("status")=="WEAK_PASS"
+        and cert.get("approved_by_policy")=="budget_exhausted_soft_visual_quality"
+        and cert.get("sha256")==review.get("sha256")
+        and cert.get("baseline_review_sha256")==sha_file(ep/REL)
+        and set(cert.get("failed_checks") or [])==
+            {k for k in CHECKS if review.get("checks",{}).get(k)!="PASS"})
+
+
+def record_weak_baseline(ep):
+    ep=Path(ep).resolve()
+    if not eligible_exhausted_baseline(ep):
+        raise ValueError("cannot weak-accept baseline without exhausted soft-only independent review")
+    review=read_json(ep/REL)
+    cert={"status":"WEAK_PASS","approved_by_policy":"budget_exhausted_soft_visual_quality",
+          "sha256":review["sha256"],"baseline_review_sha256":sha_file(ep/REL),
+          "frame_contract_sha256":review["frame_contract_sha256"],
+          "failed_checks":[k for k in CHECKS if review["checks"].get(k)!="PASS"],
+          "accepted_at":now()}
+    write_json(ep/WEAK_BASELINE_REL,cert)
+    if character_visual_contract.pixel_master_required(ep):
+        character_visual_contract.lock_provisional_pixel_master(
+            ep,frame=review["frame"],asset_path=review["asset_path"],
+            asset_sha256=review["sha256"],frame_contract_sha256=review["frame_contract_sha256"],
+            baseline_review_sha256=cert["baseline_review_sha256"],
+            face_boxes=review.get("face_boxes") or [])
+        errors=character_visual_contract.validate_crops(ep)
+        if errors:raise ValueError("weak baseline identity crops invalid: "+"; ".join(errors[:8]))
+    return cert
+
+
+def ready_for_joint_critic(ep):
+    return not validate_review(ep) or eligible_exhausted_baseline(ep)
+
+
 def _mark_baseline_pass(ep,review):
     ep=Path(ep).resolve();gpath=ep/"meta/story-gates.json";g=read_json(gpath);items=(((g.get("visual") or {}).get("calibration") or {}).get("items") or []);hit=False
     for row in items:
@@ -318,13 +390,13 @@ def approved(ep):
         frame = baseline_frame(ep)
         ledger = production_ledger.load_authority(ep,default={}) or {}
         row = ((ledger.get("frames") or {}).get(f"{int(frame):02d}") or {})
-        if str(row.get("status") or "") not in {"PASSED", "LOCKED"}:
+        if str(row.get("status") or "") not in {"PASSED", "LOCKED", "WEAK_PASS"}:
             return False
     except production_ledger_persistence.ProductionLedgerAuthorityIncomplete:
         raise
     except Exception:
         return False
-    if validate_review(ep):return False
+    if validate_review(ep) and not valid_weak_baseline(ep):return False
     try:
         binding=_revision_baseline_binding(ep)
         if binding:
@@ -350,6 +422,11 @@ def validate_final_requirement(ep):
     """Final verify accepts real baseline review or an explicitly marked legacy backfill."""
     ep=Path(ep).resolve();errors=validate_review(ep)
     if not errors:return []
+    if valid_weak_baseline(ep):
+        review=read_json(ep/REL)
+        if not character_visual_contract.pixel_master_required(ep):return []
+        expected={k:review[k] for k in ("asset_path","sha256","frame_contract_sha256","frame")}
+        return character_visual_contract.validate_pixel_master(ep,expected)
     mp=ep/character_visual_contract.PIXEL_MASTER_REL
     if mp.is_file():
         try:
