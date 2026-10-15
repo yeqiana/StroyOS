@@ -78,7 +78,7 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--path", required=True)
     s.add_argument("--provider-receipt", help="provider RAW dimension receipt JSON")
     s.add_argument("--generation-key", help="immutable Generation Attempt key")
-    s.add_argument("--generation-attempt-index", type=int, choices=[1, 2])
+    s.add_argument("--generation-attempt-index", type=int, choices=[1, 2, 3])
     s.add_argument("--production-revision-id", help="formal Episode production revision binding")
     s.set_defaults(func=cmd_success)
 
