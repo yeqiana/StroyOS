@@ -65,7 +65,10 @@ export const RuntimeRecoveryInsight: React.FC<Props> = ({ episodeRef, detail, so
     </div>
     <p data-recovery-code={diagnosis.code} className="mt-2 text-[12px] font-medium text-[var(--text-primary)]" role="status">{diagnosis.title}</p>
     <p className="mt-1 text-[11px] leading-5 text-[var(--text-secondary)]">{diagnosis.explanation}</p>
-    <div className="mt-3 border-t border-[var(--border-subtle)] pt-3" aria-label="Task Attempt Worker 生产证据矩阵">
+    <p aria-label="恢复诊断下一步" className="mt-2 text-[11px] leading-5 text-[var(--text-secondary)]">下一步：先确认授权 Runtime 的执行身份、任务及 Attempt 状态；当前只读页面不能启动或重试。</p>
+    <details aria-label="生产技术证据" className="mt-3 border-t border-[var(--border-subtle)] pt-2">
+      <summary className="cursor-pointer py-2 text-[12px] text-[var(--text-secondary)]">核验依据与技术细节 · 已核验 {verifiedSources}/5</summary>
+    <div className="pt-2" aria-label="Task Attempt Worker 生产证据矩阵">
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
         <h5 className="text-[11px] font-semibold text-[var(--text-secondary)]">生产证据完整度</h5>
         <div className="flex items-center gap-2 text-[11px] text-[var(--text-tertiary)]">
@@ -84,6 +87,6 @@ export const RuntimeRecoveryInsight: React.FC<Props> = ({ episodeRef, detail, so
       <Descriptions size="small" column={1} colon={false} items={evidenceRows} />
       <p className="mt-2 text-[11px] leading-5 text-[var(--text-tertiary)]" data-r37-evidence-expiry="120s">R37 证据采样非原子事务；Worker/Writer 接入时须双次核验，最多保留 120 秒的只读观测有效性，超时自动撤销已核验展示。</p>
     </div>
-    <p className="mt-2 border-t border-[var(--border-subtle)] pt-2 text-[11px] text-[var(--text-tertiary)]">此处不提供启动、重试、跳过门禁或发布操作；正式恢复须由已授权 Runtime 重新确认权威状态与资源配额。</p>
+    </details>
   </section>;
 };

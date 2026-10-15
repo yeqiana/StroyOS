@@ -94,30 +94,34 @@ export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMor
         rowKey={item=>item.episode_id||item.episode_ref||item.title||'unknown'}
         dataSource={filtered}
         className="storyos-authority-grid"
-        scroll={{x:820}}
+        scroll={{x:800}}
         onRow={item=>({onClick:()=>setSelected(item),className:'cursor-pointer'})}
         locale={{emptyText:'接口已响应，但没有可显示的阶段摘要'}}
         columns={[
-          {title:'作品',key:'title',render:(_,item)=><div className="min-w-0"><span title={item.title||item.episode_ref||item.episode_id} className="block max-w-[560px] truncate text-[13px] font-semibold text-[var(--text-primary)]">{item.title||item.episode_ref||item.episode_id||'未知作品'}</span><span className="block max-w-[560px] truncate font-mono text-[10px] text-[var(--text-tertiary)]">{item.episode_ref||item.episode_id||'未提供作品标识'}</span></div>},
-          {title:'生产阶段',dataIndex:'production_stage',key:'stage',width:160,render:(value:string)=><span className="inline-flex items-center gap-2 text-[12px] text-[var(--text-secondary)]"><span className="h-1.5 w-1.5 rounded-full bg-[var(--text-tertiary)]"/>{stageLabel(value||'NO_STATE')}</span>},
-          {title:'Driver持锁报告',key:'writer',width:160,render:(_,item)=><span className="text-[11px] text-[var(--text-secondary)]">{item.writer_owner_status==='FRESH_PRODUCER_LOCK_CLAIM'?'持锁心跳新鲜（自报）':'未核验'}</span>},
-          {title:'数据来源',dataIndex:'state_source',key:'source',width:190,render:(value:string)=><span title={value||'未提供'} className="text-[12px] text-[var(--text-tertiary)]">{value==='local_workspace_episode_state_file'?'本机文件 · 只读':value==='isolated-test'?'隔离测试':value||'未提供'}</span>},
-          {title:'更新时间',key:'updated',width:144,render:(_,item)=><span className="tabular-nums text-[11px] text-[var(--text-tertiary)]">{item.updated_at||item.observed_at?String(item.updated_at||item.observed_at).replace('T',' ').slice(0,16):'未知'}</span>},
-          {title:'',key:'action',width:90,align:'right',render:(_,item)=><Button type="link" aria-label={'查看权威阶段：'+(item.title||item.episode_ref||item.episode_id)} size="small" onClick={event=>{event.stopPropagation();setSelected(item);}}>详情</Button>}
+          {title:'作品',key:'title',width:280,render:(_,item)=><div className="min-w-0"><span title={item.title||item.episode_ref||item.episode_id} className="block max-w-[560px] truncate text-[13px] font-semibold text-[var(--text-primary)]">{item.title||item.episode_ref||item.episode_id||'未知作品'}</span><span className="block max-w-[560px] truncate font-mono text-[10px] text-[var(--text-tertiary)]">{item.episode_ref||item.episode_id||'未提供作品标识'}</span></div>},
+          {title:'生产阶段',dataIndex:'production_stage',key:'stage',width:140,render:(value:string)=><span className="inline-flex items-center gap-2 text-[12px] text-[var(--text-secondary)]"><span className="h-1.5 w-1.5 rounded-full bg-[var(--text-tertiary)]"/>{stageLabel(value||'NO_STATE')}</span>},
+          {title:'Driver持锁报告',key:'writer',width:160,responsive:['lg'],render:(_,item)=><span className="text-[11px] text-[var(--text-secondary)]">{item.writer_owner_status==='FRESH_PRODUCER_LOCK_CLAIM'?'持锁心跳新鲜（自报）':'未核验'}</span>},
+          {title:'数据来源',dataIndex:'state_source',key:'source',width:190,responsive:['lg'],render:(value:string)=><span title={value||'未提供'} className="text-[12px] text-[var(--text-tertiary)]">{value==='local_workspace_episode_state_file'?'本机文件 · 只读':value==='isolated-test'?'隔离测试':value||'未提供'}</span>},
+          {title:'更新时间',key:'updated',width:144,responsive:['lg'],render:(_,item)=><span className="tabular-nums text-[11px] text-[var(--text-tertiary)]">{item.updated_at||item.observed_at?String(item.updated_at||item.observed_at).replace('T',' ').slice(0,16):'未知'}</span>},
+          {title:'',key:'action',width:88,fixed:'right',align:'right',render:(_,item)=><Button type="link" aria-label={'查看权威阶段：'+(item.title||item.episode_ref||item.episode_id)} size="small" onClick={event=>{event.stopPropagation();setSelected(item);}}>详情</Button>}
         ]}
         pagination={{current:safePage,pageSize,total:filtered.length,showSizeChanger:true,pageSizeOptions:['12','20','50'],showTotal:n=>`本次匹配 ${n} 条`,onChange:(next,size)=>{setPage(next);setPageSize(size);}}}
       />
       {hasMore&&<div className="flex items-center justify-between border-t border-[var(--border-subtle)] px-4 py-3"><span className="text-[12px] text-[var(--text-tertiary)]">仍有服务端记录未加载</span><Button loading={loadingMore} onClick={onLoadMore}>从 Platform API 加载下一页</Button></div>}
     </>}
     {selected && <Drawer open title="阶段证据详情 · 只读" onClose={()=>setSelected(null)} width="min(850px, 100vw)" destroyOnClose className="storyos-authority-inspector"><section aria-label="生产监控阶段详情" className="space-y-4">
-      <div className="min-w-0"><h3 className="text-[14px] font-semibold break-words">{selected.title || selected.episode_ref || selected.episode_id}</h3><p className="mt-1 text-[11px] text-[var(--text-tertiary)]">仅展示当前只读证据 · 未知执行状态不推断</p></div>
+      <div className="min-w-0">
+  <h3 className="text-[14px] font-semibold break-words">{selected.title || selected.episode_ref || selected.episode_id}</h3>
+  <p aria-label="本次生产判断" role="status" className="mt-2 text-[12px] font-medium text-[var(--text-primary)]">{detailIsCurrent && visibleDetail?.provider_call_observation?.provider_call_verified ? "已核验图片调用窗口 · 不代表整集持续运行" : "当前执行：尚未核验"}</p>
+  <p className="mt-1 text-[11px] text-[var(--text-secondary)]">下一步：查看下方恢复安全诊断；正式操作须由已授权 Runtime 核对。</p>
+</div>
       {(detailState === 'loading' || (detailState === 'available' && !detailIsCurrent)) && <p role="status" className="text-[var(--text-secondary)]">正在读取扩展详情，下方摘要已可查看…</p>}
       {detailState === 'unavailable' && <p role="alert" className="text-[var(--warning)]">扩展详情接口不可用，以下保留已读取的阶段证据。</p>}
       <dl className="space-y-0">
         {[
           ['生产阶段', stageLabel(selected.production_stage || 'NO_STATE')],
           ['数据来源', selected.state_source === 'local_workspace_episode_state_file' ? '本机状态文件 · 只读' : text(selected.state_source)],
-          ['更新时间', text(selected.updated_at || selected.observed_at)],
+          ['证据原始更新时间', text(selected.updated_at || selected.observed_at)],
           ...(detailIsCurrent ? [
             ['执行状态', text(visibleDetail?.execution_status)],
             ['当前动作', text(visibleDetail?.current_action || visibleDetail?.next_step)],
