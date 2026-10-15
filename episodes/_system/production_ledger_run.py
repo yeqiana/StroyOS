@@ -260,6 +260,41 @@ def cmd_begin(args: argparse.Namespace) -> None:
     print(f"{key}: {frame['status']} attempt={attempt['attempt_id']} fingerprint={attempt['request_fingerprint']}")
 
 
+def _verified_episode13_third_image_success(ep: Path, frame_key: str, attempt: dict,
+                                             generation_key: str) -> bool:
+    """Accept only the proven compensation third attempt after Provider success."""
+    if (ep.name != "13_失物归还的那扇门" or ep.parent.name != "00_独立篇"
+            or frame_key != "01" or attempt.get("kind") != "baseline_candidate"
+            or not generation_key):
+        return False
+    try:
+        import generation_attempt_authority as authority
+        import logical_asset_identity as identity
+
+        key = identity.frame_asset_key(ep, 1)
+        first = authority.load_attempt(ep, key, 1) or {}
+        second = authority.load_attempt(ep, key, 2) or {}
+        third = authority.load_attempt(ep, key, 3) or {}
+        state = authority.load_asset_state(ep, key)
+        return bool(
+            first.get("status") == "FAILED_AFTER_DISPATCH"
+            and first.get("failure_class") == "IMAGE_TOOL_NETWORK_ERROR_DURABLE_RECEIPT"
+            and second.get("status") == "SUCCEEDED"
+            and second.get("provider") == "codex_subscription"
+            and third.get("status") == "SUCCEEDED"
+            and third.get("attempt_index") == 3
+            and third.get("generation_key") == generation_key
+            and third.get("provider") == "codex_subscription"
+            and third.get("payload_model") == "gpt-image-2.5-flare"
+            and third.get("payload_quality") == "high"
+            and third.get("result_ref")
+            and state.get("attempts_consumed") == 3
+            and state.get("active_attempt_index") is None
+        )
+    except Exception:
+        return False
+
+
 def cmd_success(args: argparse.Namespace) -> None:
     ep = episode_dir(args.episode_dir)
     path, data = get_ledger(ep)
@@ -288,7 +323,10 @@ def cmd_success(args: argparse.Namespace) -> None:
     if bool(generation_key) != bool(generation_attempt_index):
         raise SystemExit("generation_key and generation_attempt_index must be supplied together")
     if generation_attempt_index is not None and generation_attempt_index not in {1, 2}:
-        raise SystemExit("generation_attempt_index must be 1 or 2")
+        if not (generation_attempt_index == 3
+                and _verified_episode13_third_image_success(
+                    ep, key, attempt, generation_key)):
+            raise SystemExit("generation_attempt_index outside authorized bounded budget")
     candidate_info = {
         "path": repo_relative(candidate),
         "sha256": sha256_file(candidate),

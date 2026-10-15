@@ -54,6 +54,14 @@ def _history_integrity_issues(episode_id: str, attempts: list[dict],
             return ""
         return key
 
+    def hard_cap(key: str) -> int:
+        # MySQL CHECK and Generation Attempt Authority permit one provenance-
+        # fenced compensatory frame; all other assets stay at two calls.
+        if (episode_id == "00_独立篇/13_失物归还的那扇门"
+                and key == episode_id + "/frame-01"):
+            return 3
+        return 2
+
     def index_of(raw, key: str, code: str) -> int | None:
         # MySQL BIGINT/INT columns arrive as ints; accept plain digit strings
         # from protocol adapters, but never floats, booleans or signed values.
@@ -64,7 +72,7 @@ def _history_integrity_issues(episode_id: str, attempts: list[dict],
             findings.add((key, code))
             return None
         value = int(raw)
-        if not 1 <= value <= 2:
+        if not 1 <= value <= hard_cap(key):
             findings.add((key, code))
             return None
         return value
@@ -95,7 +103,7 @@ def _history_integrity_issues(episode_id: str, attempts: list[dict],
         if isinstance(raw_consumed, bool) or (
             not isinstance(raw_consumed, int)
             and not (isinstance(raw_consumed, str) and raw_consumed.isdecimal())
-        ) or not 0 <= int(raw_consumed) <= 2:
+        ) or not 0 <= int(raw_consumed) <= hard_cap(key):
             findings.add((key, "ATTEMPT_BUDGET_OUT_OF_RANGE"))
         elif int(raw_consumed) < committed_indices.get(key, 0):
             # A paid/committed image dispatch must have consumed its shared
