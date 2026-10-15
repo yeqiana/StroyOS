@@ -12,13 +12,41 @@ const journey=async function(){
  try{
  const nav=await wait(()=>document.querySelector('nav[aria-label="主要页面"]'),'nav');
  const monitorNav=[...nav.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')==='生产监控');
- if(!monitorNav)throw Error('monitor navigation missing'); monitorNav.click();
+ if(!monitorNav)throw Error('monitor navigation missing');
+ if(innerWidth===1440){
+  const originalRedisFetch=window.fetch.bind(window);
+  window.fetch=async function(input,...args){
+   const response=await originalRedisFetch(input,...args);
+   const url=String(typeof input==='string'?input:input?.url||'');
+   if(!url.includes('/api/v1/local-monitor/tasks')&&!url.includes('/api/v1/local-monitor/workers'))return response;
+   const payload=await response.clone().json();
+   if(!payload?.data)throw Error('Redis test API envelope missing');
+   if(url.includes('/api/v1/local-monitor/tasks')){
+    Object.assign(payload.data,{available:true,scan_complete:true,record_count:2,running_claims:1,queued_claims:1,unverified_count:0,live_execution_verified:false,episode_binding_verified:false,records:[{task_tag:'R26-fixture',recorded_status:'RUNNING',episode_ref:null,frame:null,worker:null,updated_at:null,freshness_verified:false}]});
+   }else{
+    Object.assign(payload.data,{available:true,scan_complete:true,record_count:3,fresh_heartbeats:1,stale_heartbeats:0,unverified_heartbeats:2,worker_execution_verified:false});
+   }
+   return new Response(JSON.stringify(payload),{status:response.status,headers:{'Content-Type':'application/json'}});
+  };
+ }
+ monitorNav.click();
  const monitor=await wait(()=>document.querySelector('#storyos-production-monitor-view'),'monitor');
  await wait(()=>monitor.querySelector('[aria-label="当前生产执行证据"]'),'execution evidence');
  const e=monitor.querySelector('[aria-label="当前生产执行证据"]');
  const interval=monitor.querySelector('[aria-label="刷新间隔"]');
  if(!interval?.closest('.ant-select')?.textContent?.includes('15 秒'))throw Error('15 second refresh default not represented in options');
  if(!e.textContent.includes('尚未核验'))throw Error('missing cautious execution status');
+ const redisSummary=await wait(()=>monitor.querySelector('[aria-label="Redis 观测摘要"]'),'Redis first-screen summary');
+ if(innerWidth===1440){
+  await wait(()=>redisSummary.textContent.includes('2 条（自报运行 1）')&&redisSummary.textContent.includes('3 条（时间/TTL 新鲜 1）'),'mock Redis counts');
+  if(!e.textContent.includes('尚未核验'))throw Error('claimed RUNNING misrepresented as verified execution');
+  const redisDetails=monitor.querySelector('details[aria-label="Redis 只读技术证据"]');
+  if(!redisDetails||redisDetails.open)throw Error('Redis evidence must remain collapsed by default');
+  redisDetails.open=true;
+  await wait(()=>redisDetails.textContent.includes('R26-fixture'),'mock Redis Task record');
+  if(!redisDetails.textContent.includes('采集于'))throw Error('Redis evidence collection time missing');
+  redisDetails.open=false;
+ }
  await wait(()=>monitor.querySelector('.storyos-authority-grid button[aria-label^="查看权威阶段"]'),'stage row');
  const stageAction=monitor.querySelector('.storyos-authority-grid button[aria-label^="查看权威阶段"]');
  const stageRect=stageAction.getBoundingClientRect();

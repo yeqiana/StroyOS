@@ -395,7 +395,9 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
 
       <div aria-label="当前生产执行证据" role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--border-subtle)] pb-3 text-[12px]">
         <strong className="font-medium text-[var(--text-primary)]">当前执行：尚未核验</strong>
-        <span className="text-[var(--text-secondary)]">作品阶段不等于实时生图；没有可验证的执行证据时，不推断任务正在运行或已停止。</span>
+                <span aria-label="Redis 观测摘要" className="text-[var(--text-secondary)]">
+          Redis Task：{taskSnapshot?.available ? String(taskSnapshot.record_count) + " 条（自报运行 " + taskSnapshot.running_claims + "）" : "不可用"} · Worker 心跳：{workerSnapshot?.available ? String(workerSnapshot.record_count) + " 条（时间/TTL 新鲜 " + workerSnapshot.fresh_heartbeats + "）" : "不可用"}；仅为只读记录，不等于实时生图。
+        </span>
       </div>
       <div className="os-console-toolbar flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] py-1 pb-3" aria-label="生产监控主工作区切换">
         <Segmented aria-label="生产监控视图" value={primaryView} onChange={value=>setPrimaryView(value as 'stages'|'history')}
@@ -415,7 +417,8 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
           ) : (
             <>
               <span>采集记录 {workerSnapshot.record_count}</span>
-              <span>时间与 TTL 均新鲜 {workerSnapshot.fresh_heartbeats}</span>
+              <span>时间/TTL 新鲜 {workerSnapshot.fresh_heartbeats}（非执行核验）</span>
+                <span className="text-[var(--text-tertiary)]">采集于 {workerSnapshot.observed_at ? new Date(workerSnapshot.observed_at).toLocaleString("zh-CN") : "未提供"}</span>
               <span className={workerSnapshot.stale_heartbeats > 0 ? 'text-[var(--warning)]' : ''}>心跳过期 {workerSnapshot.stale_heartbeats}</span>
               <span>无法核验 {workerSnapshot.unverified_heartbeats}</span>
               {!workerSnapshot.scan_complete && <span className="text-[var(--warning)]">仅部分扫描结果</span>}
@@ -434,9 +437,10 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
             ) : (
               <>
                 <span>已扫描 {taskSnapshot.record_count}</span>
+                <span className="text-[var(--text-tertiary)]">采集于 {taskSnapshot.observed_at ? new Date(taskSnapshot.observed_at).toLocaleString("zh-CN") : "未提供"}</span>
                 <span>自报运行 {taskSnapshot.running_claims}</span>
                 <span>自报排队 {taskSnapshot.queued_claims}</span>
-                <span>{taskSnapshot.unverified_count ? `无法核验 ${taskSnapshot.unverified_count}` : '状态格式已核对'}</span>
+                <span>{taskSnapshot.unverified_count ? `无法核验 ${taskSnapshot.unverified_count}` : '状态格式已核对（非执行核验）'}</span>
                 {!taskSnapshot.scan_complete && <span className="text-[var(--warning)]">扫描不完整</span>}
               </>
             )}
