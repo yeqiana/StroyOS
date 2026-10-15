@@ -307,49 +307,49 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
         return (
           <span className="inline-flex items-center gap-1.5 text-xs font-mono font-medium text-[var(--info)]">
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--info)]" />
-            <span>运行中</span>
+            <span>记录时运行中</span>
           </span>
         );
       case 'WAITING':
         return (
           <span className="inline-flex items-center gap-1.5 text-xs font-mono font-medium text-[var(--warning)]">
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--warning)]" />
-            <span>{run.waitingReason ? `排队中 (${run.waitingReason})` : '排队中'}</span>
+            <span>记录时 {run.waitingReason ? `排队中 (${run.waitingReason})` : '排队中'}</span>
           </span>
         );
       case 'RETRYING':
         return (
           <span className="inline-flex items-center gap-1.5 text-xs font-mono font-medium text-[var(--warning)]">
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--warning)]" />
-            <span>自动重试中</span>
+            <span>记录时重试中</span>
           </span>
         );
       case 'BLOCKED':
         return (
           <span className="inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-[var(--danger)]">
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--danger)]" />
-            <span>阻塞 · 需人工介入</span>
+            <span>记录时阻塞</span>
           </span>
         );
       case 'FAILED':
         return (
           <span className="inline-flex items-center gap-1.5 text-xs font-mono font-medium text-[var(--danger)]">
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--danger)]" />
-            <span>执行失败</span>
+            <span>记录时失败</span>
           </span>
         );
       case 'COMPLETED':
         return (
           <span className="inline-flex items-center gap-1.5 text-xs font-mono font-medium text-[var(--success)]">
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--success)]" />
-            <span>已完成</span>
+            <span>记录时运行结束</span>
           </span>
         );
       default:
         return (
           <span className="inline-flex items-center gap-1.5 text-xs font-mono text-[var(--text-tertiary)]">
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-disabled)]" />
-            <span>未开始</span>
+            <span>记录时未开始</span>
           </span>
         );
     }
@@ -370,7 +370,7 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
         <div className="flex flex-col items-start gap-1">
           <h1 className="os-page-heading">
             生产监控
-          </h1><p className="mt-1 text-[12px] text-[var(--text-secondary)]">只显示有来源的生产证据；未验证的在线状态不作推断</p>
+          </h1><p className="mt-1 text-[12px] text-[var(--text-secondary)]">查看作品阶段与历史记录 · 只读</p>
         </div>
 
         <div className="flex items-center gap-2 text-xs">
@@ -393,6 +393,10 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
         </div>
       </div>
 
+      <div aria-label="当前生产执行证据" role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--border-subtle)] pb-3 text-[12px]">
+        <strong className="font-medium text-[var(--text-primary)]">当前执行：尚未核验</strong>
+        <span className="text-[var(--text-secondary)]">作品阶段不等于实时生图；没有可验证的执行证据时，不推断任务正在运行或已停止。</span>
+      </div>
       <div className="os-console-toolbar flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] py-1 pb-3" aria-label="生产监控主工作区切换">
         <Segmented aria-label="生产监控视图" value={primaryView} onChange={value=>setPrimaryView(value as 'stages'|'history')}
           options={[{value:'stages',label:`阶段证据 (${runtimeCoverage.loaded})`},{value:'history',label:`历史 Run (${runs.length})`}]}/>
@@ -457,7 +461,7 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
           </div>
         </details>
       </section> : <section aria-label="历史 Run 主视图" className="min-w-0 space-y-3">
-      <p className="text-[12px] text-[var(--text-secondary)]">历史工作区运行快照（非实时），与本机阶段证据不同源；仅用于追溯。</p>
+      <p className="text-[12px] text-[var(--text-secondary)]">历史 Run 是保存时的记录；运行中、排队和完成仅指当时的 Run，不代表当前正在生产或整部作品完成。</p>
       {/* ======================= 1. Operational Status Bar ======================= */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-2 py-2.5 text-xs">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
@@ -471,7 +475,7 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
           <div className="flex items-baseline gap-1.5">
             <span className="text-[11px] text-[var(--text-tertiary)] flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--info)]" />
-              <span>运行</span>
+              <span>记录时运行</span>
             </span>
             <span className="text-[15px] font-semibold text-[var(--info)]">
               {runs.filter(r => r.status === 'RUNNING').length}
@@ -483,7 +487,7 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
           <div className="flex items-baseline gap-1.5">
             <span className="text-[11px] text-[var(--text-tertiary)] flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--warning)]" />
-              <span>等待</span>
+              <span>记录时等待</span>
             </span>
             <span className="text-[15px] font-semibold text-[var(--warning)]">
               {runs.filter(r => r.status === 'WAITING').length}
@@ -495,7 +499,7 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
           <div className="flex items-baseline gap-1.5">
             <span className="text-[11px] text-[var(--text-tertiary)] flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--warning)]" />
-              <span>重试</span>
+              <span>记录时重试</span>
             </span>
             <span className="text-[15px] font-semibold text-[var(--warning)]">
               {runs.filter(r => r.status === 'RETRYING').length}
@@ -507,7 +511,7 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
           <div className="flex items-baseline gap-1.5">
             <span className="text-[11px] text-[var(--danger)] font-medium flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--danger)]" />
-              <span>阻塞</span>
+              <span>记录时阻塞</span>
             </span>
             <span className="text-[15px] font-semibold text-[var(--danger)]">
               {runs.filter(r => r.status === 'BLOCKED').length}
@@ -519,7 +523,7 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
           <div className="flex items-baseline gap-1.5">
             <span className="text-[11px] text-[var(--text-tertiary)] flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--success)]" />
-              <span>完成</span>
+              <span>记录时结束</span>
             </span>
             <span className="text-[15px] font-semibold text-[var(--text-primary)]">
               {runs.filter(r => r.status === 'COMPLETED').length}
@@ -579,22 +583,21 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
           rowKey="id"
           size="small"
           className="storyos-monitor-grid"
-          scroll={{x:1050}}
+          scroll={{x:900}}
           dataSource={pagedRuns}
           onRow={run=>({onClick:()=>void selectRun(run),className:'cursor-pointer'})}
           pagination={false}
           locale={{emptyText:'暂无符合筛选条件的历史运行记录'}}
           columns={[
-            {title:'#',key:'index',width:52,align:'center',render:(_,run)=>((safePage-1)*pageSize+pagedRuns.indexOf(run)+1)},
+
             {title:'作品',dataIndex:'storyName',key:'name',width:240,render:(value:string)=><span title={value} className="block max-w-[240px] truncate text-[13px] font-semibold text-[var(--text-primary)]">{value}</span>},
-            {title:'生产阶段',dataIndex:'stageLabel',key:'stage',width:135,render:(_:unknown,run)=>getStageBadge(run.currentStage,run.stageLabel)},
+
             {title:'状态',key:'status',width:162,render:(_,run)=>getStatusBadge(run)},
-            {title:'完成率',key:'progress',width:126,render:(_,run)=><span className="flex items-center gap-2 text-[12px] tabular-nums"><Progress size="small" percent={run.progressPercent} strokeColor={run.status==='BLOCKED'?'var(--danger)':'var(--info)'} trailColor="var(--border-normal)" showInfo={false} className="!m-0 !w-16"/>{run.progressPercent}%</span>},
-            {title:'帧数',key:'frames',width:98,render:(_,run)=><span className="tabular-nums text-[12px] text-[var(--text-secondary)]">{run.completedFrames}/{run.totalFrames}</span>},
-            {title:'耗时',dataIndex:'duration',key:'duration',width:95,render:(v:string)=><span className="text-[12px] text-[var(--text-secondary)]">{v||'未知'}</span>},
-            {title:'心跳来源',key:'heartbeat',width:170,render:()=> <span className="text-[12px] text-[var(--text-tertiary)]">历史快照 · 未验证</span>},
+            {title:'记录时图片进度',key:'progress',width:126,render:(_,run)=><span className="flex items-center gap-2 text-[12px] tabular-nums"><Progress size="small" percent={run.progressPercent} strokeColor={run.status==='BLOCKED'?'var(--danger)':'var(--info)'} trailColor="var(--border-normal)" showInfo={false} className="!m-0 !w-16"/>{run.progressPercent}%</span>},
+
+
             {title:'异常摘要',key:'exception',width:160,ellipsis:true,render:(_,run)=>run.exceptionSummary==='-'?<span className="text-[var(--text-disabled)]">—</span>:<span title={run.exceptionSummary} className="text-[12px] font-medium text-[var(--danger)]">{run.exceptionSummary}</span>},
-            {title:'操作',key:'action',width:84,align:'right',render:(_,run)=><Button type="link" size="small" onClick={e=>{e.stopPropagation();void selectRun(run);}}>查看详情</Button>}
+            {title:'操作',key:'action',width:100,fixed:'right',align:'right',render:(_,run)=><Button type="link" size="small" onClick={e=>{e.stopPropagation();void selectRun(run);}}>查看详情</Button>}
           ]}
         />
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border-subtle)] px-3 py-3"><span className="text-[11px] text-[var(--text-tertiary)]">历史快照 · 匹配 {filteredRuns.length} 条</span><Pagination size="small" current={safePage} pageSize={pageSize} total={filteredRuns.length} showSizeChanger pageSizeOptions={["10","20","50","100"]} showTotal={n=>`共 ${n} 条`} onChange={(p,s)=>{setPage(p);setPageSize(s);}} /></div>
