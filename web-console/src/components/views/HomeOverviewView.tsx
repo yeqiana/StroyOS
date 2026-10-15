@@ -122,10 +122,6 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
       </div>
     </section>
 
-    <CanonicalRuntimeDirectory episodes={episodes} condensed onSelectHistorical={onSelectEpisode} onOpenMonitor={onOpenRuntimeEpisode}/>
-
-
-
     <section aria-label="最近创作画廊" className="min-w-0 space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="os-section-heading">最近创作</h2><p className="mt-1 text-[11px] text-[var(--text-tertiary)]">展示已有批准图片的作品 · 不模拟生成结果</p></div><button type="button" onClick={()=>onNavigate('episodes')} className="inline-flex items-center gap-1 text-[12px] text-[var(--info)]">查看全部作品 <ArrowRight size={14}/></button></div>
       {recentApproved.length>0?<div className={'grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3'+(recentApproved.length>=4?' xl:grid-cols-4':'')}>
@@ -145,6 +141,13 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
       {recentApproved.length>0&&<p className="text-[11px] text-[var(--text-tertiary)]">已批准图片与工作区帧进度来自不同证据，图片存在不代表本次生成完成。</p>}
     </section>
 
+    <details aria-label="工作台完整管理与数据核对" className="group border-t border-[var(--border-subtle)] pt-2">
+      <summary className="flex cursor-pointer items-center justify-between gap-3 py-2 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
+        <span>作品管理与数据核对 <span className="ml-2 text-[11px] text-[var(--text-tertiary)]">详细目录、筛选、来源与阶段证据</span></span>
+        <span className="text-[var(--info)]">展开</span>
+      </summary>
+      <div className="space-y-4 pt-3">
+        <CanonicalRuntimeDirectory episodes={episodes} condensed onSelectHistorical={onSelectEpisode} onOpenMonitor={onOpenRuntimeEpisode}/>
     <section aria-label="项目概况" className="flex flex-wrap items-center gap-x-7 gap-y-2 border-y border-[var(--border-subtle)] py-2 text-[12px]">
       {[{label:'作品记录',value:episodes.length},{label:'有批准图片',value:approved.length},{label:'未发布',value:unfinished.length},{label:'项目空间',value:projects.length}].map(metric=><span key={metric.label} className="inline-flex items-baseline gap-2 text-[var(--text-secondary)]"><span>{metric.label}</span><strong className="text-[15px] font-semibold tabular-nums text-[var(--text-primary)]">{metric.value}</strong></span>)}
       <span className="ml-auto text-[11px] text-[var(--text-tertiary)]">以下数字为历史工作区快照，不等于正式 Runtime 目录总量</span>
@@ -254,5 +257,7 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
           <button type="button" onClick={() => onNavigate('pipeline')} className="mt-3 inline-flex items-center gap-1 text-[12px] text-[var(--text-secondary)] hover:text-[var(--info)]">在工作流中查看 <ArrowRight size={13}/></button>
         </>}
     </section>
+      </div>
+    </details>
   </div>;
 };
