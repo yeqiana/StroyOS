@@ -538,6 +538,8 @@ def calibration_assets(ep: Path, *, metadata_only: bool = False) -> list[dict]:
                 "impact_level": current["hash_material"]["frame_directive"].get("impact_level"),
                 "frame_mode": current["hash_material"]["frame_directive"].get("frame_mode"),
                 "scale_reference": current["hash_material"]["frame_directive"].get("scale_reference"),
+                "required_visual_cues": current["hash_material"]["frame_directive"].get("required_visual_cues") or [],
+                "capture_constraint": current["hash_material"].get("capture_event") or {},
             }
         by_role[role] = row
         out.append(row)
@@ -829,6 +831,8 @@ def critic_prompt(ep: Path, contract: dict, assets: list[dict], candidate: Path,
     listed = "\n".join(
         f"- id={r['id']} role={r['role']} frame={r['frame']:02d} "
         f"mode={r['frame_mode']} impact={r['impact_level']} scale_reference={r['scale_reference']!r} "
+        f"required_visual_cues={r.get('required_visual_cues', [])!r} "
+        f"capture_event={(r.get('capture_constraint') or {})!r} "
         f"frame_contract_sha={r['frame_contract_sha256']}"
         for r in assets
     )
@@ -852,6 +856,12 @@ Role expectations:
 - worst_capture_condition: difficult weather/light/capture state must obey physical causes; no blanket weather filter.
 - first_major_anomaly: anomaly must be clearly readable yet embedded into believable reality rather than promo concept art.
 - high_impact_admission: impact 3-4 must visibly deliver its promised abnormal scale/consequence, include readable real-world scale reference, and STILL look like an accidental/working record rather than a cinematic poster.
+
+FRAME-CONTRACT VISUAL EVIDENCE (mandatory):
+The row's required_visual_cues and capture_event are taken directly from the SHA-bound locked Frame Contract. Evaluate what the *particular still photo* is required to show, not hypothetical spectacle implied by the role name/impact score.
+Do not require an impossible transition/motion or future consequence in a frame that explicitly depicts only its aftermath or an ordinary physical action.
+Do not ignore genuine absence, poor legibility, missing props, wrong chronology, or any specified cue; if a required cue is not visible, FAIL with concrete pixel evidence.
+Do not revise the locked Frame Contract, invent extra visual elements, or mark anything PASS solely because a contract says so.
 
 ORDINARY-LIFE VISUAL LOCK OVERRIDE:
 If this Episode is explicitly anomaly_applicable=false, do NOT invent or require an anomaly for calibration. The legacy first_major_anomaly slot means first_major_visual_contrast: judge whether the first strong celestial-world/life contrast is readable while ordinary behavior stays believable. high_impact_admission means high-impact world-scale daily-life imagery, not abnormal spectacle.
