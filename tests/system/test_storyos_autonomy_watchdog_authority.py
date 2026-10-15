@@ -34,15 +34,18 @@ def test_cross_process_lock_refuses_second_writer(tmp_path):
     import subprocess, sys
     source = (
         "import sys,time; from pathlib import Path;"
+        "import platform as stdlib_platform;"
+        "stdlib_platform.__path__=[str(Path(sys.argv[1]).resolve().parent/'platform')];"
         "sys.path.insert(0,sys.argv[1]);import storyos_autonomy_watchdog as w;"
         "ctx=w.episode_lock(Path(sys.argv[2]),sys.argv[3]);"
         "ctx.__enter__();print('LOCKED',flush=True);time.sleep(1.5);ctx.__exit__(None,None,None)"
     )
     process=subprocess.Popen(
-        [sys.executable,"-c",source,str(wd.ROOT/"scripts"),str(tmp_path),EP],
+        [sys.executable,"-P","-c",source,str(wd.ROOT/"scripts"),str(tmp_path),EP],
         cwd=wd.ROOT,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     try:
-        assert process.stdout.readline().strip()=="LOCKED"
+        child_banner=process.stdout.readline().strip()
+        assert child_banner=="LOCKED", ("watchdog child startup", process.poll(), process.stderr.read()[-800:])
         with pytest.raises(wd.LockBusy):
             with wd.episode_lock(tmp_path,EP):
                 pass

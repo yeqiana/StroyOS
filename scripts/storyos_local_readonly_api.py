@@ -1,7 +1,7 @@
 """本地 StoryOS 作品状态文件的只读 HTTP 投影。
 
 输入只来自显式指定的 workspace/episodes/**/meta/episode-state.json。
-不连接 MySQL/Redis、不修改文件、不推断 Worker 心跳、分账/发布或运行态。
+默认不连接生产 Runtime；仅显式启用的本机只读监控允许查看 Redis 的 Worker 心跳与 TaskStateManager 状态，不写入或推断执行授权。
 """
 from __future__ import annotations
 
@@ -25,6 +25,7 @@ from platform.api.http_server import PlatformApiDispatcher, PlatformApiRequestHa
 from platform.operations.local_episode_monitoring import read_recorded_production
 from platform.operations.local_mysql_monitor_readonly import observe_mysql_episode, empty as empty_mysql_monitor
 from platform.operations.local_worker_heartbeat_readonly import observe_local_redis_heartbeats
+from platform.operations.local_task_state_readonly import observe_local_redis_task_states
 from platform.operations.local_writer_owner_readonly import observe_writer_owner, unknown as unknown_writer_owner
 from platform.operations.local_production_progress_readonly import summarize_production_progress
 from platform.operations.local_provider_call_readonly import observe_provider_calls, unknown as unknown_provider_calls
@@ -303,7 +304,7 @@ class LocalReadOnlyHandler(PlatformApiRequestHandler):
 
     def do_GET(self) -> None:
         route = urlsplit(self.path)
-        if route.path == "/api/v1/local-monitor/workers":
+        if route.path in ("/api/v1/local-monitor/workers", "/api/v1/local-monitor/tasks"):
             host = self.headers.get("Host", "")
             origin = self.headers.get("Origin", "")
             site = self.headers.get("Sec-Fetch-Site", "")
@@ -312,7 +313,9 @@ class LocalReadOnlyHandler(PlatformApiRequestHandler):
                     host not in (f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}")):
                 self._send(403, {"code": "READ_ONLY_LOCAL_EVIDENCE", "data": None})
                 return
-            self._send(200, {"code": "OK", "data": observe_local_redis_heartbeats()})
+            observation = (observe_local_redis_heartbeats() if route.path.endswith("/workers")
+                           else observe_local_redis_task_states())
+            self._send(200, {"code": "OK", "data": observation})
             return
         media = getattr(self.server, "approved_media", None)
         if media is not None and (route.path == "/api/v1/local-media/catalog" or route.path.startswith(MEDIA_PREFIX) or route.path.startswith(FINGERPRINT_PREFIX)):

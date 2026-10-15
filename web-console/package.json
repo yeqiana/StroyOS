@@ -51,6 +51,7 @@
     "test:rea-mock-auth": "node scripts/test-rea-mock-auth-browser.mjs",
     "test:rea-account-fidelity": "node scripts/test-rea-account-fidelity-browser.mjs",
     "test:rea-sidebar-footer": "node scripts/test-rea-sidebar-footer-browser.mjs",
+    "test:redis-task-monitor": "node scripts/test-redis-task-observation-browser.mjs",
     "test:mock-auth-contract": "node --experimental-strip-types scripts/test-rea-mock-auth-adapter.mjs",
     "test:frame-evidence": "node scripts/test-frame-evidence-browser.mjs",
     "capture:r27": "node scripts/capture-r26-compare-cdp.mjs --r27",
