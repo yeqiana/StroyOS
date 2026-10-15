@@ -324,7 +324,8 @@ def execute(ep,item,timeout,codex):
         # MySQL serializes concurrent reserves; a late second process can
         # never use Attempt #2 as another first-frame entitlement probe.
         if (native_baseline_probe is not None
-                and not production_native_baseline_proof.first_attempt_only(generation_lease)):
+                and not production_native_baseline_proof.admitted_baseline_lease(
+                    ep, item, generation_lease)):
             raw_candidate_budget.release(ep, budget_token,
                                          reason="native_baseline_proof_requires_first_attempt")
             message = "NATIVE_VISUAL_BASELINE_PROOF_FIRST_ATTEMPT_ONLY"

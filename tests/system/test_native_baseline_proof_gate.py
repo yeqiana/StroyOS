@@ -116,6 +116,59 @@ def test_lost_property_episode_admits_only_exact_first_baseline(case):
 
 
 
+def test_episode13_second_proof_requires_exact_reconciled_failure(case, monkeypatch):
+    ep = case["ep"].parent / "13_失物归还的那扇门"
+    (ep / "meta").mkdir(parents=True)
+    (ep / "meta/visual-lock-plan.json").write_text("{}", encoding="utf-8")
+    plan = proof.PRODUCTION_EPISODE_PLANS[ep.name]
+    case["rows"][:] = [
+        {"frame": frame, "role": role,
+         "depends_on": [] if frame == 1 else [1]}
+        for frame, role in plan
+    ]
+    case["q"]["items"][:] = [
+        {"id": str(frame), "frame": frame, "kind": "original",
+         "model": "gpt-image-2.5-flare", "quality": "high",
+         "scope": "visual_lock", "status": "queued",
+         "depends_on": [] if frame == 1 else [1]}
+        for frame, _role in plan
+    ]
+    for frame, _role in plan:
+        case["states"][frame] = {"attempts_consumed": 0, "active_attempt_index": None}
+    case["states"][1]["attempts_consumed"] = 1
+    baseline = case["q"]["items"][0]
+    baseline["technical_retry_source_code"] = "IMAGE_BACKEND_ERROR"
+    baseline["generation_attempt_reason"] = "TECHNICAL_RETRY"
+    previous = {
+        "episode_id": "00_独立篇/13_失物归还的那扇门",
+        "attempt_index": 1, "status": "FAILED_AFTER_DISPATCH",
+        "failure_class": "IMAGE_TOOL_NETWORK_ERROR_DURABLE_RECEIPT",
+        "result_ref": None, "provider": "codex_subscription",
+        "payload_model": "gpt-image-2.5-flare", "payload_quality": "high",
+        "dispatch_committed_at": "2026-10-15T07:14:46",
+        "generation_observed_at": "2026-10-15T07:20:48",
+        "generation_key": "bound",
+    }
+    monkeypatch.setattr(proof.generation_attempt_authority,
+        "stable_generation_key", lambda *_: "bound")
+    monkeypatch.setattr(proof.generation_attempt_authority,
+        "load_attempt", lambda _ep, _key, ix: previous if ix == 1 else None)
+    assert proof.eligible(ep, baseline, case["payload"], case["controller"])
+    lease = {"attempt_index": 2, "fencing_token": 2,
+             "generation_key": "generation-2", "lease_token": "token-2"}
+    assert proof.admitted_baseline_lease(ep, baseline, lease)
+    assert not proof.admitted_baseline_lease(ep, baseline,
+        {**lease, "attempt_index": 3})
+    assert not proof.admitted_baseline_lease(ep, baseline,
+        {**lease, "fencing_token": 3})
+    previous["status"] = "OUTCOME_UNKNOWN"
+    assert not proof.eligible(ep, baseline, case["payload"], case["controller"])
+    assert not proof.admitted_baseline_lease(ep, baseline, lease)
+    previous["status"] = "FAILED_AFTER_DISPATCH"
+    case["states"][3]["attempts_consumed"] = 1
+    assert not proof.eligible(ep, baseline, case["payload"], case["controller"])
+
+
 def test_unrecognized_episode_directory_denied(case):
     assert not proof.eligible(
         case["ep"].parent / "05_not_authorized", case["q"]["items"][0],
@@ -189,7 +242,7 @@ def test_worker_retains_strict_normal_preflight():
     text = (SYSTEM / "image_worker_pool.py").read_text(encoding="utf-8")
     assert "image_payload_transport.payload_capability_preflight(" in text
     assert "production_native_baseline_proof.eligible(" in text
-    assert "production_native_baseline_proof.first_attempt_only(" in text
+    assert "production_native_baseline_proof.admitted_baseline_lease(" in text
     assert "payload_preflight_status == \"PASS\"" in text
 
 

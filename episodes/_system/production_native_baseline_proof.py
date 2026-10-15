@@ -35,6 +35,37 @@ PRODUCTION_EPISODE_PLANS = {
 }
 
 
+def verified_second_baseline_retry(ep: Path, item: dict) -> bool:
+    """Exact Episode 13 network-failed Attempt 1, never a general entitlement."""
+    try:
+        ep = Path(ep).resolve()
+        if (ep.name != "13_失物归还的那扇门"
+                or ep.parent.name != "00_独立篇"
+                or item.get("scope") != "visual_lock"
+                or int(item.get("frame") or 0) != 1
+                or item.get("technical_retry_source_code") != "IMAGE_BACKEND_ERROR"
+                or item.get("generation_attempt_reason") != "TECHNICAL_RETRY"):
+            return False
+        key = logical_asset_identity.frame_asset_key(ep, 1)
+        previous = generation_attempt_authority.load_attempt(ep, key, 1) or {}
+        return bool(
+            previous.get("attempt_index") == 1
+            and previous.get("status") == "FAILED_AFTER_DISPATCH"
+            and previous.get("failure_class") == "IMAGE_TOOL_NETWORK_ERROR_DURABLE_RECEIPT"
+            and previous.get("result_ref") in (None, "")
+            and previous.get("provider") == "codex_subscription"
+            and previous.get("payload_model") == "gpt-image-2.5-flare"
+            and previous.get("payload_quality") == "high"
+            and previous.get("dispatch_committed_at")
+            and previous.get("generation_observed_at")
+            and previous.get("generation_key") ==
+                generation_attempt_authority.stable_generation_key(
+                    previous["episode_id"], key, 1)
+        )
+    except Exception:
+        return False
+
+
 def eligible(ep: Path, item: dict, payload: dict, controller: dict) -> bool:
     """Read-only fail-closed admission for *only* the first official pixel."""
     try:
@@ -44,6 +75,10 @@ def eligible(ep: Path, item: dict, payload: dict, controller: dict) -> bool:
                 or ep.parent.name != "00_独立篇" or plan is None):
             return False
         frame_set = {frame for frame, _role in plan}
+        verified_retry = verified_second_baseline_retry(ep, item)
+        if verified_retry and generation_attempt_authority.load_attempt(
+                ep, logical_asset_identity.frame_asset_key(ep, 1), 2) is not None:
+            return False
         episode_request = runtime_request.effective_for_episode(ep) or {}
         if (episode_request.get("mode") != "full_auto"
                 or (episode_request.get("runtime") or {}).get("execution_mode") != "dag"
@@ -57,8 +92,10 @@ def eligible(ep: Path, item: dict, payload: dict, controller: dict) -> bool:
             return False
         if (int(item.get("frame") or 0) != 1 or item.get("scope") != "visual_lock"
                 or item.get("kind") != "original"
-                or item.get("technical_retry_source_code")
-                or item.get("generation_attempt_reason") not in ("", None, "PRIMARY_GENERATION")):
+                or (not verified_retry and
+                    (item.get("technical_retry_source_code")
+                     or item.get("generation_attempt_reason") not in
+                        ("", None, "PRIMARY_GENERATION")))):
             return False
         path = ep / "meta/visual-lock-plan.json"
         if not path.is_file():
@@ -99,10 +136,14 @@ def eligible(ep: Path, item: dict, payload: dict, controller: dict) -> bool:
                 or controller.get("reasoning_effort") != "high"
                 or not re.fullmatch(r"[0-9a-f]{64}", str(controller.get("model_policy_sha256") or ""))):
             return False
-        for frame in (1, 8, 16, 17):
+        for frame in sorted(frame_set):
             key = logical_asset_identity.frame_asset_key(ep, frame)
             state = generation_attempt_authority.load_asset_state(ep, key)
-            if int(state.get("attempts_consumed") or 0) or state.get("active_attempt_index") is not None:
+            consumed = int(state.get("attempts_consumed") or 0)
+            if state.get("active_attempt_index") is not None:
+                return False
+            if (consumed != 1 if verified_retry and frame == 1
+                    else consumed != 0):
                 return False
         return True
     except Exception:
@@ -146,6 +187,19 @@ def first_attempt_only(lease: dict) -> bool:
     return bool(isinstance(lease, dict) and int(lease.get("attempt_index") or 0) == 1
                 and int(lease.get("fencing_token") or 0) > 0
                 and lease.get("generation_key") and lease.get("lease_token"))
+
+
+def admitted_baseline_lease(ep: Path, item: dict, lease: dict) -> bool:
+    if first_attempt_only(lease):
+        return True
+    return bool(
+        isinstance(lease, dict)
+        and verified_second_baseline_retry(ep, item)
+        and int(lease.get("attempt_index") or 0) == 2
+        and int(lease.get("fencing_token") or 0) == 2
+        and lease.get("generation_key")
+        and lease.get("lease_token")
+    )
 
 
 def evidence_sha(probe: dict) -> str:
@@ -308,7 +362,7 @@ def record_unreviewed_pixel(ep: Path, item: dict, lease: dict,
                            log: Path, pixel: Path, runner_request_id: str) -> dict:
     """Append-only, never a reviewer or entitlement PASS; refuse duplicates."""
     proof = observe_real_tool_pixel(log, pixel)
-    if proof is None or not first_attempt_only(lease) or item.get("frame") != 1:
+    if proof is None or not admitted_baseline_lease(ep, item, lease) or item.get("frame") != 1:
         raise RuntimeError("NATIVE_BASELINE_PIXEL_TOOL_PROOF_UNVERIFIED")
     package = item.get("prompt_package") or {}
     if any(not re.fullmatch(r"[0-9a-f]{64}", str(package.get(key) or ""))
@@ -321,7 +375,7 @@ def record_unreviewed_pixel(ep: Path, item: dict, lease: dict,
         "queue_item_id": item.get("id"),
         "logical_asset_frame": 1,
         "generation_key": lease["generation_key"],
-        "attempt_index": 1,
+        "attempt_index": int(lease["attempt_index"]),
         "fencing_token": lease["fencing_token"],
         "runner_request_id": runner_request_id,
         "frame_contract_sha256": (item.get("prompt_package") or {}).get("frame_contract_sha256"),
