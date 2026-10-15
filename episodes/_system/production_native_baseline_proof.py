@@ -150,6 +150,97 @@ def eligible(ep: Path, item: dict, payload: dict, controller: dict) -> bool:
         return False
 
 
+FOLLOWON_REASON = "PRODUCTION_NATIVE_VISUAL_LOCK_AFTER_REVIEWED_BASELINE"
+
+
+def eligible_reviewed_followon(ep: Path, item: dict, payload: dict, controller: dict) -> bool:
+    """Scoped Episode 13 M00 follow-on, requiring real reviewed first-frame pixels."""
+    try:
+        import codex_user_runner
+        import image_scheduler
+        import visual_lock_baseline_gate
+
+        ep = Path(ep).resolve()
+        frame = int(item.get("frame") or 0)
+        if (ep.name != "13_失物归还的那扇门"
+                or ep.parent.name != "00_独立篇"
+                or not ep.is_relative_to(ROOT / "episodes")
+                or frame not in {3, 8, 18}
+                or item.get("scope") != "visual_lock"
+                or item.get("kind") != "original"
+                or item.get("model") != "gpt-image-2.5-flare"):
+            return False
+        request = runtime_request.effective_for_episode(ep) or {}
+        db = storage_config.mysql_connection_kwargs()
+        if (request.get("mode") != "full_auto"
+                or (request.get("runtime") or {}).get("execution_mode") != "dag"
+                or runtime_router.image_execution_runtime()[0] != "CODEX"
+                or str(db.get("host")) not in {"127.0.0.1", "localhost"}
+                or int(db.get("port") or 0) != 3307
+                or (episode_state_persistence.load(ep) or {}).get("current_state") != "STORYBOARD_LOCKED"):
+            return False
+        plan = story_json.read_json(ep / "meta/visual-lock-plan.json").get("items") or []
+        if ([(int(r.get("frame") or 0), r.get("role")) for r in plan]
+                != PRODUCTION_EPISODE_PLANS[ep.name]
+                or [list(r.get("depends_on") or []) for r in plan] != [[], [1], [1], [1]]):
+            return False
+        if (image_payload_transport.selected_route(1).get("provider") != "codex_subscription"
+                or payload.get("model") != "gpt-image-2.5-flare"
+                or payload.get("quality") != "high"
+                or image_model_policy.for_episode(ep).get("model") != "gpt-image-2.5-flare"
+                or controller.get("model") != "gpt-6-luna"
+                or controller.get("reasoning_effort") != "high"):
+            return False
+        queue = image_scheduler.load_queue(ep).get("items") or []
+        by_frame = {int(r.get("frame") or 0): r for r in queue}
+        if (len(queue) != 4 or set(by_frame) != {1, 3, 8, 18}
+                or by_frame[1].get("status") != "generated"
+                or by_frame[frame].get("id") != item.get("id")
+                or by_frame[frame].get("status") not in {"queued", "running", "generating"}
+                or any(r.get("scope") != "visual_lock"
+                       or list(r.get("depends_on") or []) != [1]
+                       for n, r in by_frame.items() if n != 1)
+                or not visual_lock_baseline_gate.approved(ep)):
+            return False
+        key = logical_asset_identity.frame_asset_key(ep, 1)
+        first = generation_attempt_authority.load_attempt(ep, key, 2) or {}
+        first_state = generation_attempt_authority.load_asset_state(ep, key)
+        current = generation_attempt_authority.load_asset_state(
+            ep, logical_asset_identity.frame_asset_key(ep, frame))
+        if (first.get("status") != "SUCCEEDED"
+                or first.get("provider") != "codex_subscription"
+                or first.get("payload_model") != "gpt-image-2.5-flare"
+                or first_state.get("attempts_consumed") != 2
+                or first_state.get("active_attempt_index") is not None
+                or current.get("attempts_consumed") != 0
+                or current.get("active_attempt_index") is not None):
+            return False
+        evidence = story_json.read_json(ep / "meta/runtime/native-baseline-frame01-tool-proof.json")
+        if (evidence.get("proof_kind") != "TRUSTED_NATIVE_RUNNER_THREAD_SCOPED_IMAGE_SHA"
+                or evidence.get("status") != "OBSERVED_AWAITING_INDEPENDENT_VISUAL_REVIEW"
+                or evidence.get("generation_key") != first.get("generation_key")
+                or evidence.get("attempt_index") != 2
+                or evidence.get("visual_review_pass") is not False
+                or evidence.get("provider_model_attested") is not False):
+            return False
+        raw = list((ep / "media/raw").glob("01-*.png"))
+        candidate = ROOT / str(by_frame[1].get("output_path") or "")
+        runner_id = str(evidence.get("runner_request_id") or "")
+        receipt = ROOT / "runtime/codex-user-runner/task-results" / (runner_id + ".json")
+        if (len(raw) != 1 or not candidate.is_file() or not receipt.is_file()
+                or hashlib.sha256(raw[0].read_bytes()).hexdigest() != evidence.get("raw_png_sha256")
+                or hashlib.sha256(candidate.read_bytes()).hexdigest() != evidence.get("normalized_png_sha256")
+                or hashlib.sha256(receipt.read_bytes()).hexdigest() != evidence.get("runner_receipt_sha256")):
+            return False
+        home, _ = codex_user_runner.codex_home()
+        source_root = (home / "generated_images").resolve()
+        exported = (source_root / str(evidence.get("exported_artifact_relative_path") or "")).resolve()
+        return bool(exported.is_relative_to(source_root) and exported.is_file()
+                    and hashlib.sha256(exported.read_bytes()).hexdigest() == evidence["raw_png_sha256"])
+    except Exception:
+        return False
+
+
 def attest_secondary(strict: dict, payload: dict, controller: dict, codex: str | None) -> dict | None:
     """Verify native text-only tool visibility without treating it as pixel PASS."""
     if (strict.get("status") != "BLOCKED"

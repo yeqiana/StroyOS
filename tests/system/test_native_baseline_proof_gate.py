@@ -169,6 +169,77 @@ def test_episode13_second_proof_requires_exact_reconciled_failure(case, monkeypa
     assert not proof.eligible(ep, baseline, case["payload"], case["controller"])
 
 
+def test_followon_requires_reviewed_native_pixel_and_fresh_attempt(case, monkeypatch, tmp_path):
+    import hashlib
+    import json
+    import codex_user_runner
+    import visual_lock_baseline_gate
+
+    ep = case["ep"].parent / "13_失物归还的那扇门"
+    (ep / "meta").mkdir(parents=True)
+    plan = proof.PRODUCTION_EPISODE_PLANS[ep.name]
+    case["rows"][:] = [
+        {"frame": n, "role": role, "depends_on": [] if n == 1 else [1]}
+        for n, role in plan
+    ]
+    case["q"]["items"][:] = [
+        {"id": str(n), "frame": n, "scope": "visual_lock",
+         "kind": "original", "model": "gpt-image-2.5-flare",
+         "status": "generated" if n == 1 else "running",
+         "depends_on": [] if n == 1 else [1]}
+        for n, _role in plan
+    ]
+    raw = ep / "media/raw/01-real.png"
+    candidate = ep / "media/candidates/01-candidate.png"
+    for file in (raw, candidate):
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_bytes(b"native-real-pixel-fixture")
+    case["q"]["items"][0]["output_path"] = candidate.relative_to(tmp_path).as_posix()
+    runner = tmp_path / "runtime/codex-user-runner/task-results"
+    runner.mkdir(parents=True)
+    (runner / ("a" * 32 + ".json")).write_bytes(b"durable-runner-fixture")
+    home = tmp_path / "codex-home"
+    source = home / "generated_images/thread-01/tool.png"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(raw.read_bytes())
+    sha = lambda f: hashlib.sha256(f.read_bytes()).hexdigest()
+    evidence = {
+        "proof_kind": "TRUSTED_NATIVE_RUNNER_THREAD_SCOPED_IMAGE_SHA",
+        "status": "OBSERVED_AWAITING_INDEPENDENT_VISUAL_REVIEW",
+        "generation_key": "original-a2", "attempt_index": 2,
+        "visual_review_pass": False, "provider_model_attested": False,
+        "raw_png_sha256": sha(raw),
+        "normalized_png_sha256": sha(candidate),
+        "runner_receipt_sha256": sha(runner / ("a" * 32 + ".json")),
+        "runner_request_id": "a" * 32,
+        "exported_artifact_relative_path": "thread-01/tool.png",
+    }
+    monkeypatch.setattr(proof.story_json, "read_json",
+        lambda file: {"items": case["rows"]} if file.name == "visual-lock-plan.json" else evidence)
+    monkeypatch.setattr(visual_lock_baseline_gate, "approved", lambda _: True)
+    monkeypatch.setattr(codex_user_runner, "codex_home", lambda: (home, "trusted"))
+    monkeypatch.setattr(proof.generation_attempt_authority, "load_attempt",
+        lambda _ep, _k, ix: {
+            "status": "SUCCEEDED", "provider": "codex_subscription",
+            "payload_model": "gpt-image-2.5-flare", "generation_key": "original-a2",
+        } if ix == 2 else None)
+    monkeypatch.setattr(proof.generation_attempt_authority, "load_asset_state",
+        lambda _ep, k: {
+            "attempts_consumed": 2 if str(k) == "1" else 0,
+            "active_attempt_index": None,
+        })
+    candidate_item = case["q"]["items"][1]
+    assert proof.eligible_reviewed_followon(ep, candidate_item,
+        case["payload"], case["controller"])
+    candidate.write_bytes(b"tampered-not-native-pixels")
+    assert not proof.eligible_reviewed_followon(ep, candidate_item,
+        case["payload"], case["controller"])
+    candidate.write_bytes(raw.read_bytes())
+    monkeypatch.setattr(visual_lock_baseline_gate, "approved", lambda _: False)
+    assert not proof.eligible_reviewed_followon(ep, candidate_item,
+        case["payload"], case["controller"])
+
+
 def test_unrecognized_episode_directory_denied(case):
     assert not proof.eligible(
         case["ep"].parent / "05_not_authorized", case["q"]["items"][0],

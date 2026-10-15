@@ -263,6 +263,15 @@ def execute(ep,item,timeout,codex):
                 payload_preflight, payload_policy, controller_policy, codex)
             if native_baseline_probe is not None:
                 payload_preflight = native_baseline_probe
+        native_followon_probe = None
+        if (phase5a_grant_evidence is None
+                and native_baseline_probe is None
+                and production_native_baseline_proof.eligible_reviewed_followon(
+                    ep, item, payload_policy, controller_policy)):
+            native_followon_probe = production_native_baseline_proof.attest_secondary(
+                payload_preflight, payload_policy, controller_policy, codex)
+            if native_followon_probe is not None:
+                payload_preflight = native_followon_probe
         payload_preflight_status = str(payload_preflight.get("status") or "")
         payload_gate_pass = (
             payload_preflight_status == "PASS"
@@ -271,7 +280,7 @@ def execute(ep,item,timeout,codex):
                 and phase5a_grant_evidence is not None
                 and payload_preflight.get("image_generation_called") is False
                 and payload_preflight.get("image_attempt_authority_called") is False)
-            or (native_baseline_probe is not None
+            or ((native_baseline_probe is not None or native_followon_probe is not None)
                 and payload_preflight_status == "READY_FOR_REAL_CAPABILITY_PROOF"
                 and payload_preflight.get("image_generation_called") is False
                 and payload_preflight.get("image_attempt_authority_called") is False)
@@ -313,6 +322,14 @@ def execute(ep,item,timeout,codex):
                     native_baseline_probe),
                 "visual_lock_frame": 1,
                 "tool_capability_claim": "UNKNOWN_NOT_YET_PROVEN",
+            })
+        if native_followon_probe is not None:
+            attempt_context.update({
+                "image_capability_proof_purpose": production_native_baseline_proof.FOLLOWON_REASON,
+                "native_visibility_evidence_sha256": production_native_baseline_proof.evidence_sha(
+                    native_followon_probe),
+                "visual_lock_frame": frame,
+                "tool_capability_claim": "UNKNOWN_WITH_NATIVE_BASELINE_PIXEL_PROVENANCE",
             })
         budget_ok,budget_row=raw_candidate_budget.claim(ep,frame,budget_kind,reason=f"formal_generation_entrypoint scope={item.get('scope')} attempt={attempt}",token=budget_token,semantic_key=budget_semantic_key,
             generation_context=attempt_context)
