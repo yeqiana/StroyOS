@@ -24,16 +24,26 @@ ROOT = Path(__file__).resolve().parents[2]
 REASON = "PRODUCTION_NATIVE_VISUAL_BASELINE_FIRST_ATTEMPT_PROOF"
 PLAN = [(1, "ordinary_baseline"), (16, "worst_capture_condition"),
         (8, "first_major_anomaly"), (17, "high_impact_admission")]
+# One-shot production proof is scoped to named Episodes with already frozen
+# 1+3 admissions. This is not a general UNKNOWN-capability override.
+PRODUCTION_EPISODE_PLANS = {
+    "06_五十亩山地之后_全新重制": PLAN,
+    "13_失物归还的那扇门": [
+        (1, "ordinary_baseline"), (8, "worst_capture_condition"),
+        (3, "first_major_anomaly"), (18, "high_impact_admission"),
+    ],
+}
 
 
 def eligible(ep: Path, item: dict, payload: dict, controller: dict) -> bool:
     """Read-only fail-closed admission for *only* the first official pixel."""
     try:
         ep = Path(ep).resolve()
+        plan = PRODUCTION_EPISODE_PLANS.get(ep.name)
         if (not ep.is_relative_to(ROOT / "episodes")
-                or ep.name != "06_五十亩山地之后_全新重制"
-                or ep.parent.name != "00_独立篇"):
+                or ep.parent.name != "00_独立篇" or plan is None):
             return False
+        frame_set = {frame for frame, _role in plan}
         episode_request = runtime_request.effective_for_episode(ep) or {}
         if (episode_request.get("mode") != "full_auto"
                 or (episode_request.get("runtime") or {}).get("execution_mode") != "dag"
@@ -54,7 +64,7 @@ def eligible(ep: Path, item: dict, payload: dict, controller: dict) -> bool:
         if not path.is_file():
             return False
         rows = story_json.read_json(path).get("items") or []
-        if ([(int(x.get("frame") or 0), x.get("role")) for x in rows] != PLAN
+        if ([(int(x.get("frame") or 0), x.get("role")) for x in rows] != plan
                 or [list(x.get("depends_on") or []) for x in rows] != [[], [1], [1], [1]]):
             return False
         review = (story_json.read_json(ep / "meta/story-gates.json").get("reviews") or {})
@@ -66,7 +76,7 @@ def eligible(ep: Path, item: dict, payload: dict, controller: dict) -> bool:
         if len(queue) != 4:
             return False
         indexed = {int(x.get("frame") or 0): x for x in queue}
-        if sorted(indexed) != [1, 8, 16, 17]:
+        if sorted(indexed) != sorted(frame_set):
             return False
         if (indexed[1].get("id") != item.get("id")
                 or indexed[1].get("status") not in ("queued", "running", "generating")):
@@ -75,7 +85,7 @@ def eligible(ep: Path, item: dict, payload: dict, controller: dict) -> bool:
                or indexed[f].get("kind") != "original"
                or list(indexed[f].get("depends_on") or []) != ([] if f == 1 else [1])
                or (f != 1 and indexed[f].get("status") != "queued")
-               for f in (1, 8, 16, 17)):
+               for f in sorted(frame_set)):
             return False
         native = image_payload_transport.selected_route(1)
         policy = image_model_policy.for_episode(ep)
