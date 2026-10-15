@@ -89,6 +89,33 @@ def test_scope_or_authority_drift_denied(case, mutate):
         case["payload"], case["controller"]) is False
 
 
+def test_lost_property_episode_admits_only_exact_first_baseline(case):
+    """Episode 13 has its own real four-frame 1+3 plan; no blanket permission."""
+    ep = case["ep"].parent / "13_失物归还的那扇门"
+    (ep / "meta").mkdir(parents=True)
+    (ep / "meta/visual-lock-plan.json").write_text("{}", encoding="utf-8")
+    plan = proof.PRODUCTION_EPISODE_PLANS[ep.name]
+    case["rows"][:] = [
+        {"frame": frame, "role": role, "depends_on": [] if frame == 1 else [1]}
+        for frame, role in plan
+    ]
+    case["q"]["items"][:] = [
+        {"id": str(frame), "frame": frame, "kind": "original",
+         "model": "gpt-image-2.5-flare", "quality": "high",
+         "scope": "visual_lock", "status": "queued",
+         "depends_on": [] if frame == 1 else [1]}
+        for frame, _role in plan
+    ]
+    for frame, _role in plan:
+        case["states"][frame] = {"attempts_consumed": 0, "active_attempt_index": None}
+    baseline = case["q"]["items"][0]
+    assert proof.eligible(ep, baseline, case["payload"], case["controller"])
+    assert not proof.eligible(ep, case["q"]["items"][1], case["payload"], case["controller"])
+    case["rows"][2]["frame"] = 4
+    assert not proof.eligible(ep, baseline, case["payload"], case["controller"])
+
+
+
 def test_unrecognized_episode_directory_denied(case):
     assert not proof.eligible(
         case["ep"].parent / "05_not_authorized", case["q"]["items"][0],
