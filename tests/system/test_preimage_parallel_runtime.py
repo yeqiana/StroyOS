@@ -23,6 +23,24 @@ class PreimageParallelRuntimeTest(unittest.TestCase):
    self.assertTrue((ep/"meta/runtime/preimage-authority-barrier.json").is_file())
    self.assertTrue((ep/"meta/runtime/preimage-committed-snapshot.json").is_file())
 
+ def test_verified_committed_barrier_reuses_preimage_without_paid_model_retry(self):
+  with tempfile.TemporaryDirectory() as raw:
+   ep=Path(raw); (ep/"meta").mkdir()
+   (ep/"meta/story-gates.json").write_text(json.dumps({"story":{"locked":True},"visual":{}}),encoding="utf-8")
+   import preimage_authority_snapshot as snapshots
+   snap=snapshots.build(ep); rows=tasks.plan_tasks(ep,snap)
+   for task in rows:
+    self.assertEqual(tasks.write_candidate(ep,task,tasks.candidate_template(task,tasks.valid_payload(task))),[])
+   committed=preimage_protocol.commit_candidates(ep,snap,rows)
+   self.assertEqual(committed["status"],"PASS")
+   def model_must_not_run(task):
+    raise AssertionError("duplicate paid PREIMAGE dispatch: "+task["task_type"])
+   reused=preimage_protocol.execute_local(ep,model_must_not_run)
+   self.assertEqual(reused["status"],"PASS")
+   self.assertEqual(reused["recovery"],"REUSED_VERIFIED_PREIMAGE_BARRIER")
+   self.assertEqual(reused["observed_preimage_parallelism_peak"],0)
+
+
  def test_single_worker_never_counts_queued_work_as_parallel(self):
   with tempfile.TemporaryDirectory() as raw:
    ep=Path(raw); (ep/"meta").mkdir(); (ep/"meta/story-gates.json").write_text(json.dumps({"story":{},"visual":{}}),encoding="utf-8")

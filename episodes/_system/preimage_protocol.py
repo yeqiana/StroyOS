@@ -65,6 +65,27 @@ def execute_local(ep: Path, executor, *, max_workers: int = 4) -> dict:
     worker invocation per task; tests supply a bounded fake worker.  Completion
     remains evidence/candidate based rather than scheduler asserted.
     """
+    ep = Path(ep).resolve()
+    # A previous atomic commit has already sealed all four PREIMAGE scopes.
+    # Verify the exact committed ownership snapshot before dispatching any
+    # model workers; the same READY barrier must not incur four more calls.
+    barrier = story_json.read_json(ep / BARRIER_REL, default={}) or {}
+    committed = story_json.read_json(
+        ep / "meta/runtime/preimage-committed-snapshot.json", default={}
+    ) or {}
+    if barrier.get("status") == "READY" and barrier.get("committed_snapshot_id"):
+        current = preimage_authority_snapshot.build(ep, write=False)
+        if (committed.get("snapshot_kind") == "PREIMAGE_COMMITTED_SNAPSHOT"
+                and committed.get("snapshot_id") == current.get("snapshot_id")
+                == barrier["committed_snapshot_id"]
+                and not preimage_authority_snapshot.stale_owned(ep, committed)):
+            return {
+                "status": "PASS", "recovery": "REUSED_VERIFIED_PREIMAGE_BARRIER",
+                "observed_preimage_parallelism_peak": 0,
+                "measurement_method": "verified_committed_snapshot_no_worker_dispatch",
+                "test_evidence": False, "production_observed": False, "tasks": [],
+            }
+
     source=preimage_authority_snapshot.build(ep,write=True,kind="PREIMAGE_INPUT_SNAPSHOT")
     rows=tasks.plan_tasks(ep,source,resume=True)
     # Retry only if the original model failed before producing a valid,
