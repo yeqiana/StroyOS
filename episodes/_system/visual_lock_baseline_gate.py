@@ -163,7 +163,7 @@ def eligible_exhausted_baseline(ep):
         binding=_revision_baseline_binding(ep)
         if binding and not _review_matches_revision(review,binding):return False
         frame=(production_ledger.load_authority(ep,default={}) or {}).get("frames",{}).get("01",{})
-        if frame.get("status") not in {"REPAIR_READY","WEAK_PASS","LOCKED"}:return False
+        if frame.get("status") not in {"REPAIR_READY","NEEDS_USER","WEAK_PASS","LOCKED"}:return False
         if (frame.get("current_candidate") or {}).get("sha256")!=asset["sha256"]:return False
         key=identity.frame_asset_key(ep,1)
         state=attempts.load_asset_state(ep,key)

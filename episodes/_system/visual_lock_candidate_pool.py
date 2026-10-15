@@ -221,7 +221,7 @@ def weak_pass_eligibility(ep: Path, frame: int) -> dict:
     row = _row_for_frame(ep, frame)
     checks = row.get("checks") or {}
     failed_checks = sorted(str(key) for key, value in checks.items() if value is not True)
-    issues = [str(x) for x in (row.get("issues") or []) if str(x)]
+    issues = [str(x.get("code") or "") if isinstance(x, dict) else str(x) for x in (row.get("issues") or []) if x]
     hard_checks = sorted(set(failed_checks) & set(WEAK_PASS_HARD_CHECKS))
     hard_issues = sorted({
         issue for issue in issues
