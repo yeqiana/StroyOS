@@ -41,7 +41,7 @@ runner_state_store.release_lock(ep)
 
 def _spawn(ep):
     return subprocess.Popen(
-        [sys.executable, "-u", "-c", CHILD, str(SYSTEM), str(ep)],
+        [sys.executable, "-P", "-u", "-c", CHILD, str(SYSTEM), str(ep)],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True,
     )

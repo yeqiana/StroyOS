@@ -41,7 +41,7 @@ def test_cross_process_lock_refuses_second_writer(tmp_path):
         "ctx.__enter__();print('LOCKED',flush=True);time.sleep(1.5);ctx.__exit__(None,None,None)"
     )
     process=subprocess.Popen(
-        [sys.executable,"-c",source,str(wd.ROOT/"scripts"),str(tmp_path),EP],
+        [sys.executable,"-P","-c",source,str(wd.ROOT/"scripts"),str(tmp_path),EP],
         cwd=wd.ROOT,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     try:
         child_banner=process.stdout.readline().strip()
