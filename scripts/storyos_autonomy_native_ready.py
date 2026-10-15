@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
 
 import storyos_codex_cli_readiness as readiness
 
@@ -43,6 +44,21 @@ def summarize(cli: dict, bridge: dict) -> dict:
     }
 
 
+def shell_cli_login_status(executable: str, *, runner=subprocess.run) -> str:
+    """Observe only this process's Codex login; never infer Runner entitlement."""
+    try:
+        check = runner([executable, "login", "status"], capture_output=True,
+                       text=True, check=False, timeout=12)
+    except (OSError, subprocess.TimeoutExpired):
+        return "UNVERIFIED"
+    message = (str(check.stdout or "") + " " + str(check.stderr or "")).casefold()
+    if "not logged in" in message:
+        return "NOT_LOGGED_IN"
+    if check.returncode == 0 and "logged in" in message:
+        return "LOGGED_IN"
+    return "UNVERIFIED"
+
+
 def report() -> dict:
     # Windows PowerShell codex.ps1 is not a CreateProcess binary. Prefer cmd.
     executable = (shutil.which("codex.cmd") or shutil.which("codex.exe")
@@ -56,6 +72,8 @@ def report() -> dict:
         return summarize({}, {})
     result = summarize(cli, bridge)
     result["cli_version"] = str(cli.get("version") or "UNVERIFIED")
+    result["shell_cli_login_status"] = shell_cli_login_status(executable)
+    result["shell_cli_login_verified"] = result["shell_cli_login_status"] == "LOGGED_IN"
     return result
 
 
