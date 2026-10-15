@@ -694,7 +694,8 @@ def bind_from_queue(ep: Path) -> dict:
     return {"bound": [f"{int(x['frame']):02d}" for x in items]}
 
 
-def validate_payload(data: dict, *, contract: dict, assets: list[dict], version: str) -> list[str]:
+def validate_payload(data: dict, *, contract: dict, assets: list[dict],
+                     version: str, episode: Path | None = None) -> list[str]:
     errors = []
     if data.get("schema_version") != visual_review_schema.SCHEMA_VERSION_V2:
         errors.append(f"schema_version must be {visual_review_schema.SCHEMA_VERSION_V2}")
@@ -740,8 +741,8 @@ def validate_payload(data: dict, *, contract: dict, assets: list[dict], version:
             # Historical evidence retains the exact original contract SHA.
             # A review is portable only when the old bytes provably differ
             # solely by monotonic visual-projection completion.
-            if not frame_contract.recorded_contract_matches_current(
-                    ep, exp["frame"], str(row.get("frame_contract_sha256") or "")):
+            if episode is None or not frame_contract.recorded_contract_matches_current(
+                    episode, exp["frame"], str(row.get("frame_contract_sha256") or "")):
                 errors.append(f"{rid} frame_contract_sha mismatch")
         if exp and exp.get("production_revision_id"):
             for field in ("production_revision_id", "input_sha256", "prompt_sha256"):
@@ -783,7 +784,7 @@ def verify(ep: Path, *, metadata_only: bool = False) -> list[str]:
             verify_revision_inputs(ep, revision_id)
         contract = compile_prompt_contract(ep)
         assets = calibration_assets(ep, metadata_only=metadata_only)
-        errors = validate_payload(data, contract=contract, assets=assets, version=episode_version(ep))
+        errors = validate_payload(data, contract=contract, assets=assets, version=episode_version(ep), episode=ep)
         weak_ids = {
             str(asset.get("id") or "")
             for asset in assets
@@ -1065,7 +1066,7 @@ def _finalize_review_payload(
         print("VISUAL LOCK CRITIC TECHNICAL FAIL:", ",".join(technical_codes), "status=" + health["status"])
         return 11
 
-    errors = validate_payload(data, contract=contract, assets=current, version=episode_version(ep))
+    errors = validate_payload(data, contract=contract, assets=current, version=episode_version(ep), episode=ep)
     _record_calibration_frames(ep, data)
     fresh_rows = [
         row for row in (data.get("calibration") or [])

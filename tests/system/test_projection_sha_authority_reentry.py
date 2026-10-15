@@ -82,3 +82,32 @@ def test_version_lookup_requires_verified_document(monkeypatch):
                         lambda *args,**kwargs: {"hash_material": {"frame":"01"},
                             "contract_sha256":"b"*64})
     assert persistence.load_sha_bound_version(EP,1,"b"*64) is None
+
+def test_joint_critic_verifier_receives_explicit_episode_for_old_sha(monkeypatch):
+    import visual_lock_v21 as visual
+    old, current = snapshots()
+    calls = []
+    monkeypatch.setattr(visual.frame_contract, "recorded_contract_matches_current",
+                        lambda ep, frame, sha: calls.append((ep,frame,sha)) or True)
+    assets = [{"id": "V-B", "role": "ordinary_baseline", "frame": 1,
+               "sha256": "a"*64,
+               "frame_contract_sha256": current["contract_sha256"]}]
+    row = {"id": "V-B", "frame": 1, "sha256": "a"*64,
+           "frame_contract_sha256": old["contract_sha256"],
+           "checks": {}, "issues": []}
+    for rid, frame in (("V-W", 8), ("V-A", 3), ("V-H", 18)):
+        assets.append({"id": rid, "role": rid, "frame": frame,
+                       "sha256": "a"*64,
+                       "frame_contract_sha256": current["contract_sha256"]})
+    rows = [row] + [{"id": a["id"], "frame": a["frame"],
+                      "sha256": a["sha256"],
+                      "frame_contract_sha256": a["frame_contract_sha256"],
+                      "checks": {}, "issues": []} for a in assets[1:]]
+    result = visual.validate_payload(
+        {"calibration": rows, "issue_codes": [],
+         "summary": {"passed": True}}, contract={
+             "profile_id": "test", "profile_path": "test",
+             "profile_sha256": "b"*64},
+        assets=assets, version="2.2.1", episode=EP)
+    assert calls == [(EP,1,old["contract_sha256"])]
+    assert "V-B frame_contract_sha mismatch" not in result
