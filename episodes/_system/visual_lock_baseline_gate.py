@@ -192,6 +192,11 @@ Do not modify source files or the image.
 """
 
 def codex_critic_prompt(ep):
+    character_contract = character_visual_contract.load(Path(ep)) or {}
+    primary_ids = [str(x) for x in character_contract.get("primary_cast_ids") or []]
+    members = character_contract.get("members") or {}
+    primary_hair = {cid: ((members.get(cid) or {}).get("hair") or {}).get("haircut_anchor", "")
+                    for cid in primary_ids}
     candidate=Path(ep)/CANDIDATE_REL
     schema='{"pixel_evidence_available":true,"decision":"PASS|FAIL","checks":{"visual_profile_match":"PASS|FAIL","reality_first":"PASS|FAIL","ordinary_life_density":"PASS|FAIL","unposed_capture":"PASS|FAIL","not_cinematic":"PASS|FAIL","capture_credibility":"PASS|FAIL","identity_usable":"PASS|FAIL","group_members_distinct":"PASS|FAIL","identity_anchor_usable":"PASS|FAIL"},"face_boxes":[{"character_id":"P01","x":0.0,"y":0.0,"w":0.1,"h":0.1}],"note":"actual-pixel evidence"}'
     face_hint=local_vision_shadow.face_hint(ep)
@@ -205,6 +210,10 @@ Capture/style review is genre/action neutral: judge the actual locked story and 
 If this Episode is an explicit pure daily-life / no-anomaly story, ordinary_life_density means believable resident/friend life (breakfast, walking, chatting, errands, rest). Do NOT require a visible job workflow merely because a reusable celestial visual profile also supports worker stories.
 For core characters, this baseline is also Frame01 Character Identity Anchor evidence. The image must be usable as a later identity reference: clear face visibility, recognizable person, not only back view, not too distant, and suitable for Character Master creation.
 Face boxes use normalized 0..1 coordinates and must cover every primary cast member when pixel master is required.
+The authoritative primary cast IDs in this Episode are {primary_ids}. Their hair identity cues are {json.dumps(primary_hair, ensure_ascii=False)}.
+Use these exact primary IDs in face_boxes; a supporting character ID (for example P02) never substitutes for P03.
+Locate each primary person by visual identity; never relabel an unrelated face or fabricate a box.
+If a primary person is absent or cannot be identified confidently from the pixels and cast contract, return FAIL and explain which ID is missing.
 If the attachment cannot actually be decoded/seen, set pixel_evidence_available=false; that is an infrastructure failure, not a content FAIL.
 Local pre-scan (advisory only, never authoritative):
 {face_hint or "none"}
