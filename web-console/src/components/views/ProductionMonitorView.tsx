@@ -395,7 +395,9 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
 
       <div aria-label="当前生产执行证据" role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--border-subtle)] pb-3 text-[12px]">
         <strong className="font-medium text-[var(--text-primary)]">当前执行：尚未核验</strong>
-        <span className="text-[var(--text-secondary)]">作品阶段不等于实时生图；没有可验证的执行证据时，不推断任务正在运行或已停止。</span>
+                <span aria-label="Redis 观测摘要" className="text-[var(--text-secondary)]">
+          Redis Task：{taskSnapshot?.available ? String(taskSnapshot.record_count) + " 条（自报运行 " + taskSnapshot.running_claims + "）" : "不可用"} · Worker 心跳：{workerSnapshot?.available ? String(workerSnapshot.record_count) + " 条（时间/TTL 新鲜 " + workerSnapshot.fresh_heartbeats + "）" : "不可用"}；仅为只读记录，不等于实时生图。
+        </span>
       </div>
       <div className="os-console-toolbar flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] py-1 pb-3" aria-label="生产监控主工作区切换">
         <Segmented aria-label="生产监控视图" value={primaryView} onChange={value=>setPrimaryView(value as 'stages'|'history')}
