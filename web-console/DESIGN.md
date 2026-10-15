@@ -321,3 +321,8 @@ Production Monitor 顶部严禁堆放 6 个等权 KPI Card，统一设计为单�
 - 移除左下角独立「系统设置」齿轮按钮，账号弹出菜单中的「系统设置」是唯一侧栏设置入口，不再呈现重复动作。
 - 桌面底栏仅保留账号入口与深浅主题快捷切换，同排布局；窄侧栏仅保留账号头像，主题偏好仍可通过账号菜单中的系统设置进入。
 - 保留完整菜单键盘导航、Esc、Mock 身份隔离、设置页五标签；浏览器回归明确断言不存在第二个独立齿轮且可从账号菜单正常打开设置。
+
+## Redis Task 记录（单机只读，2026-10-15）
+- 从实际 TaskStateManager 契约读取 `storyos:task:<id>:state`；只通过固定 localhost GET、受限 SCAN/GET 与显式 Redis 观测开关读取；禁止提交任何生产任务或泄露 Redis key/raw ID。
+- Redis 状态无 Episode/Frame/Worker/时间字段，因此标签使用「自报运行／自报排队」，`live_execution_verified=false`，不显示「正在生产」绿色状态。若没有可识别 Task key，显示「未发现此命名空间记录，不能断言生产队列为空」。
+- Worker 心跳和 Task 记录相互独立；不会将任意心跳推断为某个 Episode 的 Writer 或 Attempt 权限。Task 列表仅展示散列标识，未来真实任务元数据须来自正式生产写入契约。

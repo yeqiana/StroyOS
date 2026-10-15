@@ -36,7 +36,7 @@ import { StoryRunDetailView } from './StoryRunDetailView';
 import { RuntimeAuthorityPanel } from './RuntimeAuthorityPanel';
 import { ExclusiveReadGate } from '../../api/exclusiveReadGate';
 import { summarizeRuntimeCoverage } from '../../api/runtimeCoverage';
-import type { RuntimeStatusSummary, LocalWorkerHeartbeatSnapshot } from '../../api/platformApi';
+import type { RuntimeStatusSummary, LocalWorkerHeartbeatSnapshot, LocalTaskStateSnapshot } from '../../api/platformApi';
 import { mergeRuntimeStatusSummaries } from '../../api/runtimeSummaryMerge';
 
 interface ProductionMonitorViewProps {
@@ -92,6 +92,28 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
       } catch {
         // Never retain old green numbers as if the source were still reachable.
         if (active) setWorkerSnapshot(null);
+      } finally { reading = false; }
+    };
+    void refresh();
+    const timer = refreshInterval > 0 ? window.setInterval(() => {
+      if (document.visibilityState !== 'hidden') void refresh();
+    }, refreshInterval * 1000) : null;
+    return () => { active = false; if (timer !== null) window.clearInterval(timer); };
+  }, [refreshInterval]);
+
+  // Separate read-only TaskStateManager scan. A RUNNING key is not a live Attempt.
+  const [taskSnapshot, setTaskSnapshot] = useState<LocalTaskStateSnapshot | null>(null);
+  useEffect(() => {
+    let active = true;
+    let reading = false;
+    const refresh = async () => {
+      if (!active || reading) return;
+      reading = true;
+      try {
+        const next = await platformApi.localTaskStates();
+        if (active) setTaskSnapshot(next);
+      } catch {
+        if (active) setTaskSnapshot(null);
       } finally { reading = false; }
     };
     void refresh();
@@ -393,6 +415,39 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
           <span className="text-[11px] text-[var(--text-tertiary)]">
             仅核对 Redis TTL、记录时间和身份；不等于 Worker 仍运行，更不代表当前作品有执行权。
           </span>
+        </section>
+
+        <section aria-label="Redis Task 状态只读观测" className="space-y-2 border border-[var(--border-subtle)] px-3 py-2 text-[12px] text-[var(--text-secondary)]">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <strong className="font-medium text-[var(--text-primary)]">Redis Task 记录</strong>
+            {!taskSnapshot || !taskSnapshot.available ? (
+              <span role="status">只读任务来源未接通 · 无法判断是否有任务在执行</span>
+            ) : (
+              <>
+                <span>已扫描 {taskSnapshot.record_count}</span>
+                <span>自报运行 {taskSnapshot.running_claims}</span>
+                <span>自报排队 {taskSnapshot.queued_claims}</span>
+                <span>{taskSnapshot.unverified_count ? `无法核验 ${taskSnapshot.unverified_count}` : '状态格式已核对'}</span>
+                {!taskSnapshot.scan_complete && <span className="text-[var(--warning)]">扫描不完整</span>}
+              </>
+            )}
+          </div>
+          <p className="text-[11px] leading-5 text-[var(--text-tertiary)]">
+            Redis TaskStateManager 仅有 Task ID 与状态；不含作品、帧号、Worker、更新时间或有效执行租约。自报 RUNNING 不等于正在生产。
+          </p>
+          {taskSnapshot?.available && taskSnapshot.record_count === 0 && taskSnapshot.scan_complete &&
+            <p role="status" className="text-[11px] text-[var(--text-secondary)]">当前未发现此命名空间的 Task 状态记录；不能据此断言所有生产队列为空。</p>}
+          {taskSnapshot?.available && taskSnapshot.records.length > 0 &&
+            <div className="max-h-[220px] overflow-auto border-t border-[var(--border-subtle)] pt-1" aria-label="Redis Task 状态记录列表">
+              {taskSnapshot.records.map(item => (
+                <div key={item.task_tag} className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] px-1 py-1.5 text-[11px]">
+                  <span className="font-mono text-[var(--text-secondary)]">Task #{item.task_tag}</span>
+                  <span className="font-medium text-[var(--text-primary)]">{item.recorded_status}（历史状态，未核验时效）</span>
+                  <span className="text-[var(--text-tertiary)]">作品／帧／Worker：无关联证据</span>
+                </div>
+              ))}
+              {taskSnapshot.record_count > taskSnapshot.records.length && <p className="py-2 text-[var(--text-tertiary)]">只展示前 {taskSnapshot.records.length} 条；其余不在此处加载</p>}
+            </div>}
         </section>
 
         {apiState !== 'ok' && <div role="status" className="flex flex-wrap items-center justify-between gap-2 border-l-2 border-[var(--warning)] px-3 py-2 text-[12px] text-[var(--text-secondary)]"><span>{apiState === 'loading' ? '正在读取 Platform API 阶段摘要…' : apiWarning}</span><span className="shrink-0 text-[var(--text-tertiary)]">{lastSync ? `最近获取 ${lastSync}` : '未获得有效在线证据'}</span></div>}

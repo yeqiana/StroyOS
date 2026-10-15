@@ -429,6 +429,32 @@ export interface LocalWorkerHeartbeatSnapshot {
   task_attempt_verified: false;
 }
 
+/** TaskStateManager stores status only, never proven live execution. */
+export interface LocalTaskStateSnapshot {
+  scope: 'LOCAL_REDIS_TASK_STATE_OBSERVATION';
+  source: 'redis_storyos_task_state';
+  read_only: true;
+  observed_at: string;
+  available: boolean;
+  reason: string | null;
+  scan_complete: boolean;
+  record_count: number;
+  unverified_count: number;
+  running_claims: number;
+  queued_claims: number;
+  records: Array<{
+    task_tag: string;
+    recorded_status: string;
+    episode_ref: null;
+    frame: null;
+    worker: null;
+    updated_at: null;
+    freshness_verified: false;
+  }>;
+  live_execution_verified: false;
+  episode_binding_verified: false;
+}
+
 // ================= Platform API 客户端 =================
 
 export const platformApi = {
@@ -438,6 +464,9 @@ export const platformApi = {
   },
 
   // GET /api/v1/runtime/statuses?limit&offset
+  async localTaskStates(): Promise<LocalTaskStateSnapshot> {
+    return platformRequest<LocalTaskStateSnapshot>('/api/v1/local-monitor/tasks');
+  },
   async localWorkerHeartbeats(): Promise<LocalWorkerHeartbeatSnapshot> {
     return platformRequest<LocalWorkerHeartbeatSnapshot>('/api/v1/local-monitor/workers');
   },

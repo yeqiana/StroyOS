@@ -96,6 +96,6 @@ async function main(){
  });
  console.log('LOCAL_STORYOS_READY http://127.0.0.1:'+webPort+'/');
  console.log('LOCAL_REAL_FILES_API http://127.0.0.1:'+apiPort+'/healthz');
- console.log('本机文件证据 + Redis 只读心跳时间/TTL，非 Writer/Task 授权；Ctrl+C 关闭本地服务。');
+ console.log('本机文件证据 + Redis 心跳与 Task 状态只读观测，均非 Writer/Attempt 执行授权；Ctrl+C 关闭本地服务。');
 }
 main().catch(error=>{console.error(error.message);shutdown(1);});
