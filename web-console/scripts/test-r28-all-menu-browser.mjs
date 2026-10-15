@@ -23,9 +23,20 @@ async function browserCase(c){
  const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
  const wait=async(fn,label)=>{for(let n=0;n<310;n++){const found=fn();if(found)return found;await sleep(85)}throw Error('timeout '+label)};
  const nav=await wait(()=>document.querySelector('nav[aria-label="主要页面"]'),'nav');
- const controls=[...document.querySelectorAll('button')];
- const menu=c.menu==='系统设置'?controls.find(x=>x.textContent?.trim()==='系统设置'):[...nav.querySelectorAll('button')].find(x=>x.textContent?.trim()===c.menu);
- if(!menu)throw Error('missing navigation menu '+c.menu);
+ // The four creator pages remain primary; legacy operations live under Advanced.
+ let menu;
+ if(c.name==='settings'){
+   const account=await wait(()=>document.querySelector('button[aria-label="账号菜单"]'),'account button');
+   account.click();
+   menu=await wait(()=>document.querySelector('[role="menu"] button[aria-label="系统设置（账号菜单）"]'),'account settings');
+ }else{
+   if(['workflow','agents','logs'].includes(c.name)){
+     const advanced=await wait(()=>[...nav.querySelectorAll('button')].find(button=>button.getAttribute('aria-label')==='高级管理'),'advanced menu');
+     if(advanced.getAttribute('aria-expanded')!=='true')advanced.click();
+     await wait(()=>advanced.getAttribute('aria-expanded')==='true','advanced expanded');
+   }
+   menu=await wait(()=>[...nav.querySelectorAll('button')].find(button=>button.getAttribute('aria-label')===c.menu),'navigation menu '+c.menu);
+ }
  menu.click();
  const view=await wait(()=>document.querySelector(c.selector),'page '+c.name);
  await wait(()=>view.querySelector('h1')?.textContent?.trim()===c.heading,'page heading '+c.heading);
