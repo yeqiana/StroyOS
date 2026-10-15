@@ -21,6 +21,9 @@ from platform.operations.local_writer_owner_readonly import (
 CHILD = r"""
 import sys
 from pathlib import Path
+# This raw Python child does not run through the normal StoryOS CI bootstrap.
+import platform as stdlib_platform
+stdlib_platform.__path__ = [str(Path(sys.argv[1]).resolve().parents[1] / "platform")]
 sys.path.insert(0,sys.argv[1])
 import runner_state_store
 import writer_owner_observation
