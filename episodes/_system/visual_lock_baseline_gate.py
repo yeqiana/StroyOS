@@ -159,7 +159,9 @@ def eligible_exhausted_baseline(ep):
         if _box_errors(ep,review):return False
         if runtime_provenance.validate_critic_provenance(review.get("critic_provenance") or {}):return False
         asset=generated_baseline(ep)
-        if any(review.get(k)!=asset.get(k) for k in ("sha256","asset_path","frame_contract_sha256")):return False
+        if any(review.get(k)!=asset.get(k) for k in ("sha256","asset_path")):return False
+        if not frame_contract.recorded_contract_matches_current(
+                ep, 1, review.get("frame_contract_sha256")):return False
         binding=_revision_baseline_binding(ep)
         if binding and not _review_matches_revision(review,binding):return False
         frame=(production_ledger.load_authority(ep,default={}) or {}).get("frames",{}).get("01",{})

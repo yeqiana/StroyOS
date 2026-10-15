@@ -758,6 +758,29 @@ def _contract_exception_rows(ep: Path) -> list[dict]:
     return rows if isinstance(rows, list) else []
 
 
+def equivalent_to_current(ep: Path, frame: int | str,
+                          recorded_sha256: str, *, current: dict | None = None) -> bool:
+    """Stable authority for historical pixel/review binding under a projection fill.
+
+    Only the pre-existing monotonic authenticity/continuity projection upgrade
+    is allowed. A real change to storyboard, appearance, capture, environment,
+    wardrobe or any other hash input still invalidates the old review.
+    """
+    ep = Path(ep).resolve()
+    sha = str(recorded_sha256 or "").lower()
+    if not sha:
+        return False
+    current = current or compile_frame(ep, frame, write_cache=False)
+    if sha == str(current.get("contract_sha256") or "").lower():
+        return True
+    try:
+        import frame_contract_persistence
+        historical = frame_contract_persistence.load_sha_bound_version(ep, frame, sha)
+    except Exception:
+        return False
+    return bool(historical and _projection_only_upgrade(historical, current))
+
+
 def recorded_contract_matches_current(ep: Path, frame: int | str, recorded_sha256: str) -> bool:
     """Accept exact SHA or a recorded, strictly projection-only old->new migration."""
     ep = Path(ep).resolve()
@@ -765,7 +788,7 @@ def recorded_contract_matches_current(ep: Path, frame: int | str, recorded_sha25
     recorded = str(recorded_sha256 or "").lower()
     current = compile_frame(ep, frame, write_cache=False)
     current_sha = str(current.get("contract_sha256") or "").lower()
-    if recorded and recorded == current_sha:
+    if equivalent_to_current(ep, frame, recorded, current=current):
         return True
     for row in _contract_exception_rows(ep):
         if (

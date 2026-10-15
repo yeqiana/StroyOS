@@ -737,7 +737,12 @@ def validate_payload(data: dict, *, contract: dict, assets: list[dict], version:
             errors.append(f"{rid} sha mismatch")
         exp_fc = str(exp.get("frame_contract_sha256") or "")
         if exp_fc and str(row.get("frame_contract_sha256") or "").lower() != exp_fc.lower():
-            errors.append(f"{rid} frame_contract_sha mismatch")
+            # Historical evidence retains the exact original contract SHA.
+            # A review is portable only when the old bytes provably differ
+            # solely by monotonic visual-projection completion.
+            if not frame_contract.recorded_contract_matches_current(
+                    ep, exp["frame"], str(row.get("frame_contract_sha256") or "")):
+                errors.append(f"{rid} frame_contract_sha mismatch")
         if exp and exp.get("production_revision_id"):
             for field in ("production_revision_id", "input_sha256", "prompt_sha256"):
                 if str(row.get(field) or "").lower() != str(exp.get(field) or "").lower():

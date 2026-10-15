@@ -86,6 +86,49 @@ def persist(ep: Path, row: dict, *, status: str = "ACTIVE") -> dict:
     return {"mode": mode, "mysql_written": True, "document_ref": document_ref, **saved}
 
 
+def load_sha_bound_version(ep: Path, frame: int | str, contract_sha256: str) -> dict | None:
+    """Fetch immutable historical contract bytes, not the latest mutable projection.
+
+    A recorded pixel SHA must not be "repaired" by taking the latest source and
+    replacing its SHA. Verify both the MySQL version and external document digest.
+    """
+    ep = Path(ep).resolve()
+    sha = str(contract_sha256 or "").lower()
+    if len(sha) != 64 or any(c not in "0123456789abcdef" for c in sha):
+        return None
+    if storage_config.episode_meta_store_config()["mode"] not in {"mysql", "dual"}:
+        return None
+    from platform.repository.mysql.schema_v2 import DATABASE_NAME
+    connection = mysql_connection_cache.shared_connection(
+        storage_config.mysql_connection_kwargs({"database": DATABASE_NAME}))
+    row = connection.query_one(
+        "SELECT SHA256,PAYLOAD FROM TB_FRAME_CONTRACT "
+        "WHERE EPISODE_ID=%s AND FRAME_NO=%s AND SHA256=%s "
+        "ORDER BY VERSION_NO DESC LIMIT 1",
+        (_episode_id(ep), int(frame), sha))
+    if not row or str(row.get("SHA256") or "").lower() != sha:
+        return None
+    projection = row.get("PAYLOAD")
+    if isinstance(projection, str):
+        projection = json.loads(projection)
+    if not isinstance(projection, dict):
+        return None
+    ref = document_reference(projection)
+    if ref:
+        document = runtime_workspace.read_json(ep, ref.get("rel"), default=None)
+        if (not isinstance(document, dict)
+                or json_sha256(document) != str(ref.get("sha256") or "").lower()):
+            return None
+    else:
+        document = projection
+    if not isinstance(document.get("hash_material"), dict):
+        return None
+    if (str(document.get("contract_sha256") or "").lower() != sha
+            or _source_sha(document) != sha):
+        return None
+    return document
+
+
 def load_latest(ep: Path, frame: int | str, *, legacy_path: str | Path | None = None) -> dict | None:
     """Read latest Frame Contract from MySQL in dual/mysql mode, then JSON fallback."""
     ep = Path(ep).resolve()

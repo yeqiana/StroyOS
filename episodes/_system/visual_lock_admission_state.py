@@ -246,7 +246,12 @@ def valid_pass_for_gate_row(ep: Path, review_row: dict) -> bool:
     return (
         int(entry.get("frame") or 0) == int(gate.get("frame") or 0)
         and str(entry.get("sha256") or "").lower() == str(gate.get("sha256") or "").lower()
-        and str(entry.get("frame_contract_sha256") or "").lower() == str(gate.get("frame_contract_sha256") or "").lower()
+        and (
+            str(entry.get("frame_contract_sha256") or "").lower()
+            == str(gate.get("frame_contract_sha256") or "").lower()
+            or frame_contract.recorded_contract_matches_current(
+                ep, gate["frame"], str(entry.get("frame_contract_sha256") or ""))
+        )
         and bool(current_profile_sha)
         and str(entry.get("profile_sha256") or "").lower() == current_profile_sha.lower()
         and bool(current_version)
@@ -345,7 +350,7 @@ def reconcile_historical_passes(
             request_profile = str(((request.get("visual_profile") or {}).get("profile_sha256")) or "").lower()
             if str(candidate.get("sha256") or "").lower() != str(asset.get("sha256") or "").lower():
                 continue
-            if request_fc != str(asset.get("frame_contract_sha256") or "").lower():
+            if not frame_contract.recorded_contract_matches_current(ep, frame, request_fc):
                 continue
             if request_profile != str(profile_sha256 or "").lower():
                 continue

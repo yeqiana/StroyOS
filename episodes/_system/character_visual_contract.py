@@ -376,8 +376,14 @@ def validate_pixel_master(ep,expected=None,allow_provisional=False):
         if not rp.is_file():e.append("character pixel master baseline review missing")
         elif sha_file(rp).lower()!=review_sha.lower():e.append("character pixel master baseline review sha stale")
     if expected:
-        for key in ("asset_path","sha256","frame_contract_sha256"):
-            if str(d.get(key) or "").lower()!=str(expected.get(key) or "").lower():e.append(f"character pixel master {key} mismatch")
+        for key in ("asset_path","sha256"):
+            if str(d.get(key) or "").lower()!=str(expected.get(key) or "").lower():
+                e.append(f"character pixel master {key} mismatch")
+        if str(d.get("frame_contract_sha256") or "").lower() != str(expected.get("frame_contract_sha256") or "").lower():
+            import frame_contract
+            if not frame_contract.recorded_contract_matches_current(
+                    ep, d.get("frame"), d.get("frame_contract_sha256")):
+                e.append("character pixel master frame_contract_sha256 mismatch")
         if str(d.get("frame") or "").zfill(2)!=str(expected.get("frame") or "").zfill(2):e.append("character pixel master frame mismatch")
     return e
 
