@@ -11,9 +11,11 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 import errno
+import hashlib
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 import threading
 import time
 
@@ -43,7 +45,13 @@ def shared_directory(repo_root: Path = ROOT) -> Path:
         git_common = Path(cp.stdout.strip()).resolve()
         if not git_common.is_dir() or not cp.stdout.strip():
             raise ValueError("no shared git directory")
-        return git_common / "storyos-global-image-capacity-v1"
+        # Native Codex workspace-write sandboxes cannot create/lock files in
+        # Git's protected metadata directory (even when Git itself is readable).
+        # Scope slots by the canonical Git-common-dir identity, but keep the
+        # actual byte locks under the same-user writable machine temp root.
+        # Every linked worktree hashes to the same five-slot namespace.
+        root_key = hashlib.sha256(str(git_common).casefold().encode("utf-8")).hexdigest()[:20]
+        return Path(tempfile.gettempdir()).resolve() / ("storyos-global-image-capacity-v2-" + root_key)
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         raise GlobalImageCapacityError("GLOBAL_IMAGE_CAPACITY_SHARED_ROOT_UNAVAILABLE") from exc
 
