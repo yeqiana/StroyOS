@@ -57,6 +57,10 @@ def test_real_os_permits_shared_across_two_git_linked_worktrees_and_crash_cleanu
     _git("worktree","add","-q","-b","isolated-linked",str(linked),cwd=parent)
     shared=cap.shared_directory(parent)
     assert shared==cap.shared_directory(linked)
+    # Git metadata is not a writable sandbox root on Windows. Both worktrees
+    # must still share one local, crash-safe namespace outside protected .git.
+    assert ".git" not in shared.parts
+    assert shared.name.startswith("storyos-global-image-capacity-v2-")
     flag_a=tmp_path/"A.ready";flag_b=tmp_path/"B.ready"
     procs=[]
     try:

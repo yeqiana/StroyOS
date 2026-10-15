@@ -258,8 +258,8 @@ def test_codex_logical_batch_does_not_double_take_permits(tmp_path):
 
 def test_separate_git_worktrees_share_one_lock_root():
     common = capacity.shared_directory(ROOT)
-    assert common.name == "storyos-global-image-capacity-v1"
-    assert common.parent.is_dir()
+    assert common.name.startswith("storyos-global-image-capacity-v2-")
+    assert common.parent == Path(__import__("tempfile").gettempdir()).resolve()
     assert "episodes" not in common.parts
 
 
