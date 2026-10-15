@@ -230,7 +230,7 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
   useEffect(() => {
     if (refreshInterval <= 0) return;
     const interval = setInterval(() => {
-      loadLatestStatuses();
+      if (document.visibilityState !== 'hidden') void loadLatestStatuses();
     }, refreshInterval * 1000);
     return () => clearInterval(interval);
   }, [refreshInterval]);
@@ -378,7 +378,7 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
           <div className="flex items-center gap-1.5 h-9 px-2 rounded-[5px] border border-[var(--border-subtle)] text-[var(--text-secondary)]">
             <span className={`w-1.5 h-1.5 rounded-full ${isRefreshing?'bg-[var(--info)]':apiState==='ok'?'bg-[var(--text-tertiary)]':'bg-[var(--warning)]'}`} />
             <span className="text-[var(--text-tertiary)]">读取间隔:</span>
-            <Select aria-label="刷新间隔" size="small" variant="borderless" className="!min-w-[66px]" value={refreshInterval} onChange={setRefreshInterval} options={[{value:5,label:'5 秒'},{value:10,label:'10 秒'},{value:30,label:'30 秒'},{value:0,label:'关闭'}]} />
+            <Select aria-label="刷新间隔" size="small" variant="borderless" className="!min-w-[66px]" value={refreshInterval} onChange={setRefreshInterval} options={[{value:5,label:'5 秒'},{value:10,label:'10 秒'},{value:15,label:'15 秒'},{value:30,label:'30 秒'},{value:0,label:'关闭'}]} />
           </div>
 
           <button
