@@ -224,7 +224,14 @@ def eligible_baseline_content_repair(ep: Path, item: dict, payload: dict,
                 or int(baseline.get("content_repairs_used") or 0) != 0
                 or (baseline.get("current_candidate") or {}).get("sha256")
                    != evidence.get("normalized_png_sha256")
-                or not visual_lock_baseline_gate.approved(ep)):
+                or visual_lock_baseline_gate.validate_review(ep)):
+            return False
+        prior_baseline_review = story_json.read_json(
+            ep / visual_lock_baseline_gate.REL)
+        if (prior_baseline_review.get("status") != "LOCKED"
+                or prior_baseline_review.get("decision") != "PASS"
+                or prior_baseline_review.get("sha256")
+                   != evidence.get("normalized_png_sha256")):
             return False
         review = visual_profile_review_persistence.load(ep) or {}
         row = next((x for x in review.get("calibration") or []
