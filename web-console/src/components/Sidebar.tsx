@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Activity, Bell, Bot, ChevronDown, ChevronRight, BookOpenText, FileClock, Folder, GitBranch, LayoutDashboard, Moon, Plus, Search, Sun, X, MoreHorizontal, UserRound } from 'lucide-react';
 import { Episode, NavigationTab, ProjectItem } from '../types';
 import { StoryOSMark } from './StoryOSMark';
@@ -56,6 +56,8 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
   // Creator-first navigation: project tree remains available on demand, not permanently expanded.
   const [projectsOpen, setProjectsOpen] = useState(false);
   const [recentOpen, setRecentOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(['pipeline','agents','logs'].includes(currentTab));
+  useEffect(() => { if (['pipeline','agents','logs'].includes(currentTab)) setAdvancedOpen(true); }, [currentTab]);
   const [compactProjectsOpen,setCompactProjectsOpen]=useState(false);
   const [modal, setModal] = useState<'project' | 'story' | 'rename' | null>(null);
   const [projectForAction, setProjectForAction] = useState<ProjectItem | null>(null);
@@ -105,16 +107,21 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
           <button type="button" onClick={() => openModal('story')} className="os-action os-action-primary w-full !h-9 text-[13px] font-semibold"><Plus size={16}/> 新建故事</button>
         </div>}
         <nav aria-label="主要页面" className="space-y-1"><p className="storyos-sidebar-section-label px-3 pb-2 os-eyebrow">内容制作</p>
-          {nav.slice(0,3).map(item => {
+          {nav.slice(0,4).map(item => {
             const Icon = item.icon;
             return <button key={item.id} type="button" onClick={() => onSelectTab(item.id)} aria-label={item.label} title={item.label} aria-current={currentTab === item.id ? 'page' : undefined}
               className={`relative w-full h-9 flex items-center gap-3 px-3 rounded-[6px] text-left transition-colors ${currentTab === item.id ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-semibold shadow-[inset_2px_0_0_var(--info)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}>
               <Icon size={16} strokeWidth={1.75} aria-hidden="true"/><span className="storyos-sidebar-nav-label">{item.label}</span>
             </button>;
           })}
-          <div className="mx-2 my-3 border-t border-[var(--border-subtle)]" />
-          <p className="storyos-sidebar-section-label px-3 pb-2 os-eyebrow">运行与管理</p>
-          {nav.slice(3).map(item => {const Icon=item.icon;return <button key={item.id} type="button" onClick={()=>onSelectTab(item.id)} aria-label={item.label} title={item.label} aria-current={currentTab===item.id?'page':undefined} className={`relative flex h-9 w-full items-center gap-3 rounded-[6px] px-3 text-left transition-colors ${currentTab===item.id?'bg-[var(--bg-selected)] font-semibold text-[var(--text-primary)] shadow-[inset_2px_0_0_var(--info)]':'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}`}><Icon size={16} strokeWidth={1.75} aria-hidden="true"/><span className="storyos-sidebar-nav-label">{item.label}</span></button>})}
+          <div className="mx-2 my-2 border-t border-[var(--border-subtle)]" />
+          <button type="button" aria-label="高级管理" title="高级管理" aria-expanded={advancedOpen} aria-controls="storyos-sidebar-advanced" onClick={()=>setAdvancedOpen(open=>!open)} className="flex h-9 w-full items-center gap-3 rounded-[6px] px-3 text-left text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]">
+            {advancedOpen?<ChevronDown size={16} aria-hidden="true"/>:<ChevronRight size={16} aria-hidden="true"/>}<span className="storyos-sidebar-nav-label">高级管理</span>
+          </button>
+          {advancedOpen&&<div id="storyos-sidebar-advanced" aria-label="高级管理页面" className="space-y-1 pl-2">
+          {nav.slice(4).map(item => {const Icon=item.icon;return <button key={item.id} type="button" onClick={()=>onSelectTab(item.id)} aria-label={item.label} title={item.label} aria-current={currentTab===item.id?'page':undefined} className={`relative flex h-9 w-full items-center gap-3 rounded-[6px] px-3 text-left transition-colors ${currentTab===item.id?'bg-[var(--bg-selected)] font-semibold text-[var(--text-primary)] shadow-[inset_2px_0_0_var(--info)]':'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}`}><Icon size={16} strokeWidth={1.75} aria-hidden="true"/><span className="storyos-sidebar-nav-label">{item.label}</span></button>})}
+
+          </div>}
         </nav>
         <button type="button" className="storyos-compact-project-trigger" onClick={()=>setCompactProjectsOpen(true)} title="打开项目快捷面板" aria-label="打开项目快捷面板"><Folder size={19} aria-hidden="true"/></button>
         <section aria-label="项目列表" className="storyos-sidebar-projects pt-2 border-t border-[var(--border-subtle)]">

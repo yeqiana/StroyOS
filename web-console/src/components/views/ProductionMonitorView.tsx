@@ -370,7 +370,7 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
         <div className="flex flex-col items-start gap-1">
           <h1 className="os-page-heading">
             生产监控
-          </h1><p className="mt-1 text-[12px] text-[var(--text-secondary)]">阶段记录主表与历史 Run 分离 · 数据范围可追溯，未验证在线调度不推断</p>
+          </h1><p className="mt-1 text-[12px] text-[var(--text-secondary)]">只显示有来源的生产证据；未验证的在线状态不作推断</p>
         </div>
 
         <div className="flex items-center gap-2 text-xs">
@@ -399,6 +399,11 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
         <div className="flex flex-wrap items-center gap-3 text-[11px] text-[var(--text-tertiary)]"><span>{primaryView==='stages'?'Platform API 只读阶段 · 本机文件非实时':'历史 Run 快照 · 非实时 Worker 视图'}</span><span className="tabular-nums">{primaryView==='stages'?`已读取 ${runtimeCoverage.loaded} 条`:`${runs.length} 个历史实例`}</span></div>
       </div>
       {primaryView==='stages' ? <section aria-label="阶段证据主视图" className="min-w-0 space-y-3">
+        {apiState !== 'ok' && <div role="status" className="flex flex-wrap items-center justify-between gap-2 border-l-2 border-[var(--warning)] px-3 py-2 text-[12px] text-[var(--text-secondary)]"><span>{apiState === 'loading' ? '正在读取 Platform API 阶段摘要…' : apiWarning}</span><span className="shrink-0 text-[var(--text-tertiary)]">{lastSync ? `最近获取 ${lastSync}` : '未获得有效在线证据'}</span></div>}
+        <RuntimeAuthorityPanel focusEpisodeRef={focusEpisodeRef} items={runtimeRows} coverage={runtimeCoverage} hasMore={runtimeHasMore} loadingMore={runtimeLoadingMore} onLoadMore={loadNextRuntimePage} dataState={apiState} lastSync={lastSync}/>
+        <details aria-label="Redis 只读技术证据" className="border-t border-[var(--border-subtle)] pt-2 text-[12px] text-[var(--text-secondary)]">
+          <summary className="cursor-pointer py-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]">Redis 技术观测 · 仅供核对，不证明正在生产</summary>
+          <div className="space-y-2 pt-2">
         <section aria-label="Redis Worker 心跳只读观测" className="flex flex-wrap items-center gap-x-5 gap-y-2 border border-[var(--border-subtle)] px-3 py-2 text-[12px] text-[var(--text-secondary)]">
           <strong className="font-medium text-[var(--text-primary)]">Redis 心跳观测</strong>
           {!workerSnapshot || !workerSnapshot.available ? (
@@ -449,9 +454,8 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
               {taskSnapshot.record_count > taskSnapshot.records.length && <p className="py-2 text-[var(--text-tertiary)]">只展示前 {taskSnapshot.records.length} 条；其余不在此处加载</p>}
             </div>}
         </section>
-
-        {apiState !== 'ok' && <div role="status" className="flex flex-wrap items-center justify-between gap-2 border-l-2 border-[var(--warning)] px-3 py-2 text-[12px] text-[var(--text-secondary)]"><span>{apiState === 'loading' ? '正在读取 Platform API 阶段摘要…' : apiWarning}</span><span className="shrink-0 text-[var(--text-tertiary)]">{lastSync ? `最近获取 ${lastSync}` : '未获得有效在线证据'}</span></div>}
-        <RuntimeAuthorityPanel focusEpisodeRef={focusEpisodeRef} items={runtimeRows} coverage={runtimeCoverage} hasMore={runtimeHasMore} loadingMore={runtimeLoadingMore} onLoadMore={loadNextRuntimePage} dataState={apiState} lastSync={lastSync}/>
+          </div>
+        </details>
       </section> : <section aria-label="历史 Run 主视图" className="min-w-0 space-y-3">
       <p className="text-[12px] text-[var(--text-secondary)]">历史工作区运行快照（非实时），与本机阶段证据不同源；仅用于追溯。</p>
       {/* ======================= 1. Operational Status Bar ======================= */}

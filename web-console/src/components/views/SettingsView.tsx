@@ -1,6 +1,6 @@
 import React from 'react';
 import {Alert, Segmented, Tabs} from 'antd';
-import {Bell, LockKeyhole, Palette, ShieldCheck, SlidersHorizontal, Type, UserRound} from 'lucide-react';
+import {Bell, LockKeyhole, Palette, SlidersHorizontal, Type, UserRound} from 'lucide-react';
 import {UserProfileSection} from './UserProfileSection';
 import type {ThemeMode} from '../../types';
 import type {FontPreference,PreferencePersistence} from '../../utils/fontPreference';
@@ -39,7 +39,6 @@ export const SettingsView:React.FC<SettingsViewProps>=({
   return <section id="codex-appearance-settings-view" className="w-full min-w-0 space-y-3 pb-6 text-[var(--text-primary)]">
     <header className="border-b border-[var(--border-subtle)] pb-3">
       <h1 className="os-page-heading">系统设置</h1>
-      <p className="mt-1 text-[12px] text-[var(--text-secondary)]">外观与阅读偏好保存在本机；生产参数只呈现实际接入的权限</p>
     </header>
     <Tabs size="small" className="storyos-settings-tabs" activeKey={activeSection} onChange={key=>onSectionChange?.(key as SettingsSection)} items={[
       {key:'appearance',label:<span className="inline-flex items-center gap-1.5"><Palette size={14}/>外观设置</span>,
@@ -47,15 +46,14 @@ export const SettingsView:React.FC<SettingsViewProps>=({
           <div className="min-w-0 space-y-5">
             <section aria-label="界面主题设置" className="space-y-3 border-y border-[var(--border-subtle)] py-4">
               <div className="flex flex-wrap items-center justify-between gap-4">
-                <div><h2 className="os-section-heading">界面主题</h2><p className="mt-1 text-[12px] text-[var(--text-secondary)]">立即切换主题变量，不修改生产数据</p></div>
+                <span className="text-[12px] font-medium">界面主题</span>
                 <Segmented aria-label="界面主题" value={currentTheme} onChange={value=>onThemeChange?.(value as ThemeMode)}
                   options={[{value:'dark',label:'深色'},{value:'light',label:'浅色'},{value:'light-gradient',label:'浅色渐变'}]}/>
               </div>
-              <p className="text-[11px] text-[var(--text-tertiary)]">当前：{currentTheme==='dark'?'深色':currentTheme==='light'?'浅色':'浅色渐变'} · 侧栏、表格、检视器复用统一色彩 Token</p>
             </section>
             <section aria-label="字体与排版设置" className="space-y-3 border-b border-[var(--border-subtle)] pb-4">
               <div className="flex flex-wrap items-center justify-between gap-4">
-                <div><h2 className="os-section-heading flex items-center gap-2"><Type size={15}/>字体与排版</h2><p className="mt-1 text-[12px] text-[var(--text-secondary)]">调整系统字体候选顺序；保留已核定的字号、行高与数字等宽规则</p></div>
+                <span className="inline-flex items-center gap-2 text-[12px] font-medium"><Type size={15}/>字体与排版</span>
                 <Segmented aria-label="字体偏好" value={fontPreference} onChange={value=>onFontPreferenceChange?.(value as FontPreference)}
                   options={[{value:'balanced',label:'均衡显示'},{value:'chinese',label:'中文优先'}]}/>
               </div>
@@ -67,14 +65,12 @@ export const SettingsView:React.FC<SettingsViewProps>=({
               <p role="status" aria-live="polite" className={'text-[11px] '+(fontPreferencePersistence==='session-only'?'text-[var(--warning)]':'text-[var(--text-tertiary)]')}>{persistenceNames[fontPreferencePersistence]} · 仅影响此浏览器的界面，不涉及故事制作契约</p>
             </section>
             <div aria-label="外观配置生效范围" className="text-[12px] text-[var(--text-secondary)]">
-              <h2 className="os-section-heading">配置生效说明</h2>
               <p className="mt-2 leading-5">切换即生效；字体使用设备已有的系统字体，不下载专有字体文件。浏览器关闭后只有成功保存的偏好能自动恢复。</p>
             </div>
           </div>
           <aside className="min-w-0 border-t border-[var(--border-subtle)] pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0" aria-label="字体实时预览">
-            <h2 className="os-section-heading">实时排版预览</h2>
             <div className="storyos-font-sample mt-3 space-y-3 border-y border-[var(--border-subtle)] py-4">
-              <h3 className="os-page-heading">五十亩山地之后</h3>
+              <p className="text-[18px] font-semibold">五十亩山地之后</p>
               <p className="text-[14px] font-semibold leading-5">Frame 08 · 人物画风一致性</p>
               <p className="text-[13px] leading-5 text-[var(--text-secondary)]">已批准图片与当前生产任务属于不同证据；审核时应明确标注来源、状态和执行回执。</p>
               <p className="text-[12px] leading-[18px] text-[var(--text-tertiary)]">阅读层级：标题 20px · 正文 13px · 元数据 12px</p>
@@ -96,7 +92,6 @@ export const SettingsView:React.FC<SettingsViewProps>=({
             <Alert type="info" showIcon message="通知偏好尚无持久化接口" description="邮件、桌面推送和生产阻断提醒尚未接入授权偏好 API，因此不提供不会生效的开关，也不声明已订阅通知。"/>
           </section>
           <aside aria-label="通知范围说明" className="min-w-0 border-t border-[var(--border-subtle)] pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
-            <h2 className="os-section-heading">通知的证据范围</h2>
             <p className="mt-3 text-[12px] leading-6 text-[var(--text-secondary)]">侧边栏铃铛和此处共用现有通知中心。通知条数不等于生产任务数，也不能证明后台监控或推送服务已经启动。</p>
           </aside>
         </div>},
@@ -118,14 +113,13 @@ export const SettingsView:React.FC<SettingsViewProps>=({
             </div>
           </section>
           <aside aria-label="本机数据说明" className="min-w-0 border-t border-[var(--border-subtle)] pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
-            <h2 className="os-section-heading flex items-center gap-2"><ShieldCheck size={16}/>本机数据与隐私</h2>
             <p className="mt-3 text-[12px] leading-6 text-[var(--text-secondary)]">外观及字体仅保存在当前浏览器，不构成已登录账号或跨设备同步。生产凭据、Token、数据库密码不能在此页面显示或导出。</p>
           </aside>
         </div>},
       {key:'pipeline',label:<span className="inline-flex items-center gap-1.5"><SlidersHorizontal size={14}/>生产管线</span>,
         children:<div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(280px,.8fr)]" aria-label="生产配置双栏工作区">
           <section className="min-w-0 space-y-3">
-            <h2 className="os-section-heading">Runtime 配置权限</h2>
+            <p className="text-[12px] font-medium">Runtime 配置权限（只读）</p>
             <Alert type="warning" showIcon message="尚无已授权的生产配置读写接口" description="模型、画幅、批次、并发等参数必须由受控 StoryOS Runtime 提供权威数据；本页不会展示假配置值或模拟写入成功。"/>
             <div className="divide-y divide-[var(--border-subtle)] border-y border-[var(--border-subtle)] text-[12px]">
               <div className="flex flex-wrap justify-between gap-3 py-3"><span className="text-[var(--text-secondary)]">生图模型 / 质量 / 画幅</span><span>等待权威配置接口</span></div>
@@ -134,7 +128,6 @@ export const SettingsView:React.FC<SettingsViewProps>=({
             </div>
           </section>
           <aside className="min-w-0 border-t border-[var(--border-subtle)] pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0" aria-label="生产权限说明">
-            <h2 className="os-section-heading flex items-center gap-2"><ShieldCheck size={16}/>配置安全边界</h2>
             <p className="mt-3 text-[12px] leading-6 text-[var(--text-secondary)]">本页是当前前端能力的说明，不代表 Runtime 已启动或配置可写。接通正式授权能力后，需根据后端返回的权限契约新增读写操作。</p>
           </aside>
         </div>}
