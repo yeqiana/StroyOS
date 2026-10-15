@@ -417,7 +417,8 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
           ) : (
             <>
               <span>采集记录 {workerSnapshot.record_count}</span>
-              <span>时间与 TTL 均新鲜 {workerSnapshot.fresh_heartbeats}</span>
+              <span>时间/TTL 新鲜 {workerSnapshot.fresh_heartbeats}（非执行核验）</span>
+                <span className="text-[var(--text-tertiary)]">采集于 {workerSnapshot.observed_at ? new Date(workerSnapshot.observed_at).toLocaleString("zh-CN") : "未提供"}</span>
               <span className={workerSnapshot.stale_heartbeats > 0 ? 'text-[var(--warning)]' : ''}>心跳过期 {workerSnapshot.stale_heartbeats}</span>
               <span>无法核验 {workerSnapshot.unverified_heartbeats}</span>
               {!workerSnapshot.scan_complete && <span className="text-[var(--warning)]">仅部分扫描结果</span>}
