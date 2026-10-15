@@ -145,10 +145,7 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode, o
   const safeReviewPage=Math.min(reviewPage,Math.max(1,Math.ceil(filteredReviews.length/10)));
   const pageReviews=filteredReviews.slice((safeReviewPage-1)*10,safeReviewPage*10);
   return <section className="space-y-4 pb-6 text-[var(--text-primary)]">
-    <header className="os-console-toolbar flex flex-wrap items-center justify-between gap-3">
-      <div><h2 className="text-[14px] font-semibold">制作与审核记录</h2><p className="mt-1 text-[12px] text-[var(--text-tertiary)]">素材与分镜优先 · 审核证据在右 · 本机工作区只读</p></div>
-      <span className="text-[11px] text-[var(--text-tertiary)]">正式出图与返修需受控 Runtime 接口</span>
-    </header>
+    <p className="text-[11px] text-[var(--text-tertiary)]">分镜与审核为本机证据；正式出图与返修须经 Runtime 授权。</p>
     <nav aria-label="创作工具快捷导航" className="flex flex-wrap items-center gap-1 border-y border-[var(--border-subtle)] py-1 text-[12px]">
       {[
         {label:'帧定位',icon:LayoutGrid,target:'storyos-creator-frame-index'},
@@ -165,7 +162,7 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode, o
     <section id="storyos-creator-frame-index" aria-label="20帧快速定位" className="space-y-2 border-y border-[var(--border-subtle)] py-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-3">
-          <h3 className="text-[12px] font-semibold">20 帧快速定位</h3>
+          <span className="text-[12px] font-medium text-[var(--text-primary)]">帧定位</span>
           <span className="text-[11px] text-[var(--text-tertiary)]">有批准素材 {approvedNumbers.size} 帧 · 有批次记录 {batchNumbers.size} 帧 · 需检查 {attentionFrames.length} 帧</span>
         </div>
         <Button size="small" disabled={!attentionFrames.some(frame=>approvedNumbers.has(frame)||batchNumbers.has(frame))}
@@ -225,14 +222,14 @@ export const ActivityStream: React.FC<ActivityStreamProps> = ({ activeEpisode, o
         <Segmented size="small" aria-label="分镜画布内容" value={activeCanvasMode} onChange={value=>{setCanvasMode(value as 'approved'|'batch');setSelectedFrame(null);setPinnedFrame(null);}} options={[{value:'batch',label:`当前批次 (${batch?.items.length||0})`},...(hasApproved?[{value:'approved',label:`已批准 (${approved?.frames.length||0})`}]:[])]}/>
       </div>
       {pinnedFrame&&<div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] bg-[var(--bg-workspace)] px-3 py-2 text-[12px]" aria-label="分镜对照工具栏"><span className="flex items-center gap-2 text-[var(--text-secondary)]"><Pin size={13}/>固定对照 Frame {String(pinnedFrame.frame).padStart(2,'0')} · {validPinnedImageUrl?'可验证图片':'图片证据不可用'}</span><Button size="small" onClick={()=>setPinnedFrame(null)} icon={<PinOff size={13}/>}>清除对照</Button></div>}
-      <div className="grid min-w-0 gap-0 lg:grid-cols-[176px_minmax(0,1fr)]">
-        <aside className="border-b border-[var(--border-subtle)] px-3 py-3 lg:border-b-0 lg:border-r" aria-label="创作参数只读面板">
-          <div className="flex items-center gap-2 text-[12px] font-semibold"><SlidersHorizontal size={14} className="text-[var(--text-secondary)]"/>创作参数</div>
+      <div className="min-w-0">
+        <details className="border-b border-[var(--border-subtle)] px-3 py-2" aria-label="创作参数只读面板">
+          <summary className="flex cursor-pointer items-center gap-2 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"><SlidersHorizontal size={14}/>创作参数（只读）</summary>
           <dl className="mt-3 grid grid-cols-2 gap-3 text-[11px] lg:grid-cols-1">
             {[['图片模型',activeEpisode.runtimeRequest.imageModel],['画幅',activeEpisode.runtimeRequest.aspectRatio],['质量',activeEpisode.runtimeRequest.quality],['批次策略',activeEpisode.runtimeRequest.batchMode]].map(([label,value])=><div key={label} className="min-w-0"><dt className="text-[var(--text-tertiary)]">{label}</dt><dd className="mt-1 break-words text-[var(--text-primary)]">{value||'未提供'}</dd></div>)}
           </dl>
           <p className="mt-3 border-t border-[var(--border-subtle)] pt-2 text-[11px] leading-5 text-[var(--text-tertiary)]">参数来自工作区快照。当前不支持在此修改或发起正式生图。</p>
-        </aside>
+        </details>
         <div className="min-w-0 p-3" aria-label="分镜视觉内容">
         {activeCanvasMode==='approved' && approved?.frames.length ? <>
           <p className="mb-3 text-[11px] text-[var(--text-tertiary)]">本机 media/approved · 已批准图片 · 点击分镜查看检视详情</p>

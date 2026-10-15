@@ -40,9 +40,14 @@ export const SeriesLibraryView: React.FC<Props> = ({episodes,activeEpisode,onSel
       <div><h1 className="os-page-heading">作品与项目</h1><p className="mt-1 text-[12px] text-[var(--text-secondary)]">作品素材库 · 图片优先，工作区状态与批准素材分开计数</p></div>
       <Button type="primary" icon={<Plus size={15}/>} onClick={onNewStoryClick}>新建故事</Button>
     </header>
-    <LocalDraftSafetyPanel episodes={episodes} projects={projects} onRestore={onRestoreLocalDrafts}/>
-
-    <CanonicalRuntimeDirectory episodes={episodes} onSelectHistorical={onSelectEpisode} onOpenMonitor={onGoToMonitor}/>
+    <details aria-label="草稿管理工具" className="border-b border-[var(--border-subtle)] text-[12px]">
+      <summary className="cursor-pointer py-2.5 font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]">草稿管理 · 保存、备份与恢复</summary>
+      <div className="pb-3"><LocalDraftSafetyPanel episodes={episodes} projects={projects} onRestore={onRestoreLocalDrafts}/></div>
+    </details>
+    <details aria-label="正式 Runtime 作品目录" className="border-b border-[var(--border-subtle)] text-[12px]">
+      <summary className="cursor-pointer py-2.5 font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]">正式 Runtime 目录 · 历史证据与监控入口</summary>
+      <div className="pb-3"><CanonicalRuntimeDirectory episodes={episodes} onSelectHistorical={onSelectEpisode} onOpenMonitor={onGoToMonitor}/></div>
+    </details>
 
     <section aria-label="作品库概况" className="flex flex-wrap items-center gap-x-8 gap-y-2 border-b border-[var(--border-subtle)] py-1.5">
       {[{label:'已收录',count:episodes.length},{label:'工作区未发布',count:episodes.length-publishedCount},{label:'含已批准图片',count:verifiedCount}].map(metric=><div key={metric.label} className="flex items-baseline gap-2"><span className="text-[11px] text-[var(--text-tertiary)]">{metric.label}</span><strong className="text-[16px] font-semibold tabular-nums">{metric.count}</strong></div>)}
