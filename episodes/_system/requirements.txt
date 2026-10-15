@@ -2,3 +2,4 @@ Pillow>=10.4,<13
 PyYAML>=6.0,<7
 DBUtils>=3.2,<4
 PyMySQL>=1.1,<2
+psutil>=5.9,<9

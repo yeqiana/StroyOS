@@ -146,9 +146,9 @@ def test_natural_final_review_repair_flows_through_one_wave_scheduler_and_review
     monkeypatch.setattr(image_scheduler, "storyos_config", type("Config", (), {
         "get_path": staticmethod(lambda *_a, **_k: {}),
     }))
-    monkeypatch.setattr(image_scheduler, "image_model_policy", type("ImagePolicy", (), {
-        "for_episode": staticmethod(lambda *_a, **_k: {"model": "gpt-image-2.5-flare", "quality": "high"}),
-    }), raising=False)
+    # Stub only the model lookup; keep real image policy error classifications and constants.
+    monkeypatch.setattr(image_scheduler.image_model_policy, "for_episode",
+                        lambda *_a, **_k: {"model": "gpt-image-2.5-flare", "quality": "high"})
     monkeypatch.setattr(repair_aggregator, "_event", lambda *_a, **_k: None)
 
     materialized = repair_aggregator.materialize_wave(
@@ -185,6 +185,10 @@ def test_natural_final_review_repair_flows_through_one_wave_scheduler_and_review
 
     monkeypatch.setattr(generation_attempt_authority, "reserve", reserve_stub)
     monkeypatch.setattr(generation_attempt_authority, "commit_dispatch", commit)
+    # The test uses a synthetic committed lease; the production MySQL validator
+    # must not reach a real database from this hermetic provider stub.
+    monkeypatch.setattr(generation_attempt_authority, "validate_committed_dispatch",
+                        lambda *_a, **_k: True)
     monkeypatch.setattr(generation_attempt_authority, "mark_observed", lambda *_a, **_k: None)
     monkeypatch.setattr(
         generation_attempt_authority, "load_attempt",
@@ -234,7 +238,7 @@ def test_natural_final_review_repair_flows_through_one_wave_scheduler_and_review
     assert scheduler_rc == 0
     assert fake_state["attempts_consumed"] == 2
     assert dispatches == [("canary/frame-01/attempt-2", "TEST_ONLY")]
-    assert repair_item["status"] == "generated"
+    assert repair_item["status"] == "generated", (repair_item.get("technical_failure_code"), repair_item.get("last_error"))
     assert repair_item["generation_key"] == "canary/frame-01/attempt-2"
     assert repair_artifact.is_file()
 
