@@ -11,8 +11,9 @@ try{for(const c of ['save','restore','blocked']){
   const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
   const wait=async(fn,label)=>{for(let i=0;i<350;i++){const got=fn();if(got)return got;await sleep(90);}throw Error('timeout '+label)};
   try{
-    const settings=await wait(()=>[...document.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')==='系统设置'||b.textContent?.trim()==='系统设置'),'settings menu');
-    if(!settings)throw Error('settings menu unavailable');
+    const account=await wait(()=>document.querySelector('button[aria-label="账号菜单"]'),'account menu');
+    account.click();
+    const settings=await wait(()=>document.querySelector('[role="menu"] button[aria-label="系统设置（账号菜单）"]'),'settings menu entry');
     settings.click();
     const page=await wait(()=>document.querySelector('#codex-appearance-settings-view'),'settings page');
     const fonts=await wait(()=>page.querySelector('[aria-label="字体偏好"]'),'font segmented');

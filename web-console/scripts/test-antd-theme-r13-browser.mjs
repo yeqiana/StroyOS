@@ -9,8 +9,10 @@ const html=fs.readFileSync('index.html','utf8');
 const qa=[
  '(async()=>{try{',
  'const sleep=ms=>new Promise(r=>setTimeout(r,ms));',
- 'let btn;for(let i=0;i<160&&!btn;i++){btn=[...document.querySelectorAll("button")].find(x=>x.textContent?.trim()==="系统设置");if(!btn)await sleep(100)}',
- 'if(!btn)throw Error("settings navigation missing");btn.click();',
+ 'let btn;for(let i=0;i<160&&!btn;i++){btn=[...document.querySelectorAll("button")].find(x=>x.getAttribute("aria-label")==="账号菜单");if(!btn)await sleep(100)}',
+ 'if(!btn)throw Error("account menu missing");btn.click();',
+ 'let settings;for(let i=0;i<160&&!settings;i++){settings=[...document.querySelectorAll("[role=menu] button")].find(x=>x.getAttribute("aria-label")==="系统设置（账号菜单）");if(!settings)await sleep(100)}',
+ 'if(!settings)throw Error("settings inside account menu missing");settings.click();',
  'let container;for(let i=0;i<180&&!container;i++){container=document.querySelector("#codex-appearance-settings-view .ant-segmented");if(!container)await sleep(100)}',
  'if(!container)throw Error("Ant Design Segmented missing");',
  'let light=[...container.querySelectorAll("label")].find(x=>x.textContent?.trim()==="浅色");if(!light)throw Error("light option absent");light.click();',

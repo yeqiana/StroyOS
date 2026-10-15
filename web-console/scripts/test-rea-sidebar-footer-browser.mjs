@@ -13,11 +13,11 @@ const journey=async function(view){
  try{
   const footer=await wait(()=>document.querySelector('.storyos-sidebar-footer'),'footer');
   const account=footer.querySelector('button[aria-label="账号菜单"]');
-  const gear=footer.querySelector('button[aria-label="系统设置"]');
-  if(!account||!gear)throw Error('required actions missing');
+  if(!account)throw Error('account entry missing');
+  if(document.querySelector('button[aria-label="系统设置"]'))throw Error('duplicate standalone settings entry');
   const full=getComputedStyle(footer.closest('.storyos-sidebar')).width!=='64px';
   if(full){
-   if(footer.getBoundingClientRect().height>106)throw Error('footer too tall '+footer.getBoundingClientRect().height);
+   if(footer.getBoundingClientRect().height>72)throw Error('footer should be single row '+footer.getBoundingClientRect().height);
    if(footer.textContent.includes('外观'))throw Error('redundant visible appearance label');
    const dark=footer.querySelector('button[aria-label="深色主题"]'),light=footer.querySelector('button[aria-label="浅色主题"]');
    if(!dark||!light)throw Error('direct theme shortcuts missing');
@@ -32,15 +32,17 @@ const journey=async function(view){
   }
   account.click();
   const menu=await wait(()=>document.querySelector('[role="menu"][aria-label="账号操作"]'),'account menu');
-  if(!menu.textContent.includes('个人资料')||!menu.textContent.includes('进入演示账号'))throw Error('account actions lost');
+  if(!menu.textContent.includes('个人资料')||!menu.textContent.includes('进入演示账号')||!menu.textContent.includes('系统设置'))throw Error('account actions lost');
   if(!full){
    const m=menu.getBoundingClientRect(),sidebar=footer.closest('.storyos-sidebar').getBoundingClientRect();
    if(m.left<sidebar.right-2||m.right>innerWidth+3)throw Error('compact popup mispositioned '+m.left+'/'+m.right);
   }
   document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
   await wait(()=>!document.querySelector('[role="menu"]'),'Escape closes account');
-  gear.click();
-  await wait(()=>document.querySelector('#codex-appearance-settings-view'),'settings link');
+  account.click();
+  const settingsAction=await wait(()=>document.querySelector('[role="menu"] button[aria-label="系统设置（账号菜单）"]'),'menu settings');
+  settingsAction.click();
+  await wait(()=>document.querySelector('#codex-appearance-settings-view'),'settings via account');
   if(document.documentElement.scrollWidth>innerWidth+8)throw Error('horizontal overflow '+document.documentElement.scrollWidth+'/'+innerWidth);
   document.body.dataset.footerResult='pass';
  }catch(e){document.body.dataset.footerResult='fail:'+(e.message||e)}

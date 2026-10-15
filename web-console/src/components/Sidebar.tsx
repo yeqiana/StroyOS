@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Activity, Bell, Bot, ChevronDown, ChevronRight, BookOpenText, FileClock, Folder, GitBranch, LayoutDashboard, Moon, Plus, Search, Settings, Sun, X, MoreHorizontal, UserRound } from 'lucide-react';
+import { Activity, Bell, Bot, ChevronDown, ChevronRight, BookOpenText, FileClock, Folder, GitBranch, LayoutDashboard, Moon, Plus, Search, Sun, X, MoreHorizontal, UserRound } from 'lucide-react';
 import { Episode, NavigationTab, ProjectItem } from '../types';
 import { StoryOSMark } from './StoryOSMark';
 import { AccountMenu } from './AccountMenu';
@@ -156,20 +156,18 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
           {recentOpen && <div className="mt-2 space-y-0.5">{recents.map(ep => <button key={ep.id} type="button" onClick={() => pickStory(ep)} className="block w-full truncate rounded-[4px] px-3 py-1.5 text-left text-[12px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]">{ep.title}</button>)}</div>}
         </section>
       </div>
-      <div className="storyos-sidebar-footer flex flex-col gap-1.5 border-t border-[var(--border-subtle)] px-2.5 pb-2.5 pt-2">
-        <div className="storyos-sidebar-utility flex min-h-8 items-center justify-between px-1">
-          <button type="button" onClick={() => onSelectTab('settings')} aria-label="系统设置" title="系统设置"
-            className="flex h-7 w-7 items-center justify-center rounded-[5px] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] focus-visible:outline-2 focus-visible:outline-[var(--focus)]"><Settings size={15}/><span className="sr-only">系统设置</span></button>
-          <div className="storyos-sidebar-theme flex items-center gap-1" role="group" aria-label="外观快捷切换">
-            <button type="button" onClick={() => onThemeChange?.('dark')} aria-label="深色主题" aria-pressed={currentTheme === 'dark'} title="深色"
-              className={`flex h-7 w-7 items-center justify-center rounded-[5px] transition-colors hover:bg-[var(--bg-hover)] focus-visible:outline-2 focus-visible:outline-[var(--focus)] ${currentTheme === 'dark' ? 'bg-[var(--bg-selected)] text-[var(--text-primary)]' : 'text-[var(--text-tertiary)]'}`}><Moon size={15}/></button>
-            <button type="button" onClick={() => onThemeChange?.('light')} aria-label="浅色主题" aria-pressed={currentTheme !== 'dark'} title="浅色"
-              className={`flex h-7 w-7 items-center justify-center rounded-[5px] transition-colors hover:bg-[var(--bg-hover)] focus-visible:outline-2 focus-visible:outline-[var(--focus)] ${currentTheme !== 'dark' ? 'bg-[var(--bg-selected)] text-[var(--text-primary)]' : 'text-[var(--text-tertiary)]'}`}><Sun size={15}/></button>
-          </div>
+      <div className="storyos-sidebar-footer flex items-center gap-1.5 border-t border-[var(--border-subtle)] px-2.5 py-2">
+        <div className="storyos-sidebar-account-slot min-w-0 flex-1">
+          <AccountMenu session={props.mockSession} onLogin={props.onMockLogin} onLogout={props.onMockLogout}
+            onProfile={()=>props.onOpenProfile?.()} onSettings={()=>onSelectTab('settings')} onSecurity={props.onOpenSecurity}
+            onNotifications={()=>props.onOpenNotifications?.()}/>
         </div>
-        <AccountMenu session={props.mockSession} onLogin={props.onMockLogin} onLogout={props.onMockLogout}
-          onProfile={()=>props.onOpenProfile?.()} onSettings={()=>onSelectTab('settings')} onSecurity={props.onOpenSecurity}
-          onNotifications={()=>props.onOpenNotifications?.()}/>
+        <div className="storyos-sidebar-theme flex shrink-0 items-center gap-0.5" role="group" aria-label="外观快捷切换">
+          <button type="button" onClick={() => onThemeChange?.('dark')} aria-label="深色主题" aria-pressed={currentTheme === 'dark'} title="深色"
+            className={`flex h-7 w-7 items-center justify-center rounded-[5px] transition-colors hover:bg-[var(--bg-hover)] focus-visible:outline-2 focus-visible:outline-[var(--focus)] ${currentTheme === 'dark' ? 'bg-[var(--bg-selected)] text-[var(--text-primary)]' : 'text-[var(--text-tertiary)]'}`}><Moon size={15}/></button>
+          <button type="button" onClick={() => onThemeChange?.('light')} aria-label="浅色主题" aria-pressed={currentTheme !== 'dark'} title="浅色"
+            className={`flex h-7 w-7 items-center justify-center rounded-[5px] transition-colors hover:bg-[var(--bg-hover)] focus-visible:outline-2 focus-visible:outline-[var(--focus)] ${currentTheme !== 'dark' ? 'bg-[var(--bg-selected)] text-[var(--text-primary)]' : 'text-[var(--text-tertiary)]'}`}><Sun size={15}/></button>
+        </div>
       </div>
       <React.Suspense fallback={null}>{compactProjectsOpen&&<CompactProjectsDrawer projects={projects} episodes={allEpisodes} onClose={()=>setCompactProjectsOpen(false)} onOpenLibrary={()=>onSelectTab('episodes')} onSelectEpisode={pickStory}/>}</React.Suspense>
       {modal && <div role="dialog" aria-modal="true" aria-label={modal === 'project' ? '新建项目' : modal === 'rename' ? '重命名项目' : '新建故事'} className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">

@@ -11,7 +11,9 @@ const journey=async function(view){
  const delay=ms=>new Promise(r=>setTimeout(r,ms));
  const wait=async(fn,label)=>{for(let i=0;i<300;i++){const v=fn();if(v)return v;await delay(80)}throw Error('timeout '+label)};
  try{
-  const settings=await wait(()=>document.querySelector('button[aria-label="系统设置"]'),'settings button');
+  const account=await wait(()=>document.querySelector('button[aria-label="账号菜单"]'),'account button');
+  account.click();
+  const settings=await wait(()=>document.querySelector('[role="menu"] button[aria-label="系统设置（账号菜单）"]'),'account settings entry');
   settings.click();
   const page=await wait(()=>document.querySelector('#codex-appearance-settings-view'),'settings page');
   const tabs=await wait(()=>page.querySelector('.storyos-settings-tabs'),'setting tabs');
@@ -49,9 +51,10 @@ const journey=async function(view){
   profileEntry.click();
   await wait(()=>page.querySelector('[aria-label="用户资料工作区"]'),'sidebar profile navigation');
   if(!findTab('个人资料').classList.contains('ant-tabs-tab-active'))throw Error('profile sidebar not selected');
-  const settingsBtn=document.querySelector('button[aria-label="系统设置"]');settingsBtn.click();
+  accountMenu.click();
+  const settingsBtn=await wait(()=>document.querySelector('[role="menu"] button[aria-label="系统设置（账号菜单）"]'),'settings menu reentry');settingsBtn.click();
   await wait(()=>page.querySelector('[aria-label="字体偏好"]'),'settings default appearance');
-  if(!findTab('外观设置').classList.contains('ant-tabs-tab-active'))throw Error('settings sidebar did not reset to appearance');
+  if(!findTab('外观设置').classList.contains('ant-tabs-tab-active'))throw Error('account settings did not reset to appearance');
   if(document.documentElement.scrollWidth>innerWidth+8)throw Error('horizontal overflow');
   document.body.dataset.reaAccountStatus='pass';
  }catch(e){document.body.dataset.reaAccountStatus='fail:'+(e.message||e)}
