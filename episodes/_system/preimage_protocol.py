@@ -36,7 +36,10 @@ def commit_candidates(ep: Path, snapshot: dict, task_rows: list[dict], *, execut
         candidates.append(candidate); patches.extend(_patches(candidate))
     scopes={scope for scope,_ in patches}
     result=authority_commit.commit_transaction(ep,"meta/story-gates.json",
-        expected_sha=preimage_authority_snapshot.sha(Path(ep)/"meta/story-gates.json"),
+        # The transaction compares exact on-disk bytes, unlike the snapshot's
+        # newline-normalized text SHA. On Windows (CRLF), mixing them makes
+        # every otherwise-valid PREIMAGE commit falsely STALE.
+        expected_sha=authority_commit.sha(Path(ep)/"meta/story-gates.json"),
         authority_guard=lambda: not preimage_authority_snapshot.stale_owned(ep,snapshot),
         snapshot_id=snapshot["snapshot_id"],
         task_ids=[task["task_id"] for task in task_rows],node_ids=[task["node_id"] for task in task_rows],patches=patches,

@@ -212,6 +212,25 @@ class PreimageScopeStalenessTest(unittest.TestCase):
             self.assertNotEqual(current["visual"]["environment_contract"], {"old": True})
             self.assertTrue((ep / "meta/runtime/preimage-authority-barrier.json").is_file())
 
+    def test_windows_crlf_gate_bytes_commit_with_snapshot_scope_guard(self):
+        """Snapshot normalizes CRLF, atomic CAS must compare raw source bytes."""
+        with tempfile.TemporaryDirectory() as raw:
+            ep = Path(raw)
+            (ep / "meta").mkdir()
+            gates = ep / "meta/story-gates.json"
+            text = json.dumps(_owned_fixture(), ensure_ascii=False, indent=2)
+            gates.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+            snapshot = snapshots.build(ep)
+            rows = tasks.plan_tasks(ep, snapshot)
+            for task in rows:
+                candidate = tasks.candidate_template(task, tasks.valid_payload(task))
+                self.assertEqual(tasks.write_candidate(ep, task, candidate), [])
+            self.assertFalse(snapshots.stale_owned(ep, snapshot))
+            self.assertNotEqual(snapshots.sha(gates), authority_commit.sha(gates))
+            result = preimage_protocol.commit_candidates(ep, snapshot, rows)
+            self.assertEqual(result["status"], "PASS")
+            self.assertTrue(preimage_protocol.barrier_ready(ep))
+
     def test_transaction_authority_guard_decides_inside_the_lock(self):
         def commit(ep: Path, guard):
             return authority_commit.commit_transaction(
