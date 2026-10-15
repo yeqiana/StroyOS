@@ -220,7 +220,16 @@ def eligible_baseline_content_repair(ep: Path, item: dict, payload: dict,
             return False
         ledger = production_ledger.load_authority(ep, default={}) or {}
         baseline = (ledger.get("frames") or {}).get("01") or {}
-        if (baseline.get("status") != "NEEDS_USER"
+        ledger_state = str(baseline.get("status") or "")
+        latest = (baseline.get("attempts") or [{}])[-1]
+        active_is_exact_candidate = (
+            ledger_state == "REPAIRING"
+            and latest.get("kind") == "baseline_candidate"
+            and latest.get("result") == "pending"
+            and (latest.get("request") or {}).get("capture_id") == item.get("capture_id")
+            and latest.get("runtime_transaction_id")
+        )
+        if (not (ledger_state == "NEEDS_USER" or active_is_exact_candidate)
                 or int(baseline.get("content_repairs_used") or 0) != 0
                 or (baseline.get("current_candidate") or {}).get("sha256")
                    != evidence.get("normalized_png_sha256")
