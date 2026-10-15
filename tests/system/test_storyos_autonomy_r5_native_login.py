@@ -37,3 +37,30 @@ def test_unverified_model_probe_never_authorizes():
     r=summarize({"status":"CLI_PROBE_FAILED"},{"status":"BRIDGE_AUTH_PRESENT"})
     assert r["status"]=="BLOCKED"
     assert not r["may_start_paid_production"]
+
+def test_shell_not_logged_in_does_not_contradict_authenticated_interactive_runner():
+    from subprocess import CompletedProcess
+    from storyos_autonomy_native_ready import shell_cli_login_status, summarize
+    runner=lambda argv, **kw: CompletedProcess(argv, 1, "", "Not logged in")
+    assert shell_cli_login_status("codex.cmd", runner=runner) == "NOT_LOGGED_IN"
+    admitted=summarize({"status":"CLI_FLAGS_SUPPORTED"},{"status":"BRIDGE_AUTH_PRESENT"})
+    assert admitted["status"]=="NATIVE_AUTH_CONTEXT_READY"
+    assert admitted["may_start_paid_production"] is False
+
+def test_shell_login_probe_is_read_only_and_never_authorizes_image():
+    from subprocess import CompletedProcess
+    from storyos_autonomy_native_ready import shell_cli_login_status
+    seen=[]
+    def fake(argv,**kw):
+        seen.append((argv,kw))
+        return CompletedProcess(argv,0,"Logged in using ChatGPT","")
+    assert shell_cli_login_status("codex.cmd",runner=fake)=="LOGGED_IN"
+    assert seen[0][0]==["codex.cmd","login","status"]
+    assert seen[0][1]["timeout"]==12
+
+def test_shell_login_probe_error_and_ambiguous_output_fail_closed():
+    from subprocess import CompletedProcess
+    from storyos_autonomy_native_ready import shell_cli_login_status
+    assert shell_cli_login_status("codex.cmd",runner=lambda a,**k:CompletedProcess(a,0,"OK",""))=="UNVERIFIED"
+    def broken(a,**k): raise OSError("unavailable")
+    assert shell_cli_login_status("codex.cmd",runner=broken)=="UNVERIFIED"
