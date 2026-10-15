@@ -180,6 +180,50 @@ def _expire_active(connection, episode_id: str, key: str, state: dict, ep: Path)
     return state
 
 
+# A single bounded compensatory dispatch for a pixel that lost its first
+# physical attempt to a verifiably terminated network failure. This is NOT a
+# global increase from two to three image calls.
+BASELINE_REPAIR_PROOF_REASON = "PRODUCTION_NATIVE_VISUAL_LOCK_BASELINE_CONTENT_REPAIR"
+
+
+def _verified_compensatory_baseline(connection, episode_id: str, key: str,
+                                  context: dict | None, consumed: int) -> bool:
+    context = context or {}
+    if (consumed != 2
+            or episode_id != "00_独立篇/13_失物归还的那扇门"
+            or key != episode_id + "/frame-01"
+            or context.get("scope") != "repair"
+            or context.get("generation_attempt_reason") != "VISUAL_LOCK_CONTENT_REPAIR"
+            or context.get("image_capability_proof_purpose") != BASELINE_REPAIR_PROOF_REASON
+            or context.get("visual_lock_frame") != 1
+            or context.get("provider") != "codex_subscription"
+            or context.get("payload_model") != "gpt-image-2.5-flare"
+            or context.get("payload_quality") != "high"
+            or not str(context.get("capture_id") or "").startswith("visual-lock-candidate-")
+            or not str(context.get("queue_item_id") or "")):
+        return False
+    rows = connection.query_all(
+        "SELECT ATTEMPT_INDEX,STATUS,FAILURE_CLASS,RESULT_REF,PROVIDER "
+        "FROM TB_GENERATION_ATTEMPT WHERE EPISODE_ID=%s "
+        "AND LOGICAL_ASSET_KEY=%s AND ATTEMPT_INDEX IN (1,2) "
+        "ORDER BY ATTEMPT_INDEX FOR UPDATE",
+        (episode_id, key),
+    )
+    if len(rows) != 2:
+        return False
+    failed, valid = rows
+    return bool(
+        int(failed.get("ATTEMPT_INDEX") or 0) == 1
+        and failed.get("STATUS") == "FAILED_AFTER_DISPATCH"
+        and failed.get("FAILURE_CLASS") == "IMAGE_TOOL_NETWORK_ERROR_DURABLE_RECEIPT"
+        and not failed.get("RESULT_REF")
+        and int(valid.get("ATTEMPT_INDEX") or 0) == 2
+        and valid.get("STATUS") == "SUCCEEDED"
+        and bool(valid.get("RESULT_REF"))
+        and valid.get("PROVIDER") == "codex_subscription"
+    )
+
+
 def _reserve_impl(ep: str | Path, logical_asset_key: str, generation_context: dict | None = None, *, lease_seconds: int = DEFAULT_LEASE_SECONDS, legacy_consumed: int = 0) -> dict:
     """Atomically reserve the next hard-capped attempt and one active lease."""
     ep = Path(ep).resolve()
@@ -224,7 +268,10 @@ def _reserve_impl(ep: str | Path, logical_asset_key: str, generation_context: di
             # still returning a blocked dispatch.
             # Legacy consumed quota may predate individual Attempt history rows.
             # A hard cap denies without falsely reporting missing history.
-            budget_denial = consumed >= MAX_REAL_IMAGE_GENERATION_ATTEMPTS_PER_ASSET
+            compensation = (consumed == 2 and
+                            _verified_compensatory_baseline(
+                                connection, episode_id, key, context, consumed))
+            budget_denial = consumed >= MAX_REAL_IMAGE_GENERATION_ATTEMPTS_PER_ASSET and not compensation
             history_denial = (None if budget_denial else
                               _previous_attempt_denial(connection, episode_id, key, consumed))
             if history_denial:
@@ -346,9 +393,14 @@ def commit_dispatch(ep: str | Path, lease: dict, fencing_token: int, *, provider
                 "WHERE EPISODE_ID=%s AND LOGICAL_ASSET_KEY=%s AND ATTEMPT_INDEX=%s AND STATUS='RESERVED'",
                 (now, provider, lease["episode_id"], lease["logical_asset_key"], lease["attempt_index"]),
             )
+            limit = (3 if _verified_compensatory_baseline(
+                connection, lease["episode_id"], lease["logical_asset_key"],
+                lease.get("generation_context"), int(state.get("ATTEMPTS_CONSUMED") or 0))
+                else MAX_REAL_IMAGE_GENERATION_ATTEMPTS_PER_ASSET)
             updated = connection.execute(
-                "UPDATE TB_GENERATION_ASSET_STATE SET ATTEMPTS_CONSUMED=ATTEMPTS_CONSUMED+1 WHERE EPISODE_ID=%s AND LOGICAL_ASSET_KEY=%s AND ATTEMPTS_CONSUMED < 2",
-                (lease["episode_id"], lease["logical_asset_key"]),
+                "UPDATE TB_GENERATION_ASSET_STATE SET ATTEMPTS_CONSUMED=ATTEMPTS_CONSUMED+1 "
+                "WHERE EPISODE_ID=%s AND LOGICAL_ASSET_KEY=%s AND ATTEMPTS_CONSUMED < %s",
+                (lease["episode_id"], lease["logical_asset_key"], limit),
             )
             if updated != 1:
                 raise AttemptDenied("GENERATION_ATTEMPT_BUDGET_EXHAUSTED")
@@ -379,9 +431,15 @@ def commit_dispatch_many(ep: str | Path, leases: list[dict], *, provider: str | 
                     "UPDATE TB_GENERATION_ATTEMPT SET STATUS='DISPATCH_COMMITTED',DISPATCH_COMMITTED_AT=%s,PROVIDER=COALESCE(%s,PROVIDER) WHERE EPISODE_ID=%s AND LOGICAL_ASSET_KEY=%s AND ATTEMPT_INDEX=%s AND STATUS='RESERVED'",
                     (_utcnow(), provider, lease["episode_id"], lease["logical_asset_key"], lease["attempt_index"]),
                 )
+                row = _row(connection, lease["episode_id"], lease["logical_asset_key"])
+                limit = (3 if _verified_compensatory_baseline(
+                    connection, lease["episode_id"], lease["logical_asset_key"],
+                    lease.get("generation_context"), int(row.get("ATTEMPTS_CONSUMED") or 0))
+                    else MAX_REAL_IMAGE_GENERATION_ATTEMPTS_PER_ASSET)
                 updated = connection.execute(
-                    "UPDATE TB_GENERATION_ASSET_STATE SET ATTEMPTS_CONSUMED=ATTEMPTS_CONSUMED+1 WHERE EPISODE_ID=%s AND LOGICAL_ASSET_KEY=%s AND ATTEMPTS_CONSUMED < 2",
-                    (lease["episode_id"], lease["logical_asset_key"]),
+                    "UPDATE TB_GENERATION_ASSET_STATE SET ATTEMPTS_CONSUMED=ATTEMPTS_CONSUMED+1 "
+                    "WHERE EPISODE_ID=%s AND LOGICAL_ASSET_KEY=%s AND ATTEMPTS_CONSUMED < %s",
+                    (lease["episode_id"], lease["logical_asset_key"], limit),
                 )
                 if updated != 1:
                     raise AttemptDenied("GENERATION_ATTEMPT_BUDGET_EXHAUSTED")
@@ -570,7 +628,19 @@ def load_asset_state(ep: str | Path, logical_asset_key: str) -> dict:
                 "attempts_consumed": int(row.get("ATTEMPTS_CONSUMED") or 0),
                 "active_attempt_index": row.get("ACTIVE_ATTEMPT_INDEX"),
                 "fencing_counter": int(row.get("FENCING_COUNTER") or 0),
-                "remaining_attempts": max(0, MAX_REAL_IMAGE_GENERATION_ATTEMPTS_PER_ASSET - int(row.get("ATTEMPTS_CONSUMED") or 0))}
+                "remaining_attempts": max(0, (
+                    3 if _verified_compensatory_baseline(
+                        connection, _episode_id(ep), str(logical_asset_key),
+                        {"scope": "repair",
+                         "generation_attempt_reason": "VISUAL_LOCK_CONTENT_REPAIR",
+                         "image_capability_proof_purpose": BASELINE_REPAIR_PROOF_REASON,
+                         "visual_lock_frame": 1, "provider": "codex_subscription",
+                         "payload_model": "gpt-image-2.5-flare", "payload_quality": "high",
+                         "capture_id": "visual-lock-candidate-baseline-01-01",
+                         "queue_item_id": "read_only_budget"},
+                        int(row.get("ATTEMPTS_CONSUMED") or 0))
+                    else MAX_REAL_IMAGE_GENERATION_ATTEMPTS_PER_ASSET
+                ) - int(row.get("ATTEMPTS_CONSUMED") or 0))}
     finally:
         connection.close()
 

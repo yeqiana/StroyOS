@@ -343,6 +343,41 @@ def _lock_pixel_master_after_accepted_visual_gate(ep: Path, projection: dict) ->
     return {"status": str(master.get("status") or ""), "frame": int(baseline.get("frame") or 0), "sha256": master.get("sha256")}
 
 
+def _baseline_network_compensation_ready(ep: Path, frame: int, ledger: dict) -> bool:
+    """One Episode 13 baseline content repair with verified network loss."""
+    try:
+        import generation_attempt_authority as auth
+        import logical_asset_identity as identity
+        import visual_lock_baseline_gate as base
+        ep = Path(ep).resolve()
+        if (ep.name != "13_失物归还的那扇门" or ep.parent.name != "00_独立篇"
+                or frame != 1 or baseline_frame(ep) != 1
+                or ledger.get("status") != "PASSED"
+                or int(ledger.get("content_repairs_used") or 0) != 0
+                or not base.approved(ep)):
+            return False
+        failed = [r for r in failed_rows(ep)
+                  if r.get("id") == "V-B" and int(r.get("frame") or 0) == 1]
+        if len(failed) != 1:
+            return False
+        key = identity.frame_asset_key(ep, 1)
+        state = auth.load_asset_state(ep, key)
+        a1 = auth.load_attempt(ep, key, 1) or {}
+        a2 = auth.load_attempt(ep, key, 2) or {}
+        return bool(state.get("attempts_consumed") == 2
+            and state.get("active_attempt_index") is None
+            and auth.load_attempt(ep, key, 3) is None
+            and a1.get("status") == "FAILED_AFTER_DISPATCH"
+            and a1.get("failure_class") == "IMAGE_TOOL_NETWORK_ERROR_DURABLE_RECEIPT"
+            and a2.get("status") == "SUCCEEDED"
+            and a2.get("provider") == "codex_subscription"
+            and a2.get("result_ref")
+            and (ledger.get("current_candidate") or {}).get("sha256")
+                == failed[0].get("sha256"))
+    except Exception:
+        return False
+
+
 def prepareable_frames(ep: Path) -> list[int]:
     ep = Path(ep).resolve()
     if not enabled():
@@ -358,10 +393,10 @@ def prepareable_frames(ep: Path) -> list[int]:
             frame = int(row.get("frame"))
         except Exception:
             continue
-        if frame == base:
-            continue
         ledger = _ledger_frame(ep, frame)
-        if not _candidate_lane_ready(ep, frame, row, ledger):
+        if frame == base and not _baseline_network_compensation_ready(ep, frame, ledger):
+            continue
+        if frame != base and not _candidate_lane_ready(ep, frame, row, ledger):
             continue
         if active_candidate(ep, frame) is not None:
             continue
@@ -442,6 +477,7 @@ def candidate_prompt(ep: Path, frame: int, slot: int) -> str:
     role = str(row.get("role") or "visual_lock_admission")
     semantic_anchor = _frame_semantic_anchor(ep, frame)
     variants = {
+        "ordinary_baseline": "手机随手抓拍的室内生活瞬间：非刻意构图，普通顶灯和杂乱背景，轻微运动模糊，真实肤质与暗部噪点。禁电影光、HDR、精修皮肤、广告合影；人物与环境身份、服饰和动作不变。",
         "worst_capture_condition": "真实逆光/遮挡/走动模糊；可偏暗或局部过曝，禁HDR、整齐站位和宣传构图。",
         "first_major_anomaly": "生活随手拍；异常必须一眼可辨，核心形态/动作/反差清楚，可局部遮挡；禁大全景、深景深和海报奇观。",
         "first_major_visual_contrast": "生活随手拍；首个视觉反差清楚可辨，可局部遮挡；关键反差不能被屋檐/行人/水汽完全遮没。",
@@ -480,7 +516,8 @@ def enqueue_frame(ep: Path, frame: int) -> dict:
     ep = Path(ep).resolve()
     ledger = _ledger_frame(ep, frame)
     review_row = _row_for_frame(ep, frame)
-    if not _candidate_lane_ready(ep, frame, review_row, ledger):
+    baseline_compensation = _baseline_network_compensation_ready(ep, int(frame), ledger)
+    if not baseline_compensation and not _candidate_lane_ready(ep, frame, review_row, ledger):
         return {"status": "NOT_READY", "frame": frame, "ledger_status": ledger.get("status")}
     active = active_candidate(ep, frame)
     if active:
@@ -490,6 +527,8 @@ def enqueue_frame(ep: Path, frame: int) -> dict:
     if used >= maximum:
         return {"status": "EXHAUSTED", "frame": frame, "used": used, "max": maximum}
     slot = used + 1
+    if baseline_compensation and slot != 1:
+        return {"status": "EXHAUSTED", "frame": frame, "used": used, "max": 1}
     prompt_dir = ep / "prompts" / "visual-lock-candidates"
     prompt_dir.mkdir(parents=True, exist_ok=True)
     prompt_path = prompt_dir / f"{int(frame):02d}-{CANDIDATE_POLICY_REVISION}-candidate-{slot}.txt"
@@ -497,6 +536,12 @@ def enqueue_frame(ep: Path, frame: int) -> dict:
     import image_scheduler
     policy = image_model_policy.for_episode(ep)
     refs = image_scheduler.contract_references(ep, frame, scope="repair")
+    if baseline_compensation:
+        import production_ledger_manage
+        production_ledger_manage.mark_review_needs_user(
+            ep, frame, reason="Visual Lock independent V-B pixel FAIL; "
+            "only one generated pixel after a verifiable native network error; "
+            "bounded delegated content repair, no weak PASS.")
     item = image_scheduler.add_item(
         ep,
         frame=int(frame),
@@ -508,9 +553,16 @@ def enqueue_frame(ep: Path, frame: int) -> dict:
         model=policy["model"],
         quality=policy["quality"],
         strict_model=bool(policy.get("strict_model")),
-        depends_on=[baseline_frame(ep)],
+        depends_on=[] if baseline_compensation else [baseline_frame(ep)],
         replace=True,
     )
+    if baseline_compensation:
+        with scheduler_core.queue_transaction(ep):
+            queue = scheduler_core.load_queue(ep)
+            row = next(x for x in queue.get("items") or [] if x.get("id") == item["id"])
+            row["generation_attempt_reason"] = "VISUAL_LOCK_CONTENT_REPAIR"
+            row["baseline_content_compensation"] = "VERIFIED_NATIVE_NETWORK_FAILURE_ATTEMPT1"
+            scheduler_core.save_queue(ep, queue)
     return {
         "status": "PASS",
         "frame": int(frame),

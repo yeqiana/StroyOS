@@ -150,6 +150,92 @@ def eligible(ep: Path, item: dict, payload: dict, controller: dict) -> bool:
         return False
 
 
+# A true content fix, never an operator-signed visual PASS.
+BASELINE_CONTENT_REPAIR_REASON = "PRODUCTION_NATIVE_VISUAL_LOCK_BASELINE_CONTENT_REPAIR"
+
+
+def eligible_baseline_content_repair(ep: Path, item: dict, payload: dict,
+                                     controller: dict) -> bool:
+    """Exact, one-time native image repair after one proven network loss."""
+    try:
+        import image_scheduler
+        import visual_lock_baseline_gate
+        import visual_profile_review_persistence
+        import production_ledger
+
+        ep = Path(ep).resolve()
+        if (ep.name != "13_失物归还的那扇门"
+                or ep.parent.name != "00_独立篇"
+                or not ep.is_relative_to(ROOT / "episodes")
+                or item.get("scope") != "repair"
+                or item.get("kind") != "baseline_candidate"
+                or int(item.get("frame") or 0) != 1
+                or item.get("generation_attempt_reason") != "VISUAL_LOCK_CONTENT_REPAIR"
+                or not str(item.get("capture_id") or "").startswith(
+                    "visual-lock-candidate-")
+                or item.get("model") != "gpt-image-2.5-flare"):
+            return False
+        request = runtime_request.effective_for_episode(ep) or {}
+        db = storage_config.mysql_connection_kwargs()
+        if (request.get("mode") != "full_auto"
+                or (request.get("runtime") or {}).get("execution_mode") != "dag"
+                or runtime_router.image_execution_runtime()[0] != "CODEX"
+                or str(db.get("host")) not in {"127.0.0.1", "localhost"}
+                or int(db.get("port") or 0) != 3307
+                or (episode_state_persistence.load(ep) or {}).get("current_state") != "STORYBOARD_LOCKED"):
+            return False
+        if (payload.get("model") != "gpt-image-2.5-flare"
+                or payload.get("quality") != "high"
+                or controller.get("model") != "gpt-6-luna"
+                or controller.get("reasoning_effort") != "high"
+                or image_payload_transport.selected_route(1).get("provider") != "codex_subscription"):
+            return False
+        key = logical_asset_identity.frame_asset_key(ep, 1)
+        first = generation_attempt_authority.load_attempt(ep, key, 1) or {}
+        second = generation_attempt_authority.load_attempt(ep, key, 2) or {}
+        third = generation_attempt_authority.load_attempt(ep, key, 3)
+        state = generation_attempt_authority.load_asset_state(ep, key)
+        if (first.get("status") != "FAILED_AFTER_DISPATCH"
+                or first.get("failure_class") != "IMAGE_TOOL_NETWORK_ERROR_DURABLE_RECEIPT"
+                or second.get("status") != "SUCCEEDED"
+                or second.get("provider") != "codex_subscription"
+                or not second.get("result_ref")
+                or third is not None
+                or state.get("attempts_consumed") != 2
+                or state.get("active_attempt_index") is not None):
+            return False
+        evidence = story_json.read_json(
+            ep / "meta/runtime/native-baseline-frame01-tool-proof.json")
+        if (evidence.get("proof_kind") != "TRUSTED_NATIVE_RUNNER_THREAD_SCOPED_IMAGE_SHA"
+                or evidence.get("generation_key") != second.get("generation_key")):
+            return False
+        queue = image_scheduler.load_queue(ep).get("items") or []
+        if (len(queue) != 5
+                or sum(int(r.get("frame") or 0) == 1 for r in queue) != 2
+                or not any(r.get("id") == item.get("id") and r.get("status") in
+                           {"queued", "running", "generating"} for r in queue)
+                or sorted(int(r.get("frame") or 0) for r in queue) != [1, 1, 3, 8, 18]
+                or not all(r.get("status") == "generated" for r in queue
+                           if r.get("id") != item.get("id"))):
+            return False
+        ledger = production_ledger.load_authority(ep, default={}) or {}
+        baseline = (ledger.get("frames") or {}).get("01") or {}
+        if (baseline.get("status") != "NEEDS_USER"
+                or int(baseline.get("content_repairs_used") or 0) != 0
+                or (baseline.get("current_candidate") or {}).get("sha256")
+                   != evidence.get("normalized_png_sha256")
+                or not visual_lock_baseline_gate.approved(ep)):
+            return False
+        review = visual_profile_review_persistence.load(ep) or {}
+        row = next((x for x in review.get("calibration") or []
+                    if x.get("id") == "V-B" and int(x.get("frame") or 0) == 1),
+                   None)
+        return bool(row and (row.get("issues") or
+                    any(v is not True for v in (row.get("checks") or {}).values())))
+    except Exception:
+        return False
+
+
 FOLLOWON_REASON = "PRODUCTION_NATIVE_VISUAL_LOCK_AFTER_REVIEWED_BASELINE"
 
 
