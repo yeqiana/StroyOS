@@ -16,6 +16,8 @@ const journey=async function(){
  const monitor=await wait(()=>document.querySelector('#storyos-production-monitor-view'),'monitor');
  await wait(()=>monitor.querySelector('[aria-label="当前生产执行证据"]'),'execution evidence');
  const e=monitor.querySelector('[aria-label="当前生产执行证据"]');
+ const interval=monitor.querySelector('[aria-label="刷新间隔"]');
+ if(!interval?.closest('.ant-select')?.textContent?.includes('15 秒'))throw Error('15 second refresh default not represented in options');
  if(!e.textContent.includes('尚未核验'))throw Error('missing cautious execution status');
  await wait(()=>monitor.querySelector('.storyos-authority-grid button[aria-label^="查看权威阶段"]'),'stage row');
  const stageAction=monitor.querySelector('.storyos-authority-grid button[aria-label^="查看权威阶段"]');
@@ -28,6 +30,31 @@ const journey=async function(){
  const detail=await wait(()=>drawer.querySelector('details[aria-label="生产技术证据"]'),'technical evidence');
  if(detail.open)throw Error('technical details expanded by default');
  if(!drawer.textContent.includes('下一步'))throw Error('no next action guidance');
+ if(innerWidth===1440){
+  const originalFetch=window.fetch.bind(window);
+  let injected=false;
+  window.fetch=async function(input,...args){
+   const response=await originalFetch(input,...args);
+   const url=String(typeof input==='string'?input:input?.url||'');
+   if(!url.includes('/api/v1/runtime/statuses?limit=100&offset=0'))return response;
+   const payload=await response.clone().json();
+   if(!payload?.data?.items?.length)return response;
+   payload.data.items[0].production_stage='VISUAL_CALIBRATED';
+   payload.data.items[0].updated_at='2026-10-15T22:12:00+08:00';
+   injected=true;
+   return new Response(JSON.stringify(payload),{status:response.status,headers:{'Content-Type':'application/json'}});
+  };
+  monitor.querySelector('button[aria-label="手动刷新阶段证据"]').click();
+  await wait(()=>injected&&drawer.querySelector('dl')?.textContent.includes('视觉校准'),'open drawer follows refreshed stage');
+  window.fetch=async function(input,...args){
+   const url=String(typeof input==='string'?input:input?.url||'');
+   if(url.includes('/api/v1/runtime/statuses?limit=100&offset=0'))throw Error('simulated readonly endpoint outage');
+   return originalFetch(input,...args);
+  };
+  monitor.querySelector('button[aria-label="手动刷新阶段证据"]').click();
+  await wait(()=>!document.querySelector('.storyos-authority-inspector'),'stale drawer closes on offline data');
+  window.fetch=originalFetch;
+ }
  drawer.querySelector('.ant-drawer-close')?.click();
  await wait(()=>!document.querySelector('.ant-drawer-open'),'drawer close');
  const switcher=monitor.querySelector('[aria-label="生产监控视图"]');
@@ -35,6 +62,7 @@ const journey=async function(){
  if(!historyTab)throw Error('history tab missing'); historyTab.click();
  await wait(()=>monitor.querySelector('.storyos-monitor-grid button'),'history table');
  if(!monitor.textContent.includes('记录时运行'))throw Error('historical running claim not labeled');
+ if(!monitor.querySelector('[aria-label="按历史状态筛选"]'))throw Error('history filter should not imply live status');
  if(!monitor.textContent.includes('整部作品完成'))throw Error('historical completion caveat missing');
  const historyButton=monitor.querySelector('.storyos-monitor-grid button');
  const rect=historyButton.getBoundingClientRect();

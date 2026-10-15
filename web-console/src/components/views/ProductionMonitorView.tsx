@@ -230,7 +230,7 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
   useEffect(() => {
     if (refreshInterval <= 0) return;
     const interval = setInterval(() => {
-      loadLatestStatuses();
+      if (document.visibilityState !== 'hidden') void loadLatestStatuses();
     }, refreshInterval * 1000);
     return () => clearInterval(interval);
   }, [refreshInterval]);
@@ -314,7 +314,7 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
         return (
           <span className="inline-flex items-center gap-1.5 text-xs font-mono font-medium text-[var(--warning)]">
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--warning)]" />
-            <span>记录时 {run.waitingReason ? `排队中 (${run.waitingReason})` : '排队中'}</span>
+            <span>{run.waitingReason ? `记录时排队（${run.waitingReason}）` : '记录时排队'}</span>
           </span>
         );
       case 'RETRYING':
@@ -378,7 +378,7 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
           <div className="flex items-center gap-1.5 h-9 px-2 rounded-[5px] border border-[var(--border-subtle)] text-[var(--text-secondary)]">
             <span className={`w-1.5 h-1.5 rounded-full ${isRefreshing?'bg-[var(--info)]':apiState==='ok'?'bg-[var(--text-tertiary)]':'bg-[var(--warning)]'}`} />
             <span className="text-[var(--text-tertiary)]">读取间隔:</span>
-            <Select aria-label="刷新间隔" size="small" variant="borderless" className="!min-w-[66px]" value={refreshInterval} onChange={setRefreshInterval} options={[{value:5,label:'5 秒'},{value:10,label:'10 秒'},{value:30,label:'30 秒'},{value:0,label:'关闭'}]} />
+            <Select aria-label="刷新间隔" size="small" variant="borderless" className="!min-w-[66px]" value={refreshInterval} onChange={setRefreshInterval} options={[{value:5,label:'5 秒'},{value:10,label:'10 秒'},{value:15,label:'15 秒'},{value:30,label:'30 秒'},{value:0,label:'关闭'}]} />
           </div>
 
           <button
@@ -550,7 +550,7 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
 
           {/* 状态下拉筛选 */}
           <div className="flex items-center gap-1.5">
-            <Select aria-label="按状态筛选" value={statusFilter} onChange={setStatusFilter} className="w-[152px]" options={[{value:'all',label:'全部状态'},{value:'RUNNING',label:'运行中'},{value:'WAITING',label:'等待中'},{value:'RETRYING',label:'重试中'},{value:'BLOCKED',label:'已阻塞'},{value:'COMPLETED',label:'已完成'}]} />
+            <Select aria-label="按历史状态筛选" value={statusFilter} onChange={setStatusFilter} className="w-[152px]" options={[{value:'all',label:'全部记录状态'},{value:'RUNNING',label:'记录时运行'},{value:'WAITING',label:'记录时排队'},{value:'RETRYING',label:'记录时重试'},{value:'BLOCKED',label:'记录时阻塞'},{value:'COMPLETED',label:'记录时结束'}]} />
           </div>
 
           {/* 阶段下拉筛选 */}

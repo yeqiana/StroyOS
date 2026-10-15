@@ -17,6 +17,16 @@ const readOnlyAge = (seconds: number | null | undefined): string => {
 interface Props { items: RuntimeStatusSummary[]; coverage: RuntimeCoverage; hasMore: boolean; loadingMore: boolean; onLoadMore: () => void; dataState: 'loading' | 'ok' | 'partial' | 'offline'; lastSync: string | null; focusEpisodeRef?:string|null; }
 export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMore, loadingMore, onLoadMore, dataState, lastSync, focusEpisodeRef }) => {
   const [selected, setSelected] = useState<RuntimeStatusSummary | null>(null);
+  // Keep the open drawer bound to the latest row, using exact Episode identity.
+  const currentSelected = selected ? items.find(item =>
+    selected.episode_ref ? item.episode_ref === selected.episode_ref
+      : selected.episode_id ? item.episode_id === selected.episode_id
+      : selected.business_episode_id ? item.business_episode_id === selected.business_episode_id
+      : Boolean(selected.episode && item.episode === selected.episode)
+  ) ?? null : null;
+  useEffect(() => {
+    if (selected && dataState !== 'loading' && (dataState === 'offline' || !currentSelected)) setSelected(null);
+  }, [dataState, selected, currentSelected]);
   const openedFocus = useRef<string|null>(null);
   useEffect(()=>{
     if(!focusEpisodeRef||!/^LOCAL_[a-f0-9]{24}$/.test(focusEpisodeRef)||openedFocus.current===focusEpisodeRef)return;
@@ -109,9 +119,9 @@ export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMor
       />
       {hasMore&&<div className="flex items-center justify-between border-t border-[var(--border-subtle)] px-4 py-3"><span className="text-[12px] text-[var(--text-tertiary)]">仍有服务端记录未加载</span><Button loading={loadingMore} onClick={onLoadMore}>从 Platform API 加载下一页</Button></div>}
     </>}
-    {selected && <Drawer open title="阶段证据详情 · 只读" onClose={()=>setSelected(null)} width="min(850px, 100vw)" destroyOnClose className="storyos-authority-inspector"><section aria-label="生产监控阶段详情" className="space-y-4">
+    {currentSelected && dataState !== 'offline' && <Drawer open title="阶段证据详情 · 只读" onClose={()=>setSelected(null)} width="min(850px, 100vw)" destroyOnClose className="storyos-authority-inspector"><section aria-label="生产监控阶段详情" className="space-y-4">
       <div className="min-w-0">
-  <h3 className="text-[14px] font-semibold break-words">{selected.title || selected.episode_ref || selected.episode_id}</h3>
+  <h3 className="text-[14px] font-semibold break-words">{currentSelected.title || currentSelected.episode_ref || currentSelected.episode_id}</h3>
   <p aria-label="本次生产判断" role="status" className="mt-2 text-[12px] font-medium text-[var(--text-primary)]">{detailIsCurrent && visibleDetail?.provider_call_observation?.provider_call_verified ? "已核验图片调用窗口 · 不代表整集持续运行" : "当前执行：尚未核验"}</p>
   <p className="mt-1 text-[11px] text-[var(--text-secondary)]">下一步：查看下方恢复安全诊断；正式操作须由已授权 Runtime 核对。</p>
 </div>
@@ -119,9 +129,9 @@ export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMor
       {detailState === 'unavailable' && <p role="alert" className="text-[var(--warning)]">扩展详情接口不可用，以下保留已读取的阶段证据。</p>}
       <dl className="space-y-0">
         {[
-          ['生产阶段', stageLabel(selected.production_stage || 'NO_STATE')],
-          ['数据来源', selected.state_source === 'local_workspace_episode_state_file' ? '本机状态文件 · 只读' : text(selected.state_source)],
-          ['证据原始更新时间', text(selected.updated_at || selected.observed_at)],
+          ['生产阶段', stageLabel(currentSelected.production_stage || 'NO_STATE')],
+          ['数据来源', currentSelected.state_source === 'local_workspace_episode_state_file' ? '本机状态文件 · 只读' : text(currentSelected.state_source)],
+          ['证据原始更新时间', text(currentSelected.updated_at || currentSelected.observed_at)],
           ...(detailIsCurrent ? [
             ['执行状态', text(visibleDetail?.execution_status)],
             ['当前动作', text(visibleDetail?.current_action || visibleDetail?.next_step)],
@@ -384,7 +394,7 @@ export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMor
         </section>
       )}
 
-      <RuntimeRecoveryInsight episodeRef={ref || ""} detail={visibleDetail} source={selected.state_source} detailLoaded={detailIsCurrent} />
+      <RuntimeRecoveryInsight episodeRef={ref || ""} detail={visibleDetail} source={currentSelected.state_source} detailLoaded={detailIsCurrent} />
     </section></Drawer>}
   </section>;
 };
