@@ -44,7 +44,8 @@ def test_cross_process_lock_refuses_second_writer(tmp_path):
         [sys.executable,"-c",source,str(wd.ROOT/"scripts"),str(tmp_path),EP],
         cwd=wd.ROOT,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     try:
-        assert process.stdout.readline().strip()=="LOCKED"
+        child_banner=process.stdout.readline().strip()
+        assert child_banner=="LOCKED", ("watchdog child startup", process.poll(), process.stderr.read()[-800:])
         with pytest.raises(wd.LockBusy):
             with wd.episode_lock(tmp_path,EP):
                 pass

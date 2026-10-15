@@ -61,7 +61,8 @@ def test_two_processes_actual_lock_and_fresh_owner_observation(tmp_path):
     ep.mkdir(parents=True)
     child = _spawn(ep)
     try:
-        assert child.stdout.readline().strip() == "HELD"
+        child_banner = child.stdout.readline().strip()
+        assert child_banner == "HELD", ("child process did not acquire OS lock", child.poll(), child.stderr.read()[-800:])
         assert not runner_state_store.acquire_lock(ep)
         observed = observe_writer_owner(ep)
         assert observed["status"] == "FRESH_PRODUCER_LOCK_CLAIM"
@@ -86,7 +87,8 @@ def test_killed_process_stale_lock_claim_does_not_stay_live(tmp_path):
     ep.mkdir()
     child = _spawn(ep)
     try:
-        assert child.stdout.readline().strip() == "HELD"
+        child_banner = child.stdout.readline().strip()
+        assert child_banner == "HELD", ("child process did not acquire OS lock", child.poll(), child.stderr.read()[-800:])
         assert observe_writer_owner(ep)["status"] == "FRESH_PRODUCER_LOCK_CLAIM"
         child.kill()
         child.wait(timeout=8)
