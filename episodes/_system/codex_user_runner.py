@@ -1115,6 +1115,53 @@ def _prepare_strict_codex_task(task: CodexTask) -> tuple[CodexTask, dict | None]
     ), route
 
 
+def _wininet_native_proxy() -> str | None:
+    """Read only the interactive user's enabled local Windows HTTP proxy.
+
+    This configures native Codex network I/O, not a model/provider override.
+    Never forward user credentials or accept remote/untrusted proxy endpoints.
+    """
+    if os.name != "nt":
+        return None
+    try:
+        import winreg
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Internet Settings",
+        ) as key:
+            enabled = winreg.QueryValueEx(key, "ProxyEnable")[0]
+            raw = str(winreg.QueryValueEx(key, "ProxyServer")[0] or "").strip()
+        if not enabled or not raw:
+            return None
+        if "=" in raw:
+            parts = dict(
+                part.split("=", 1) for part in raw.split(";")
+                if "=" in part
+            )
+            raw = str(parts.get("https") or parts.get("http") or "").strip()
+        if raw.lower().startswith("http://"):
+            raw = raw[7:]
+        matched = re.fullmatch(r"(?:127\.0\.0\.1|localhost):(\d{2,5})", raw, re.I)
+        if not matched or not 1 <= int(matched.group(1)) <= 65535:
+            return None
+        return "http://" + raw
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def _apply_wininet_proxy_to_codex_env(child_env: dict[str, str]) -> None:
+    """Use user-selected local proxy only when Codex has no explicit proxy."""
+    if any(child_env.get(key) for key in (
+        "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy",
+        "ALL_PROXY", "all_proxy",
+    )):
+        return
+    proxy = _wininet_native_proxy()
+    if proxy is not None:
+        child_env["HTTPS_PROXY"] = proxy
+        child_env["HTTP_PROXY"] = proxy
+
+
 def execute_task(task: CodexTask) -> ExecResult:
     """Run one declarative Codex task in this (runner) process."""
     task, strict_route = _prepare_strict_codex_task(task)
@@ -1148,6 +1195,7 @@ def execute_task(task: CodexTask) -> ExecResult:
     child_env.setdefault("PYTHONUTF8", "1")
     child_env.setdefault("PYTHONIOENCODING", "utf-8")
     child_env.update(allowed_env)
+    _apply_wininet_proxy_to_codex_env(child_env)
     home_evidence = {"mode": task.codex_home_mode}
     isolated_home: Path | None = None
     active_home: Path | None = None

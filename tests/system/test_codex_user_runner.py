@@ -35,6 +35,29 @@ SYSTEM_ID = "NT AUTHORITY" + BACKSLASH + "SYSTEM"
 RUNNER_USER = "RENRP" + BACKSLASH + "yeqian"
 CODEX_VERSION = "codex-cli 0.153.4"
 
+def test_native_runner_inherits_local_windows_proxy_only_for_child():
+    with mock.patch.object(bridge, "_wininet_native_proxy",
+                           return_value="http://127.0.0.1:7897"):
+        env = {"PYTHONUTF8": "1"}
+        bridge._apply_wininet_proxy_to_codex_env(env)
+        assert env["HTTPS_PROXY"] == "http://127.0.0.1:7897"
+        assert env["HTTP_PROXY"] == "http://127.0.0.1:7897"
+
+
+def test_native_runner_does_not_override_explicit_proxy_or_invent_one():
+    with mock.patch.object(bridge, "_wininet_native_proxy",
+                           return_value="http://127.0.0.1:7897") as probe:
+        env = {"HTTPS_PROXY": "http://existing.example:7777"}
+        bridge._apply_wininet_proxy_to_codex_env(env)
+        assert env["HTTPS_PROXY"] == "http://existing.example:7777"
+        assert "HTTP_PROXY" not in env
+        probe.assert_not_called()
+    with mock.patch.object(bridge, "_wininet_native_proxy", return_value=None):
+        env = {}
+        bridge._apply_wininet_proxy_to_codex_env(env)
+        assert env == {}
+
+
 def test_isolated_worktree_reads_only_own_repository_runner_endpoint(tmp_path):
     import codex_user_runner as runner
     import pathlib
