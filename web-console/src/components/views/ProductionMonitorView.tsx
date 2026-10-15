@@ -436,9 +436,10 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
             ) : (
               <>
                 <span>已扫描 {taskSnapshot.record_count}</span>
+                <span className="text-[var(--text-tertiary)]">采集于 {taskSnapshot.observed_at ? new Date(taskSnapshot.observed_at).toLocaleString("zh-CN") : "未提供"}</span>
                 <span>自报运行 {taskSnapshot.running_claims}</span>
                 <span>自报排队 {taskSnapshot.queued_claims}</span>
-                <span>{taskSnapshot.unverified_count ? `无法核验 ${taskSnapshot.unverified_count}` : '状态格式已核对'}</span>
+                <span>{taskSnapshot.unverified_count ? `无法核验 ${taskSnapshot.unverified_count}` : '状态格式已核对（非执行核验）'}</span>
                 {!taskSnapshot.scan_complete && <span className="text-[var(--warning)]">扫描不完整</span>}
               </>
             )}
