@@ -614,6 +614,42 @@ def derive(ep: Path) -> dict:
     if q:
         ledger_frames = (production_ledger.load_authority(ep, default={}) or {}).get("frames") or {}
         unresolved_blocked = list(qs.get("blocked_items") or [])
+        # A single explicitly re-armed native Batch frame may proceed before
+        # its 15 UNKNOWN-blocked siblings. The reviewed SHA, exact frame,
+        # MySQL Attempt, native route and every blocked sibling remain fenced
+        # by the existing single-frame authority. Ordinary blocked rows and
+        # unverified flags retain the hard-stop path below.
+        if cur == "VISUAL_CALIBRATED" and image_runtime == "CODEX" and unresolved_blocked:
+            candidates = [
+                row for row in q.get("items", [])
+                if row.get("scope") == "batch"
+                and row.get("status") == "queued"
+                and row.get("native_single_batch_proof") is True
+            ]
+            if len(candidates) == 1:
+                try:
+                    import image_scheduler
+                    import model_policy
+                    import production_native_batch_reentry
+                    ready, _ = image_scheduler.ready_items(ep, q)
+                    row = candidates[0]
+                    if (len(ready) == 1
+                            and ready[0].get("id") == row.get("id")
+                            and production_native_batch_reentry.eligible(
+                                ep, row,
+                                model_policy.resolve("image.payload", episode=ep),
+                                model_policy.resolve("image.controller", episode=ep),
+                                queue=q)):
+                        return action_result(
+                            action="GENERATE_IMAGES",
+                            executor="CODEX_IMAGE",
+                            frames=[int(row["frame"])],
+                            reason="only the SHA-bound native single-frame proof is runnable; other Batch capability blocks remain unchanged",
+                        )
+                except Exception:
+                    # Read-only gate failed or authority unavailable; preserve
+                    # the original blocked decision, never infer permission.
+                    pass
         recompilable_prompt_blocks = [
             row for row in unresolved_blocked
             if visual_lock_candidate_pool.recompilable_prompt_blocked_item(row)
