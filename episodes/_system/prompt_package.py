@@ -26,7 +26,14 @@ def compile_frame(ep,frame,prompt_file,write=True):
     if (previous.get("scene_prompt_sha256")==scene_sha
             and previous.get("frame_contract_sha256")
             and previous["frame_contract_sha256"]!=contract["contract_sha256"]):
-        raise ValueError("PROMPT_SOURCE_DRIFT: unchanged scene prompt belongs to an older Frame Contract; rebuild scene from current storyboard before generation")
+        # Old SHA can differ solely because the canonical Frame Contract filled
+        # previously empty machine-only projection fields. Preserve the proven
+        # identical authored scene without silently accepting semantic changes.
+        # The existing versioned SHA authority must positively prove equivalence;
+        # missing/unverified versions and real content drift remain blocked.
+        if not frame_contract.equivalent_to_current(
+                ep, int(frame), previous["frame_contract_sha256"], current=contract):
+            raise ValueError("PROMPT_SOURCE_DRIFT: unchanged scene prompt belongs to an older non-equivalent Frame Contract; rebuild scene from current storyboard before generation")
     model=image_model_policy.for_episode(ep)
     material={
       "schema_version":1,"frame":f"{int(frame):02d}","scene_prompt":scene,
