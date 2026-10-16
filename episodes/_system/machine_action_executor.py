@@ -22,6 +22,7 @@ import frame_semantic_review
 import final_acceptance
 import image_blocked_recovery
 import image_scheduler
+import production_native_batch_followon
 import production_ledger
 import production_ledger_manage
 import production_prompt_materializer
@@ -32,7 +33,7 @@ import visual_lock_candidate_pool
 import visual_lock_finalizer
 import visual_lock_v21
 
-ALLOWED_ACTIONS = {"PREPARE_BASELINE_CANDIDATE", "PREPARE_VISUAL_LOCK_CANDIDATES", "APPLY_VISUAL_LOCK_WEAK_PASS", "PREPARE_STALE_VISUAL_LOCK_REFRESH", "RESOLVE_IMAGE_NORMALIZATION", "RESUME_BUDGET_AUTHORIZED_IMAGES", "FINALIZE_VISUAL_LOCK", "PREPARE_PRODUCTION_BATCH", "FINALIZE_PRODUCTION_IMAGES"}
+ALLOWED_ACTIONS = {"PREPARE_BASELINE_CANDIDATE", "PREPARE_VISUAL_LOCK_CANDIDATES", "APPLY_VISUAL_LOCK_WEAK_PASS", "PREPARE_STALE_VISUAL_LOCK_REFRESH", "RESOLVE_IMAGE_NORMALIZATION", "RESUME_BUDGET_AUTHORIZED_IMAGES", "RESUME_NATIVE_BATCH_AFTER_SUCCESS", "FINALIZE_VISUAL_LOCK", "PREPARE_PRODUCTION_BATCH", "FINALIZE_PRODUCTION_IMAGES"}
 
 
 class MachineActionError(RuntimeError):
@@ -238,6 +239,11 @@ def execute(ep: Path, action: dict) -> dict:
         if str(result.get("status") or "").upper() != "PASS":
             raise MachineActionError(f"image normalization recovery blocked: {result}")
         return {"status": "PASS", "action": name, "result": result, "state": _state(ep)}
+    if name == "RESUME_NATIVE_BATCH_AFTER_SUCCESS":
+        result = production_native_batch_followon.resume(ep, acknowledged=True)
+        if str(result.get("status") or "") != "PASS":
+            raise MachineActionError(f"native Batch followon blocked: {result.get('reason')}")
+        return result
     if name == "RESUME_BUDGET_AUTHORIZED_IMAGES":
         result = image_scheduler.resume_authorized_budget(ep, frames=[int(x) for x in (action.get("frames") or [])])
         if str(result.get("status") or "").upper() != "PASS":

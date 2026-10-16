@@ -973,6 +973,32 @@ class NextActionAutonomousBatchTests(unittest.TestCase):
                 patch.object(next_action.visual_lock_v21, "verify", return_value=visual_errors or []):
             return next_action.derive(episode)
 
+    def test_verified_first_batch_succeeded_unblocks_history_via_machine_action(self):
+        import production_native_batch_followon as followon
+        originals = [{"id": f"vl-{n}", "frame": n, "scope": "visual_lock",
+                      "kind": "original", "status": "generated"} for n in (1,3,8,18)]
+        batch = [{"id": f"batch-{n}", "frame": n, "scope": "batch",
+                  "kind": "original", "model": "gpt-image-2.5-flare",
+                  "status": "blocked",
+                  "technical_failure_code": followon.FAILURE}
+                 for n in range(1,21) if n not in (1,3,8,18)]
+        first=next(row for row in batch if row["frame"]==2)
+        first["status"]="generated"
+        first.pop("technical_failure_code")
+        q={"items": [*originals,*batch]}
+        with patch.object(followon,"admissible",return_value=True) as gate:
+            result=self._derive(state="VISUAL_CALIBRATED",queue=q,ledger={},expected=20)
+        self.assertEqual((result["action"], result["executor"]),
+                         ("RESUME_NATIVE_BATCH_AFTER_SUCCESS","MACHINE"))
+        self.assertTrue(result["auto_recoverable"])
+        self.assertFalse(result["hard_stop"])
+        gate.assert_called_once()
+        self.assertEqual(sum(row["status"]=="blocked" for row in batch),15)
+        with patch.object(followon,"admissible",return_value=False):
+            blocked=self._derive(state="VISUAL_CALIBRATED",queue=q,ledger={},expected=20)
+        self.assertEqual(blocked["action"],"IMAGE_ATTEMPT_BLOCKED")
+        self.assertTrue(blocked["hard_stop"])
+
     def test_native_frame02_proof_preempts_other_capability_blocks_only_when_valid(self):
         import production_native_batch_reentry as native_proof
         import model_policy
