@@ -13,6 +13,7 @@ SLOTS = {
     # 永久回归：M00/Frame Contract/Driver/Watchdog/Attempt 使用本次代码检查。
     "production-regression": [
         "tests/system/test_m00_finalizer_weakpass_reentry.py",
+        "tests/system/test_prompt_package_equivalent_projection.py",
         "tests/system/test_m00_exhausted_baseline_weak_pass.py",
         "tests/system/test_projection_sha_authority_reentry.py",
         "tests/system/test_storyos_autonomy_watchdog_policy.py",
