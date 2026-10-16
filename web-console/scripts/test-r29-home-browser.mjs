@@ -36,6 +36,7 @@ async function browserCase(c){
      return images.length>=3&&images.every(img=>img.complete&&img.naturalWidth>0)?images:null;
    },'three real approved cover images decode');
    if(covers.length!==3)throw Error('unexpected approved image count');
+   if(!recent.textContent.includes("素材：")||!recent.textContent.includes("工作区进度："))throw Error("home source distinctions missing");
    if(view.querySelector('[aria-label="创作焦点"]'))throw Error('old repeated hero layout still exists');
    if(!view.querySelector('[aria-label="项目概况"]')||!view.querySelector('[aria-label="工作台关注事项与快捷入口"]'))throw Error('operations metadata missing');
    const originalTable=await wait(()=>view.querySelector('.storyos-home-episode-grid'),'table workspace');

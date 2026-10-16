@@ -3,6 +3,7 @@ import {spawn, execFileSync} from 'node:child_process';
 import fs from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
+import {resolveLocalPython} from './resolve-local-python.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const root=path.resolve(here,'../..');
@@ -13,9 +14,7 @@ if(!fs.existsSync(path.join(dataRoot,'episodes')))throw Error('真实工作区�
 const apiPort=Number(process.env.STORYOS_LOCAL_EVIDENCE_PORT || 19117);
 const webPort=Number(process.env.STORYOS_LOCAL_CONSOLE_PORT || 3100);
 if(!Number.isInteger(apiPort)||!Number.isInteger(webPort)||apiPort<1024||webPort<1024||apiPort>65535||webPort>65535||apiPort===webPort)throw Error('Invalid local ports');
-const python=process.env.STORYOS_PYTHON|| (process.platform==='win32'
-  ?path.join(process.env.LOCALAPPDATA||'C:\\Users\\79873\\AppData\\Local','Programs','Python','Python312','python.exe')
-  :'python3');
+const python=resolveLocalPython();
 const vite=path.resolve(web,'node_modules','vite','bin','vite.js');
 // Read a per-user local monitor config *only* for the Python read-only API.
 // Never pass monitor credentials to Vite or browser-side environment variables.

@@ -123,16 +123,16 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
           className="os-home-cover-card group min-w-0 overflow-hidden rounded-[5px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-left hover:border-[var(--info)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--info)]">
           <div className="relative h-[186px] overflow-hidden bg-[var(--bg-elevated)] sm:h-[224px]">
             <img src={approvedCover(episode)} loading={index===0?'eager':'lazy'} alt={episode.title+'的已批准真实图片'} className="os-home-cover-image h-full w-full object-cover object-top"/>
-            <span className="absolute right-2 top-2 border border-[var(--border-normal)] bg-[var(--bg-workspace)] px-2 py-1 text-[11px] tabular-nums text-[var(--text-primary)]">{approvedFrames(episode).length} 张已批准</span>
+            <span className="absolute right-2 top-2 border border-[var(--border-normal)] bg-[var(--bg-workspace)] px-2 py-1 text-[11px] tabular-nums text-[var(--text-primary)]">素材：{approvedFrames(episode).length} 张已批准</span>
           </div>
           <div className="space-y-2 px-3 py-2.5">
             <div className="flex min-w-0 items-center justify-between gap-2"><strong className="truncate text-[13px] font-semibold">{episode.title}</strong><ArrowRight size={14} className="shrink-0 text-[var(--text-tertiary)] group-hover:text-[var(--info)]"/></div>
             <div className="flex items-center justify-between gap-2 text-[11px] text-[var(--text-secondary)]"><span className="truncate">{STAGES[episode.currentStage]??episode.currentStage}</span><span className="shrink-0 tabular-nums">更新 {readableDate(episode.updatedAt)}</span></div>
-            <div className="flex items-center justify-between gap-2 border-t border-[var(--border-subtle)] pt-2 text-[11px] text-[var(--text-tertiary)]"><span>工作区 {episode.completedFrames}/{episode.totalFrames} 帧</span><span className={episode.id===featured?.id?'text-[var(--info)]':'text-[var(--text-secondary)]'}>{episode.id===featured?.id?'推荐继续':'查看制作'}</span></div>
+            <div className="flex items-center justify-between gap-2 border-t border-[var(--border-subtle)] pt-2 text-[11px] text-[var(--text-tertiary)]"><span>工作区进度：{episode.completedFrames}/{episode.totalFrames} 帧</span><span className={episode.id===featured?.id?'text-[var(--info)]':'text-[var(--text-secondary)]'}>{episode.id===featured?.id?'推荐继续':'查看制作'}</span></div>
           </div>
         </button>)}
       </div>:<div className="flex flex-wrap items-center gap-3 border-y border-[var(--border-subtle)] py-4 text-[12px] text-[var(--text-secondary)]"><ImageIcon size={19}/>本机暂无可验证的已批准图片。{featured&&<button type="button" onClick={()=>onSelectEpisode(featured)} className="text-[var(--info)]">继续最近作品 <ArrowRight size={13} className="inline"/></button>}</div>}
-      {recentApproved.length>0&&<p className="text-[11px] text-[var(--text-tertiary)]">已批准图片与工作区帧进度来自不同证据，图片存在不代表本次生成完成。</p>}
+      {recentApproved.length>0&&<p className="text-[11px] text-[var(--text-tertiary)]">已批准图片属于素材证据，工作区帧进度属于历史快照；两者不代表本次生成完成。</p>}
     </section>
 
     <details aria-label="工作台完整管理与数据核对" className="group border-t border-[var(--border-subtle)] pt-2">
