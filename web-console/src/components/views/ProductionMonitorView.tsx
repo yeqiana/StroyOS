@@ -103,6 +103,16 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
 
   // Separate read-only TaskStateManager scan. A RUNNING key is not a live Attempt.
   const [taskSnapshot, setTaskSnapshot] = useState<LocalTaskStateSnapshot | null>(null);
+  // A record that has stopped refreshing must not look like a current heartbeat.
+  const [observationClock,setObservationClock] = useState(Date.now());
+  useEffect(()=>{const timer=window.setInterval(()=>setObservationClock(Date.now()),15000);return()=>window.clearInterval(timer)},[]);
+  const tooOld = (snapshot: {available?: boolean; observed_at?: string | null} | null) => {
+    if (!snapshot?.available) return false;
+    const observed=Date.parse(snapshot.observed_at||'');
+    return !Number.isFinite(observed) || observationClock-observed>90000 || observed-observationClock>60000;
+  };
+  const taskObservationOld=tooOld(taskSnapshot);
+  const workerObservationOld=tooOld(workerSnapshot);
   useEffect(() => {
     let active = true;
     let reading = false;
@@ -402,6 +412,7 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
             {taskSnapshot?.available && !taskSnapshot.scan_complete ? " · Task 扫描未完成" : ""}
             {workerSnapshot?.available && !workerSnapshot.scan_complete ? " · Worker 扫描未完成" : ""}
           </span>
+          {(taskObservationOld || workerObservationOld) && <span role="status" aria-label="Redis 观测已过期" className="ml-2 text-[var(--warning)]">采集证据已过期（{taskObservationOld ? 'Task' : ''}{taskObservationOld && workerObservationOld ? '、' : ''}{workerObservationOld ? 'Worker' : ''}），不能按当前在线状态判断</span>}
         </span>
       </div>
       <div className="os-console-toolbar flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] py-1 pb-3" aria-label="生产监控主工作区切换">

@@ -80,7 +80,8 @@
     "test:r18:writer-http": "node scripts/test-web-draft-writer-http.mjs",
     "test:r18:writer-browser": "node scripts/test-web-draft-writer-browser.mjs",
     "test:rea-p1-simplify": "node scripts/test-rea-p1-simplification-browser.mjs",
-    "test:monitor-p2-clarity": "node scripts/test-monitor-p2-clarity-browser.mjs"
+    "test:monitor-p2-clarity": "node scripts/test-monitor-p2-clarity-browser.mjs",
+    "dev:local:supervised": "node scripts/supervise-local-console.mjs"
   },
   "dependencies": {
     "@rc-component/motion": "1.3.3",

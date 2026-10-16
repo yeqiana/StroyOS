@@ -21,6 +21,7 @@ const journey=async function(){
    if(!url.includes('/api/v1/local-monitor/tasks')&&!url.includes('/api/v1/local-monitor/workers'))return response;
    const payload=await response.clone().json();
    if(!payload?.data)throw Error('Redis test API envelope missing');
+   payload.data.observed_at='2025-01-01T00:00:00.000Z';
    if(url.includes('/api/v1/local-monitor/tasks')){
     Object.assign(payload.data,{available:true,scan_complete:true,record_count:2,running_claims:1,queued_claims:1,unverified_count:0,live_execution_verified:false,episode_binding_verified:false,records:[{task_tag:'R26-fixture',recorded_status:'RUNNING',episode_ref:null,frame:null,worker:null,updated_at:null,freshness_verified:false}]});
    }else{
@@ -42,6 +43,8 @@ const journey=async function(){
  if(innerWidth===1440){
   await wait(()=>redisSummary.textContent.includes('2 条（自报运行 1）')&&redisSummary.textContent.includes('3 条（时间/TTL 新鲜 1）'),'mock Redis counts');
   if(!e.textContent.includes('尚未核验'))throw Error('claimed RUNNING misrepresented as verified execution');
+  await wait(()=>monitor.querySelector('[aria-label="Redis 观测已过期"]'),'stale Redis summary warning');
+  if(!monitor.querySelector('[aria-label="Redis 观测已过期"]').textContent.includes('不能按当前在线状态判断'))throw Error('old sample must never imply live execution');
   const redisDetails=monitor.querySelector('details[aria-label="Redis 只读技术证据"]');
   if(!redisDetails||redisDetails.open)throw Error('Redis evidence must remain collapsed by default');
   redisDetails.open=true;
