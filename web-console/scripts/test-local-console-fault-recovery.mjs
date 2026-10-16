@@ -62,12 +62,12 @@ try{
  const apiPid=listenerPid(apiPort);
  // Only fault-inject the API process bound to ports reserved by this test.
  killPid(apiPid);
- await wait('API failure restart',120000,async()=>output.includes('准备重启')&&await probe());
+ await wait('API failure restart',120000,async()=>(output+errors).includes('准备重启')&&await probe());
  console.log('PASS killed isolated API recovered all three HTTP probes');
- const restarts=(output.match(/准备重启/g)||[]).length;
+ const restarts=((output+errors).match(/准备重启/g)||[]).length;
  const vitePid=listenerPid(webPort);
  killPid(vitePid);
- await wait('Vite failure restart',120000,async()=>((output.match(/准备重启/g)||[]).length>restarts)&&await probe());
+ await wait('Vite failure restart',120000,async()=>(((output+errors).match(/准备重启/g)||[]).length>restarts)&&await probe());
  console.log('PASS killed isolated Vite recovered all three HTTP probes');
  console.log('REAL_HTTP_SUPERVISOR_RECOVERY_2_OF_2_PASS');
 }finally{
