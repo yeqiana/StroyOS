@@ -480,14 +480,34 @@ def unresolved_generation_evidence_for_plan(ep:Path,q:dict)->list[dict]:
 
 
 def plan_snapshot(ep:Path,q:dict)->dict:
-    """Extend the old CLI projection without changing any scheduling state."""
+    """Report dependency, paid evidence, and pre-dispatch capability blocks separately.
+
+    Snapshot only: blocked image-tool capability is unresolved production work,
+    never readiness to retry or permission to reserve another paid Attempt.
+    """
     ready,blocked=ready_items(ep,q)
     authority_blocked=unresolved_generation_evidence_for_plan(ep,q)
+    terminal_blocks=[
+        item for item in (q.get("items") or [])
+        if isinstance(item,dict) and item.get("status")=="blocked"
+    ]
+    capability_blocked=sorted([
+        {"frame":int(item.get("frame") or 0),
+         "technical_failure_code":str(item.get("technical_failure_code") or ""),
+         "action":"VERIFY_NATIVE_CODEX_IMAGE_CAPABILITY",
+         "retry_permitted":False}
+        for item in terminal_blocks
+        if str(item.get("technical_failure_code") or "") in PRE_DISPATCH_CAPABILITY_BLOCK_CODES
+    ],key=lambda row:row["frame"])
     return {
         "ready":[{"frame":x["frame"],"priority":x["priority"],"scope":x["scope"]} for x in ready],
         "blocked":[{"frame":x["frame"],"depends_on":x["depends_on"]} for x in blocked],
         "authority_blocked":authority_blocked,
         "requires_evidence_verification":bool(authority_blocked),
+        "capability_blocked":capability_blocked,
+        "capability_blocked_count":len(capability_blocked),
+        "unresolved_status_blocked_count":len(terminal_blocks),
+        "requires_capability_verification":bool(capability_blocked),
         "progress":scheduler_core.progress(ep,q),
     }
 
