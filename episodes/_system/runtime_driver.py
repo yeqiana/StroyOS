@@ -479,12 +479,19 @@ def _start_task_carrier(ep: Path, cmd: list[str]) -> tuple[str, str, str]:
         raise DetachedLaunchError("TASK_SCHEDULER_CARRIER_REQUIRES_WINDOWS")
     carrier_user, carrier_user_source = resolve_task_carrier_user()
     task, script = task_carrier_script(ep, cmd, carrier_user=carrier_user)
-    done = subprocess.run(
-        ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-        cwd=str(Path(__file__).resolve().parents[2]), capture_output=True, text=True,
-        encoding="utf-8", errors="replace",
-        timeout=runtime_timeout_policy.seconds("driver_carrier_control"),
-    )
+    try:
+        done = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+            cwd=str(Path(__file__).resolve().parents[2]), capture_output=True, text=True,
+            encoding="utf-8", errors="replace",
+            timeout=runtime_timeout_policy.seconds("driver_carrier_control"),
+        )
+    except subprocess.TimeoutExpired as exc:
+        # A registered task is NOT proof of a running Driver; caller must
+        # persist the failed-carrier terminal state rather than crash.
+        raise DetachedLaunchError("TASK_SCHEDULER_CARRIER_TIMEOUT") from exc
+    except OSError as exc:
+        raise DetachedLaunchError("TASK_SCHEDULER_CARRIER_UNAVAILABLE") from exc
     if done.returncode != 0:
         detail = (done.stderr or done.stdout or "").strip().replace("\n", " ")[-1200:]
         raise DetachedLaunchError(f"TASK_SCHEDULER_CARRIER_FAILED rc={done.returncode}: {detail}")
