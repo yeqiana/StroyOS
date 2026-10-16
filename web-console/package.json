@@ -84,7 +84,8 @@
     "dev:local:supervised": "node scripts/supervise-local-console.mjs",
     "check:local:health": "node scripts/check-local-console-health.mjs",
     "test:local:recovery": "node scripts/test-local-console-fault-recovery.mjs",
-    "test:local:health": "node scripts/test-check-local-console-health.mjs"
+    "test:local:health": "node scripts/test-check-local-console-health.mjs",
+    "test:vite-worktree-cache": "node scripts/test-vite-worktree-cache.mjs"
   },
   "dependencies": {
     "@rc-component/motion": "1.3.3",

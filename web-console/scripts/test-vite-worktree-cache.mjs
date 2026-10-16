@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {resolveConfig} from 'vite';
+const web=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const config=await resolveConfig({configFile:path.join(web,'vite.config.ts')},'serve');
+const expected=path.resolve(web,'.storyos-tmp','vite-cache');
+assert.equal(path.resolve(config.cacheDir),expected);
+assert.ok(!config.cacheDir.replaceAll('\\','/').includes('/node_modules/.vite'));
+const other=process.env.STORYOS_OTHER_WEB_CONSOLE;
+if(other)assert.notEqual(path.resolve(config.cacheDir),path.resolve(other,'.storyos-tmp/vite-cache'));
+console.log('PASS unique worktree Vite dependency cache: '+config.cacheDir);
