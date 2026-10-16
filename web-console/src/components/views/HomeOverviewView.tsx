@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Input, Pagination, Segmented, Table } from 'antd';
 import CSSMotion from '@rc-component/motion';
-import { ArrowRight, CheckCircle2, ChevronRight, CircleAlert, BookOpenText, Clock3, Image as ImageIcon, Images, List, Plus, RefreshCw, SlidersHorizontal } from 'lucide-react';
+import { ArrowRight, CheckCircle2, ChevronRight, CircleAlert, BookOpenText, Clock3, Image as ImageIcon, Images, List, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import type { Episode, NavigationTab, ProjectItem } from '../../types';
 import { platformApi, type RuntimeStatusSummary, stageLabel } from '../../api/platformApi';
 import { reconcileRuntimeCatalog } from '../../api/runtimeCatalogReconciliation';
@@ -12,7 +12,6 @@ interface Props {
   episodes: Episode[];
   projects: ProjectItem[];
   onSelectEpisode: (episode: Episode) => void;
-  onNewStory: () => void;
   onNavigate: (tab: NavigationTab) => void;
   onOpenRuntimeEpisode: (episodeRef:string)=>void;
 }
@@ -35,7 +34,7 @@ const readableDate = (raw?: string) => {
   return value ? new Date(value).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) : '未知';
 };
 
-export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelectEpisode, onNewStory, onNavigate, onOpenRuntimeEpisode }) => {
+export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelectEpisode, onNavigate, onOpenRuntimeEpisode }) => {
   const { findEpisode } = useLocalApprovedMedia();
   // No generated placeholder image can pass this contract: the image is from the approved-only media catalog.
   const approvedFrames = (episode: Episode) => findEpisode(episode.title, episode.code)?.frames ?? [];
@@ -103,12 +102,7 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
 
     <section aria-label="创作快捷入口" className="space-y-3">
       <div><h2 className="text-[22px] font-semibold leading-8 tracking-tight">今天想创作什么？</h2><p className="mt-1 text-[12px] text-[var(--text-secondary)]">从已有作品接着做，或去素材库查看批准图片；正式生图仍使用受控流程。</p></div>
-      <div className="grid min-w-0 gap-px border-y border-[var(--border-subtle)] bg-[var(--border-subtle)] md:grid-cols-3" role="group" aria-label="三项核心创作操作">
-        <div className="os-home-entry flex min-w-0 items-center gap-3 bg-[var(--bg-surface)] px-3 py-3">
-          <span className="os-home-entry-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-[4px] bg-[var(--bg-elevated)] text-[var(--info)]"><Plus size={18}/></span>
-          <div className="min-w-0 flex-1"><p className="truncate text-[12px] font-medium">从新的故事开始</p><p className="mt-1 truncate text-[11px] text-[var(--text-tertiary)]">创建故事与制作计划</p></div>
-          <Button type="primary" size="small" onClick={onNewStory}>新建故事</Button>
-        </div>
+      <div className="grid min-w-0 gap-px border-y border-[var(--border-subtle)] bg-[var(--border-subtle)] sm:grid-cols-2" role="group" aria-label="继续制作与素材入口">
         <div className="os-home-entry flex min-w-0 items-center gap-3 bg-[var(--bg-surface)] px-3 py-3">
           <span className="os-home-entry-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-[4px] bg-[var(--bg-elevated)] text-[var(--text-secondary)]"><BookOpenText size={18} strokeWidth={1.75}/></span>
           <div className="min-w-0 flex-1"><p className="truncate text-[12px] font-medium">接着制作</p><p className="mt-1 truncate text-[11px] text-[var(--text-tertiary)]">{featured?.title||'暂无作品'}</p></div>

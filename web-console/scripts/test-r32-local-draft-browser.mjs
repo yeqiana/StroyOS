@@ -14,7 +14,7 @@ const cases=[{name:'draft',menu:'工作台',selector:'#storyos-home-overview',he
 async function browserCase(c){
  const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
  const wait=async(fn,label)=>{for(let n=0;n<310;n++){const found=fn();if(found)return found;await sleep(85)}throw Error('timeout '+label)};
- const nav=await wait(()=>document.querySelector('nav[aria-label="主要页面"]'),'nav');
+ const nav=await wait(()=>document.querySelector('nav[aria-label="主要页面"]'),'nav').catch(e=>{throw Error('nav unavailable '+e.message+' ready='+document.readyState+' url='+location.href+' body='+document.body?.innerText?.slice(0,250)+' root='+!!document.getElementById('root'))});
  const controls=[...document.querySelectorAll('button')];
  const menu=c.menu==='系统设置'?controls.find(x=>x.textContent?.trim()==='系统设置'):[...nav.querySelectorAll('button')].find(x=>x.textContent?.trim()===c.menu);
  if(!menu)throw Error('missing navigation menu '+c.menu);
@@ -23,17 +23,44 @@ async function browserCase(c){
  await wait(()=>view.querySelector('h1')?.textContent?.trim()===c.heading,'page heading '+c.heading);
  let evidence='normal';
  if(c.name==='draft'){
-   const create=await wait(()=>[...view.querySelectorAll('button')].find(x=>x.textContent?.trim()==='新建故事'),'new story button');
+   const create=await wait(()=>document.querySelector('.storyos-sidebar-create button[aria-label="新建故事"]'),'fixed new story button');
+   if(view.querySelector('button[aria-label="新建故事"]'))throw Error('duplicate home create CTA');
+   const pages=['工作台','作品与项目','故事制作','生产监控','工作流','Agents','审计日志'];
+   for(const label of pages){
+     if(['工作流','Agents','审计日志'].includes(label)&&!document.querySelector('nav[aria-label="主要页面"] button[aria-label="'+label+'"]')){
+       const advanced=document.querySelector('nav[aria-label="主要页面"] button[aria-label="高级管理"]');
+       if(!advanced)throw Error('advanced management group missing');
+       if(advanced.getAttribute('aria-expanded')!=='true')advanced.click();
+     }
+     const button=await wait(()=>document.querySelector('nav[aria-label="主要页面"] button[aria-label="'+label+'"]'),'navigation '+label);
+     if(!button)throw Error('navigation unavailable '+label);button.click();
+     await wait(()=>button.getAttribute('aria-current')==='page','active '+label);
+     const fixed=document.querySelector('.storyos-sidebar-create button[aria-label="新建故事"]');
+     const bounds=fixed?.getBoundingClientRect();
+     if(!bounds||bounds.width<30||bounds.height<30||bounds.left<0||bounds.right>innerWidth)throw Error('create button missing or clipped on '+label);
+     if(getComputedStyle(fixed).display==='none'||getComputedStyle(fixed.closest('.storyos-sidebar-create')).display==='none')throw Error('create button hidden on '+label);
+     if(document.querySelectorAll('.storyos-sidebar-create button[aria-label="新建故事"]').length!==1)throw Error('duplicate global CTA');
+     if(label==='作品与项目'&&document.querySelector('#series-library-view button[aria-label="新建故事"]'))throw Error('duplicate library CTA');
+   }
+   document.querySelector('nav[aria-label="主要页面"] button[aria-label="工作台"]').click();
+   await wait(()=>document.querySelector('#storyos-home-overview'),'return to overview');
    const count=JSON.parse(localStorage.getItem('storyos_local_story_drafts_v1')||'[]').length;
-   create.click();
+   document.querySelector('.storyos-sidebar-create button[aria-label="新建故事"]').click();
+   const dialog=await wait(()=>document.querySelector('[role="dialog"][aria-label="新建故事"]'),'shared new story modal');
+   const input=dialog.querySelector('input');
+   const title='入口一致性验证-'+Date.now();
+   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,title);
+   input.dispatchEvent(new Event('input',{bubbles:true}));
+   await wait(()=>input.value===title,'story title in modal');
+   dialog.querySelector('button[type="submit"]').click();
    const draft=await wait(()=>{
      const all=JSON.parse(localStorage.getItem('storyos_local_story_drafts_v1')||'[]');
      return all.length===count+1?all[all.length-1]:null;
    },'saved local story draft');
-   if(!draft.id.startsWith('ep-home-')||!draft.title)throw Error('created draft identity is invalid');
+   if(!draft.id.startsWith('ep-home-')||draft.title!==title)throw Error('created draft identity/title is invalid');
    if(!draft.updatedAt||!Number.isFinite(Date.parse(draft.updatedAt)))throw Error('new draft has non-sortable updatedAt');
-   await wait(()=>document.body.textContent?.includes(draft.title)&&nav.querySelector('button[aria-label="故事制作"][aria-current="page"]'),'draft selected in creator workbench header');
-   const homeButton=await wait(()=>[...nav.querySelectorAll('button')].find(x=>x.textContent?.trim()==='工作台'),'home nav');
+   await wait(()=>document.body.textContent?.includes(draft.title)&&document.querySelector('nav[aria-label="主要页面"] button[aria-label="故事制作"][aria-current="page"]'),'draft selected in creator workbench header');
+   const homeButton=await wait(()=>document.querySelector('nav[aria-label="主要页面"] button[aria-label="工作台"]'),'home nav');
    homeButton.click();
    const home=await wait(()=>document.querySelector('#storyos-home-overview'),'back to home');
    const first=await wait(()=>home.querySelector('.storyos-home-episode-grid tr.ant-table-row'),'first story row');
@@ -53,15 +80,15 @@ async function browserCase(c){
 // when a previous Chrome profile exits, even when a previous CDP test finished.
 const widthArg=process.argv.find(arg=>arg.startsWith('--width='));
 if(!widthArg){
- for(const width of [1440]){
+ for(const width of [1440,1024,390]){
    const result=spawnSync(process.execPath,[process.argv[1],'--width='+width],{stdio:'inherit',timeout:240000});
    if(result.status!==0)process.exit(result.status||1);
  }
- console.log('R32_LOCAL_DRAFT_SORT_1_OF_1_PASS');
+ console.log('R32_LOCAL_DRAFT_SORT_MULTISCREEN_PASS');
  process.exit(0);
 }
 const requestedWidth=Number(widthArg.slice('--width='.length));
-assert.ok([1440].includes(requestedWidth),'supported viewport required');
+assert.ok([1440,1024,390].includes(requestedWidth),'supported viewport required');
 for(const width of [requestedWidth]){
  const profile=path.join(dir,'chrome-profile-'+width+'-'+process.pid);
  const child=spawn(chrome,['--headless=new','--no-sandbox','--disable-gpu','--disable-dev-shm-usage','--remote-debugging-port=0',
@@ -89,6 +116,9 @@ for(const width of [requestedWidth]){
    ws.addEventListener('message',e=>{let value;try{value=JSON.parse(e.data)}catch{return}if(!value.id||!pending.has(value.id))return;const promise=pending.get(value.id);pending.delete(value.id);value.error?promise.reject(Error(value.error.message)):promise.resolve(value.result)});
    const send=(method,params={})=>new Promise((resolve,reject)=>{const id=++sequence;pending.set(id,{resolve,reject});ws.send(JSON.stringify({id,method,params}))});
    await send('Runtime.enable');await send('Page.enable');
+   // Chrome may recycle a blank initial target after repeated isolated runs.
+   // Explicit navigation is part of the browser harness, not the product flow.
+   await send('Page.navigate',{url:root.href});
    // On narrow Windows headless Chrome, navigation can replace the first renderer context
    // immediately after CDP attaches. Wait for a stable document and retry only that transient.
    await sleep(1000);

@@ -538,7 +538,11 @@ html,body {letter-spacing:0; font-size:13px;}
 @media(max-width:1120px){
  .storyos-sidebar{width:64px!important;}
  .storyos-sidebar>div:first-child{justify-content:center;padding-inline:0}
- .storyos-sidebar-brand,.storyos-sidebar-header-actions,.storyos-sidebar-create,.storyos-sidebar-section-label,.storyos-sidebar-nav-label,.storyos-sidebar-projects,.storyos-sidebar-recent,.storyos-sidebar-theme,.storyos-sidebar-settings-label{display:none!important}
+ .storyos-sidebar-brand,.storyos-sidebar-header-actions,.storyos-sidebar-section-label,.storyos-sidebar-nav-label,.storyos-sidebar-projects,.storyos-sidebar-recent,.storyos-sidebar-theme,.storyos-sidebar-settings-label{display:none!important}
+  .storyos-sidebar-create{display:flex!important;align-items:center;justify-content:center;padding:8px 0!important;}
+  .storyos-sidebar-create .os-action{width:42px!important;min-width:42px!important;height:42px!important;padding:0!important;justify-content:center;gap:0!important;}
+  .storyos-sidebar-create .os-action svg{width:19px;height:19px}
+  .storyos-sidebar-create-label{display:none!important}
  .storyos-sidebar nav{display:flex;flex-direction:column;gap:5px;align-items:center}
  .storyos-sidebar nav>div{width:34px;margin:8px 0!important}
  .storyos-sidebar nav>button{width:42px!important;height:42px!important;justify-content:center;padding:0!important}

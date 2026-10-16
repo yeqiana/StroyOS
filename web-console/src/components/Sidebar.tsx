@@ -102,10 +102,10 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
           <button type="button" onClick={onOpenNotifications} className="relative p-1.5 rounded-[4px] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]" title="通知" aria-label="通知"><Bell size={16}/>{unreadCount > 0 && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-[var(--info)]" />}</button>
         </div>
       </div>
+      <div className="storyos-sidebar-create shrink-0 border-b border-[var(--border-subtle)] px-3 py-3">
+        <button type="button" onClick={() => openModal('story')} aria-label="新建故事" title="新建故事" className="os-action os-action-primary w-full !h-9 text-[13px] font-semibold"><Plus size={16} aria-hidden="true"/><span className="storyos-sidebar-create-label">新建故事</span></button>
+      </div>
       <div className="flex-1 min-h-0 overflow-y-auto px-2.5 py-3 space-y-4">
-        {currentTab !== 'overview' && <div className="storyos-sidebar-create px-1">
-          <button type="button" onClick={() => openModal('story')} className="os-action os-action-primary w-full !h-9 text-[13px] font-semibold"><Plus size={16}/> 新建故事</button>
-        </div>}
         <nav aria-label="主要页面" className="space-y-1"><p className="storyos-sidebar-section-label px-3 pb-2 os-eyebrow">内容制作</p>
           {nav.slice(0,4).map(item => {
             const Icon = item.icon;
