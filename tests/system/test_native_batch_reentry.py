@@ -34,6 +34,39 @@ def test_rearm_requires_real_secondary_evidence_and_preserves_other_15():
         assert rows[0]["status"]=="queued" and rows[0][b.FLAG] is True
         assert all(r["status"]=="blocked" for r in rows[1:])
 
+def test_one_shot_legacy_runner_outage_rearm_preserves_queue_history():
+    rows=[{"id":f"batch-{n}","frame":n,"scope":"batch",
+           "status":"blocked","technical_failure_code":b.FAILURE}
+          for n in range(2,18)]
+    first=rows[0]
+    first.update({"status":"tech_failed","attempts":2,
+                  "technical_failure_code":"IMAGE_BACKEND_ERROR",
+                  "last_error":"LOGIN_AUTH_RUNNER_UNAVAILABLE: independent payload route unavailable; provider=codex_subscription",
+                  b.FLAG:True})
+    q={"items":rows}
+    with (patch.object(b.model_policy,"resolve",side_effect=[
+              {"model":"gpt-image-2.5-flare","quality":"high"},
+              {"model":"gpt-6-luna","reasoning_effort":"high"}]),
+          patch.object(b.scheduler_core,"queue_transaction",return_value=nullcontext()),
+          patch.object(b.scheduler_core,"load_queue",return_value=q),
+          patch.object(b.scheduler_core,"save_queue") as saved,
+          patch.object(b,"eligible",return_value=True),
+          patch.object(b.image_payload_transport,"payload_capability_preflight",
+                       return_value={"status":"BLOCKED"}),
+          patch.object(b.baseline,"attest_secondary",
+                       return_value={"status":"READY_FOR_REAL_CAPABILITY_PROOF"}),
+          patch.object(b.baseline,"evidence_sha",return_value="b"*64)):
+        result=b.rearm_one(Path("."),acknowledged=True)
+        assert result["status"]=="PASS"
+        assert result["rearmed_frames"]==[2]
+        assert first["status"]=="queued"
+        assert first["attempts"]==2  # Preserve two pre-dispatch queue attempts.
+        assert first["native_pre_dispatch_rearm_count"]==1
+        assert first["native_pre_dispatch_rearm_source_attempts"]==2
+        assert all(row["status"]=="blocked" for row in rows[1:])
+        saved.assert_called_once()
+
+
 def test_no_bypass_for_unverified_eligibility():
     with (patch.object(b.model_policy,"resolve",side_effect=[{"model":"x"},{"model":"y"}]),
           patch.object(b.scheduler_core,"queue_transaction",return_value=nullcontext()),
@@ -97,6 +130,19 @@ def test_first_batch_only_and_active_attempt_never_eligible(tmp_path):
         assert not b.eligible(ep,batch[0],payload,controller,queue=q)
         authority.return_value={"attempts_consumed":1,"active_attempt_index":None}
         assert not b.eligible(ep,batch[0],payload,controller,queue=q)
+
+
+        # Historical user-runner outage preceded any real MySQL Attempt.
+        authority.return_value={"attempts_consumed":0,"active_attempt_index":None}
+        batch[0].update({"status":"tech_failed","attempts":2,
+                         "technical_failure_code":"IMAGE_BACKEND_ERROR",
+                         "last_error":"LOGIN_AUTH_RUNNER_UNAVAILABLE: independent payload route unavailable; provider=codex_subscription"})
+        assert b.eligible(ep,batch[0],payload,controller,queue=q,blocked=True)
+        batch[0]["last_error"]="NETWORK_CONNECT: provider uncertain"
+        assert not b.eligible(ep,batch[0],payload,controller,queue=q,blocked=True)
+        batch[0]["last_error"]="LOGIN_AUTH_RUNNER_UNAVAILABLE: independent payload route unavailable; provider=codex_subscription"
+        batch[0]["native_pre_dispatch_rearm_count"]=1
+        assert not b.eligible(ep,batch[0],payload,controller,queue=q,blocked=True)
 
 
 def test_native_historical_pixel_and_runner_receipt_sha_must_match(tmp_path):

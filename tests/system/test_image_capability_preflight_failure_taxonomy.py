@@ -22,6 +22,17 @@ def test_unavailable_visible_models_produces_distinct_not_retryable_capability_c
     assert code in scheduler.NON_REGENERATING_FAILURE_CODES
 
 
+def test_native_user_runner_unavailable_is_a_pre_dispatch_block_not_a_paid_image_failure():
+    error = ("LOGIN_AUTH_RUNNER_UNAVAILABLE: independent payload route unavailable; "
+             "provider=codex_subscription")
+    code = scheduler.classify_error(error)
+    assert code == "LOGIN_AUTH_RUNNER_UNAVAILABLE"
+    assert code in scheduler.PRE_DISPATCH_CAPABILITY_BLOCK_CODES
+    assert code in scheduler.NON_REGENERATING_FAILURE_CODES
+    assert code not in scheduler.RETRYABLE_TECH_CODES
+    assert scheduler._terminal_technical_status(Path("."), {"frame": 2}, code) == "blocked"
+
+
 def test_live_generation_failures_keep_original_retry_taxonomy():
     assert scheduler.classify_error("Selected model is at capacity. Please try a different model.")=="PROVIDER_CAPACITY"
     assert scheduler.classify_error("error_is_timeout=true and response absent")=="TIMEOUT"
