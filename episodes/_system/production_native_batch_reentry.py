@@ -79,7 +79,23 @@ def eligible(ep,item,payload,controller,*,queue=None,blocked=False):
                for r in rows if r.get("id")!=first["id"]): return False
         current=next((r for r in rows if r.get("id")==first["id"]),{})
         if blocked:
-            if current.get("status")!="blocked" or current.get("technical_failure_code")!=FAILURE: return False
+            initial = (current.get("status")=="blocked"
+                       and current.get("technical_failure_code")==FAILURE)
+            # Legacy pre-dispatch user-Runner outage was misclassified as a
+            # paid image backend error. A single explicitly acknowledged
+            # recovery is allowed only with ZERO MySQL paid attempts below.
+            legacy_runner_outage = (
+                current.get("status")=="tech_failed"
+                and current.get("technical_failure_code")=="IMAGE_BACKEND_ERROR"
+                and str(current.get("last_error") or "")==
+                    "LOGIN_AUTH_RUNNER_UNAVAILABLE: independent payload route unavailable; provider=codex_subscription"
+                and current.get(FLAG) is True
+                and 1 <= int(current.get("attempts") or 0) <= 2
+                and int(current.get("native_pre_dispatch_rearm_count") or 0)==0
+                and not current.get("output_path")
+                and not current.get("candidate_output_path")
+            )
+            if not (initial or legacy_runner_outage): return False
         elif current.get("status") not in {"queued","running","generating"} or current.get(FLAG) is not True: return False
         state=attempts.load_asset_state(ep,logical_asset_identity.frame_asset_key(ep,int(item["frame"])))
         return (int(state.get("attempts_consumed") or 0)==0
@@ -117,6 +133,9 @@ def rearm_one(ep,*,acknowledged=False):
             current=next((r for r in q.get("items",[]) if r.get("id")==item_id),None)
             if current is None or not eligible(ep,current,payload,controller,queue=q,blocked=True):
                 return {"status":"BLOCKED","reason":"AUTHORITIES_CHANGED"}
+            if current.get("status")=="tech_failed":
+                current["native_pre_dispatch_rearm_count"]=1
+                current["native_pre_dispatch_rearm_source_attempts"]=int(current.get("attempts") or 0)
             current[FLAG]=True
             current["status"]="queued"
             current["last_error"]=None
