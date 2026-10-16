@@ -614,6 +614,23 @@ def derive(ep: Path) -> dict:
     if q:
         ledger_frames = (production_ledger.load_authority(ep, default={}) or {}).get("frames") or {}
         unresolved_blocked = list(qs.get("blocked_items") or [])
+        # A real SHA-verified Batch success can trigger re-admission, but only
+        # the machine executor may probe the current native session and mutate
+        # the queue. This decision remains read-only and fail-closed.
+        if cur == "VISUAL_CALIBRATED" and image_runtime == "CODEX" and unresolved_blocked:
+            try:
+                import production_native_batch_followon
+                if production_native_batch_followon.admissible(ep, q):
+                    return action_result(
+                        action="RESUME_NATIVE_BATCH_AFTER_SUCCESS",
+                        executor="MACHINE",
+                        frames=sorted(int(x["frame"]) for x in unresolved_blocked),
+                        work_pending=True, auto_recoverable=True, hard_stop=False,
+                        reason="first native Batch real pixel verified; fresh session required to resume its historical UNKNOWN peers",
+                    )
+            except Exception:
+                pass
+
         # A single explicitly re-armed native Batch frame may proceed before
         # its 15 UNKNOWN-blocked siblings. The reviewed SHA, exact frame,
         # MySQL Attempt, native route and every blocked sibling remain fenced
