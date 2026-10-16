@@ -52,8 +52,10 @@ let closing=false;
 function shutdown(code=0){
  if(closing)return;
  closing=true;
- for(const child of children)try{child.kill();}catch{}
  process.exitCode=code;
+ for(const child of children)try{if(child.exitCode===null)child.kill();}catch{}
+ // Ensure the Job terminates even when a failed child leaves pipe handles open.
+ setTimeout(()=>process.exit(code),1500).unref();
 }
 for(const sig of ['SIGINT','SIGTERM'])process.on(sig,()=>{shutdown();setTimeout(()=>process.exit(),800).unref();});
 process.on('exit',()=>{for(const child of children)try{child.kill();}catch{}});
