@@ -36,10 +36,10 @@ function listenerPid(port){
  assert.ok(Number.isInteger(pid)&&pid>0);
  return pid;
 }
-function killPid(pid,tree=false){
- const args=['/PID',String(pid),...(tree?['/T']:[]),'/F'];
- const r=spawnSync('taskkill.exe',args,{encoding:'utf8',timeout:11000});
- if(r.status!==0)throw Error('test-owned process did not stop '+pid+' '+r.stderr);
+function killPid(pid){
+ // Windows taskkill.exe can block in the Runner service account; direct OS termination works.
+ if(!Number.isInteger(pid)||pid<=0)throw Error('invalid test-owned PID');
+ process.kill(pid,'SIGTERM');
 }
 let sup,output='',errors='';
 const env={...process.env,STORYOS_LOCAL_EVIDENCE_PORT:String(apiPort),STORYOS_LOCAL_CONSOLE_PORT:String(webPort)};
@@ -71,9 +71,10 @@ try{
  console.log('PASS killed isolated Vite recovered all three HTTP probes');
  console.log('REAL_HTTP_SUPERVISOR_RECOVERY_2_OF_2_PASS');
 }finally{
- if(sup&&sup.pid&&sup.exitCode===null){
-  // Process tree PID is the supervisor spawned *by this test*, not a discovered service.
-  const result=spawnSync('taskkill.exe',['/PID',String(sup.pid),'/T','/F'],{encoding:'utf8',timeout:13000});
-  if(result.status!==0)console.error('TEST_CLEANUP_WARNING '+result.stderr.slice(0,140));
+ if(sup&&sup.pid&&sup.exitCode===null&&sup.signalCode===null){
+  // Gracefully stop only the supervisor process spawned by this test.
+  sup.kill('SIGTERM');
+  const ended=await Promise.race([new Promise(resolve=>sup.once('exit',()=>resolve(true))),sleep(15000).then(()=>false)]);
+  if(!ended){console.error('TEST_CLEANUP_WARNING supervisor still alive');try{process.kill(sup.pid,'SIGTERM')}catch{}}
  }
 }
