@@ -397,6 +397,11 @@ export const ProductionMonitorView: React.FC<ProductionMonitorViewProps> = ({
         <strong className="font-medium text-[var(--text-primary)]">当前执行：尚未核验</strong>
                 <span aria-label="Redis 观测摘要" className="text-[var(--text-secondary)]">
           Redis Task：{taskSnapshot?.available ? String(taskSnapshot.record_count) + " 条（自报运行 " + taskSnapshot.running_claims + "）" : "不可用"} · Worker 心跳：{workerSnapshot?.available ? String(workerSnapshot.record_count) + " 条（时间/TTL 新鲜 " + workerSnapshot.fresh_heartbeats + "）" : "不可用"}；仅为只读记录，不等于实时生图。
+          <span aria-label="Redis 采集时间" className="ml-2 text-[var(--text-tertiary)]">
+            Task 采集于 {taskSnapshot?.available ? (taskSnapshot.observed_at ? new Date(taskSnapshot.observed_at).toLocaleString("zh-CN") : "未提供") : "不可用"} · Worker 采集于 {workerSnapshot?.available ? (workerSnapshot.observed_at ? new Date(workerSnapshot.observed_at).toLocaleString("zh-CN") : "未提供") : "不可用"}
+            {taskSnapshot?.available && !taskSnapshot.scan_complete ? " · Task 扫描未完成" : ""}
+            {workerSnapshot?.available && !workerSnapshot.scan_complete ? " · Worker 扫描未完成" : ""}
+          </span>
         </span>
       </div>
       <div className="os-console-toolbar flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] py-1 pb-3" aria-label="生产监控主工作区切换">

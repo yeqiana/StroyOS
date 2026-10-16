@@ -37,6 +37,8 @@ const journey=async function(){
  if(!interval?.closest('.ant-select')?.textContent?.includes('15 秒'))throw Error('15 second refresh default not represented in options');
  if(!e.textContent.includes('尚未核验'))throw Error('missing cautious execution status');
  const redisSummary=await wait(()=>monitor.querySelector('[aria-label="Redis 观测摘要"]'),'Redis first-screen summary');
+  const observed=await wait(()=>monitor.querySelector('[aria-label="Redis 采集时间"]'),'Redis first-screen times');
+  if(!observed.textContent.includes("Task 采集于")||!observed.textContent.includes("Worker 采集于"))throw Error("first-screen collection time missing");
  if(innerWidth===1440){
   await wait(()=>redisSummary.textContent.includes('2 条（自报运行 1）')&&redisSummary.textContent.includes('3 条（时间/TTL 新鲜 1）'),'mock Redis counts');
   if(!e.textContent.includes('尚未核验'))throw Error('claimed RUNNING misrepresented as verified execution');
