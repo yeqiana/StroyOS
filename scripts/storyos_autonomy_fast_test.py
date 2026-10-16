@@ -10,6 +10,18 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 SLOTS = {
+    # 永久回归：M00/Frame Contract/Driver/Watchdog/Attempt 使用本次代码检查。
+    "production-regression": [
+        "tests/system/test_m00_finalizer_weakpass_reentry.py",
+        "tests/system/test_m00_exhausted_baseline_weak_pass.py",
+        "tests/system/test_projection_sha_authority_reentry.py",
+        "tests/system/test_storyos_autonomy_watchdog_policy.py",
+        "tests/system/test_generation_unknown_technical_retry_guard.py",
+        "tests/system/test_image_scheduler_review_exit_v4.py",
+        "tests/system/test_storyos_autonomy_r9_probe.py",
+        "tests/system/test_runtime_recovery.py::RecoveryTests::test_retry_is_bounded_and_checkpoint_preserved",
+        "tests/system/test_runtime_recovery.py::RecoveryTests::test_progress_marker_sees_metadata_only_weak_pass_progress",
+    ],
     "entry": ["tests/system/test_storyos_native_codex_full_auto_entry.py"],
     "driver": ["tests/system/test_storyos_native_driver_scope.py"],
     "recovery": ["tests/system/test_storyos_autonomy_extreme.py"],
@@ -166,8 +178,14 @@ FULL_STRESS = [
 def test_commands(*, slot: str, stress: bool = False) -> list[list[str]]:
     """Expose exact hermetic commands for independent offline regression checks."""
     selected = SLOTS if slot == "all" else {slot: SLOTS[slot]}
-    commands = [[sys.executable, "-m", "pytest", "-q", *files, "--tb=short"]
-                for files in selected.values()]
+    commands = []
+    for name, files in selected.items():
+        # CI bootstrap makes platform imports deterministic on Linux and Windows.
+        launcher = ([sys.executable, str(ROOT / "scripts/ci_storyos_python.py"),
+                     "-m", "pytest", "--import-mode=importlib"]
+                    if name == "production-regression" else
+                    [sys.executable, "-m", "pytest"])
+        commands.append([*launcher, "-q", *files, "--tb=short"])
     if stress:
         commands.append([sys.executable, "-m", "pytest", "-q", *FULL_STRESS,
                          "--tb=short"])

@@ -19,7 +19,7 @@ on:
       - "AGENTS.md"
       - ".github/workflows/story-gates.yml"
   push:
-    branches: [story]
+    branches: [story, story-platform-v3-rever]
     paths:
       - "config/**"
       - "tests/**"
@@ -156,6 +156,12 @@ jobs:
           python episodes/_system/test_v27_async_runtime_failure.py
           python episodes/_system/test_validation_stage_v223.py
           python episodes/_system/test_visual_narrative_core_v22_r2.py
+      - name: Autonomous production shutdown and recovery regressions (current commit)
+        # Pull requests use the candidate merge checkout; pushes use their HEAD.
+        # Offline only: never send real image/provider calls.
+        run: |
+          git log -1 --format="Production regression candidate: %H"
+          python scripts/ci_storyos_python.py scripts/storyos_autonomy_fast_test.py --slot production-regression
       - name: Runtime system regression tests
         # pytest imports each test by path, loads hermetic conftest fixtures,
         # and avoids test_runtime_evidence_contract.py name collisions.
