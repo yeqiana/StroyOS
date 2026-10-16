@@ -34,6 +34,7 @@
 - 同 Git Common Directory、同 Episode 的恢复使用跨进程 OS Lock、两次只读权威核验和崩溃前原子落盘的预算 journal；默认 24h 内最多 2 次、300s 冷却。它不是 MySQL/Provider Attempt Authority；跨主机仍不可宣称 Fencing 已验收。
 - **每个四槽增量变更必须执行对应 `python scripts/storyos_autonomy_fast_test.py --slot watchdog|budget|authority|e2e`，合并前执行 `--slot all`，整体交付前执行 `--slot all --stress`，失败不得伪装为通过。**
 - 文档见 `docs/StoryOS_R2_自治Watchdog_四槽极速验收_20261013.md`。
+- **原生 Batch 单帧能力验证：** 当会话工具目录只提供 UNKNOWN 时，交互账号已登录或文本工具可见不代表图片批量权限；只能经正式 M00 原生像素 SHA/Review Authority、无活动或 UNKNOWN Attempt、队列事务、原生会话实时二级可见性及 `production_native_batch_reentry.py --ack-real-production` 显式授权恢复**一帧**。余下 Batch 继续阻断，单帧仍必须经 canonical Driver、Gateway、全局容量与 MySQL Attempt。不允许绕开或转写为 16 帧 PASS。改动此路径必须执行 `production-regression` 及最新代码全槽压力验收。
 - **持续防回退：** 涉及 Frame Contract SHA、M00 Visual Lock/弱通过、Driver 技术退出/续跑、Watchdog 或 Generation Attempt 的每次功能迭代，必须在**包含本次修改的最新候选工作树/HEAD** 执行 `python scripts/storyos_autonomy_fast_test.py --slot production-regression`；PR 与 `story-platform-v3-rever` 主线 push 由 `Story Gates` 同步执行。测试通过仅是离线证据，不能冒充真实 Provider 成功；不能引用旧提交测试结果代替新 HEAD。
 
 ## R3 原生 Codex 安全自治推进

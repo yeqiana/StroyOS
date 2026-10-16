@@ -15,6 +15,7 @@ SLOTS = {
         "tests/system/test_m00_finalizer_weakpass_reentry.py",
         "tests/system/test_prompt_package_equivalent_projection.py",
         "tests/system/test_image_capability_blocked_plan.py",
+        "tests/system/test_native_batch_reentry.py",
         "tests/system/test_image_capability_preflight_failure_taxonomy.py",
         "tests/system/test_login_auth_payload_transport.py",
         "tests/system/test_m00_exhausted_baseline_weak_pass.py",
