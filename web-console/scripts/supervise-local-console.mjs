@@ -1,4 +1,6 @@
-import {spawn} from 'node:child_process';
+import {spawn,execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+const execFileAsync=promisify(execFile);
 import {fileURLToPath} from 'node:url';
 import net from 'node:net';
 import path from 'node:path';
@@ -53,8 +55,16 @@ function start(){
 async function stopChild(){
  if(!child)return;
  const prior=child;
- if(prior.exitCode===null)try{prior.kill()}catch{}
- await Promise.race([new Promise(done=>prior.once('exit',done)),snooze(2200)]);
+ if(prior.exitCode===null&&prior.signalCode===null)try{prior.kill()}catch{}
+ const exited=prior.exitCode!==null||prior.signalCode!==null
+  ? true
+  : await Promise.race([new Promise(done=>prior.once('exit',()=>done(true))),snooze(2200).then(()=>false)]);
+ // Only clean up the process tree rooted at the launcher PID we spawned.
+ // Never target listeners by port; a foreign listener is a hard stop.
+ if(process.platform==='win32'&&!exited&&Number.isInteger(prior.pid)&&prior.pid>0){
+  try{await execFileAsync('taskkill.exe',['/PID',String(prior.pid),'/T','/F'],{timeout:6000,windowsHide:true})}
+  catch(error){console.warn('[supervisor] 清理受监管子进程树未成功：',error.message)}
+ }
  child=null;
 }
 async function main(){

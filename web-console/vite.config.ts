@@ -25,6 +25,8 @@ export default defineConfig(() => {
     // Portable build assets must load both from the hosted console and the
     // isolated file:// browser QA used by offline production evidence tests.
     base: './',
+    // Per-worktree Vite cache: shared node_modules junction must not share optimized deps.
+    cacheDir: path.resolve(__dirname, '.storyos-tmp/vite-cache'),
     plugins: [react(), tailwindcss()],
     build: {
       rollupOptions: {
