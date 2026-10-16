@@ -1,16 +1,16 @@
 import React, {useMemo, useState} from 'react';
 import {Button, Checkbox, Drawer, Input, Pagination, Progress, Segmented, Select, Table} from 'antd';
 import type {TableColumnsType} from 'antd';
-import {ArrowUpRight, Eye, Image as ImageIcon, Images, List, Plus} from 'lucide-react';
+import {ArrowUpRight, Eye, Image as ImageIcon, Images, List} from 'lucide-react';
 import type {Episode,ProjectItem} from '../../types';
 import {useLocalApprovedMedia} from '../../api/localApprovedMedia';
 import {CanonicalRuntimeDirectory} from '../catalog/CanonicalRuntimeDirectory';
 import {LocalDraftSafetyPanel} from '../catalog/LocalDraftSafetyPanel';
 
-interface Props { episodes:Episode[]; activeEpisode:Episode; onSelectEpisode:(episode:Episode)=>void; onGoToWorkbench:()=>void; onGoToMonitor:(episodeRef:string)=>void; onNewStoryClick:()=>void; projects:ProjectItem[];onRestoreLocalDrafts:(json:string)=>void; }
+interface Props { episodes:Episode[]; activeEpisode:Episode; onSelectEpisode:(episode:Episode)=>void; onGoToWorkbench:()=>void; onGoToMonitor:(episodeRef:string)=>void; projects:ProjectItem[];onRestoreLocalDrafts:(json:string)=>void; }
 const STAGES:Record<string,string> = {IDEA_LOCK:'创意锁定',STORYBOARD_LOCK:'分镜锁定',VISUAL_CALIBRATE:'视觉校准',PROD_APPROVED:'生产审核',READY_TO_PUBLISH:'待发布',PUBLISHED:'已发布',POST_MORTEM:'数据复盘'};
 const readableTime=(value:string)=>{if(!value)return '未知';const d=new Date(value);return Number.isNaN(d.valueOf())?value:new Intl.DateTimeFormat('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).format(d);};
-export const SeriesLibraryView: React.FC<Props> = ({episodes,activeEpisode,onSelectEpisode,onGoToWorkbench,onGoToMonitor,onNewStoryClick,projects,onRestoreLocalDrafts}) => {
+export const SeriesLibraryView: React.FC<Props> = ({episodes,activeEpisode,onSelectEpisode,onGoToWorkbench,onGoToMonitor,projects,onRestoreLocalDrafts}) => {
   const {findEpisode}=useLocalApprovedMedia();
   const coverFor=(ep:Episode)=>findEpisode(ep.title,ep.code)?.frames[0]?.url || (ep.coverImage && !ep.coverImage.startsWith('data:image/svg+xml') ? ep.coverImage : '');
   const [query,setQuery]=useState('');
@@ -38,7 +38,6 @@ export const SeriesLibraryView: React.FC<Props> = ({episodes,activeEpisode,onSel
   return <section id="series-library-view" className="w-full min-w-0 space-y-3 pb-6 text-[var(--text-primary)]">
     <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-3">
       <div><h1 className="os-page-heading">作品与项目</h1><p className="mt-1 text-[12px] text-[var(--text-secondary)]">作品素材库 · 图片优先，工作区状态与批准素材分开计数</p></div>
-      <Button type="primary" icon={<Plus size={15}/>} onClick={onNewStoryClick}>新建故事</Button>
     </header>
     <details aria-label="草稿管理工具" className="border-b border-[var(--border-subtle)] text-[12px]">
       <summary className="cursor-pointer py-2.5 font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]">草稿管理 · 保存、备份与恢复</summary>

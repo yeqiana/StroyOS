@@ -25,10 +25,11 @@ async function browserCase(c){
  if(c.name==='overview'){
    const quick=await wait(()=>view.querySelector('[aria-label="创作快捷入口"]'),'creator quick actions');
    const buttons=[...quick.querySelectorAll('button')];
-   const create=buttons.find(b=>b.textContent?.trim()==='新建故事');
+   const create=document.querySelector('.storyos-sidebar-create button[aria-label="新建故事"]');
+    if(buttons.some(b=>b.textContent?.trim()==='新建故事'))throw Error('duplicate home create CTA');
    const resume=buttons.find(b=>b.textContent?.trim()==='继续制作');
    const library=buttons.find(b=>b.textContent?.includes('查看素材'));
-   if(!create||!resume||resume.disabled||!library)throw Error('three real creator actions missing');
+   if(!create||!resume||resume.disabled||!library)throw Error('fixed create + two real creator actions missing');
    const recent=await wait(()=>view.querySelector('[aria-label="最近创作画廊"]'),'recent gallery');
    const covers=await wait(()=>{
      const images=[...recent.querySelectorAll('button[aria-label^="打开最近创作 "] img[src^="/api/v1/local-media/images/"]')];
@@ -78,7 +79,7 @@ async function browserCase(c){
    const scroller=document.querySelector('main');
    scroller?.scrollTo({top:0,behavior:'instant'});
    await wait(()=>!scroller||scroller.scrollTop<4,'scroll restored to top for screenshot');
-   evidence='3 creator actions + genuine approved gallery + table/gallery management + navigation';
+   evidence='fixed global create + two home actions + genuine approved gallery + table/gallery management + navigation';
  }
  await sleep(360);
  if(document.documentElement.scrollWidth>innerWidth+4)throw Error('horizontal viewport overflow '+document.documentElement.scrollWidth+'/'+innerWidth);
