@@ -165,9 +165,12 @@ def _finalize_visual_lock(ep: Path) -> dict:
     # caches/index immutable; the migration evidence bridges the equivalent SHA.
     machine_contract = _materialize_visual_machine_contract(ep)
     projection_migration = frame_contract.record_projection_migrations(ep)
-    baseline_errors = visual_lock_baseline_gate.validate_review(ep)
+    # The canonical final requirement handles either independently reviewed
+    # PASS or SHA-bound, budget-exhausted soft-quality WEAK_PASS. Reusing the
+    # stricter initial-admission validator here made full-auto loop forever.
+    baseline_errors = visual_lock_baseline_gate.validate_final_requirement(ep)
     if baseline_errors:
-        raise MachineActionError("baseline review not valid: " + "; ".join(baseline_errors[:8]))
+        raise MachineActionError("baseline final requirement not valid: " + "; ".join(baseline_errors[:8]))
     visual_errors = visual_lock_v21.verify(ep, metadata_only=False)
     if visual_errors:
         raise MachineActionError("Visual Lock review not valid: " + "; ".join(visual_errors[:8]))
