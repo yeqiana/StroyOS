@@ -908,6 +908,22 @@ def derive(ep: Path) -> dict:
                     reason="actual-pixel review authorized content repair")
         if qs["counts"].get("external_blocked"):
             blocked_items=[x for x in q.get("items") or [] if x.get("status")=="external_blocked"]
+            # Recover SHA-verified RAW before any new image attempt; never
+            # mix unproven IMAGE_BACKEND_ERROR with this machine-only path.
+            try:
+                import image_unknown_raw_reconcile
+                recoverable = sorted(int(x["frame"]) for x in blocked_items
+                                     if image_unknown_raw_reconcile.eligible(ep,x))
+            except Exception:
+                recoverable = []
+            if recoverable:
+                return action_result(
+                    action="RECONCILE_PRESERVED_PROVIDER_RAW", executor="MACHINE",
+                    frames=recoverable, work_pending=True, auto_recoverable=True,
+                    hard_stop=False,
+                    reason="verified native provider RAW with previously UNKNOWN generation attempt may be normalized and reconciled without regenerating",
+                )
+
             failover_frames=sorted({
                 int(x.get("frame") or 0) for x in blocked_items
                 if int(x.get("frame") or 0)>0 and image_scheduler.availability_fallback_model(x)

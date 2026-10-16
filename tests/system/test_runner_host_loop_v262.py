@@ -1036,6 +1036,33 @@ class NextActionAutonomousBatchTests(unittest.TestCase):
         self.assertEqual(blocked["action"], "IMAGE_ATTEMPT_BLOCKED")
         self.assertTrue(blocked["hard_stop"])
 
+    def test_preserved_native_raw_precedes_unknown_backend_block_without_retry(self):
+        import image_unknown_raw_reconcile as recovered
+        originals=[{"id":f"vl-{n}","frame":n,"scope":"visual_lock",
+                    "kind":"original","status":"generated"} for n in (1,3,8,18)]
+        batch=[{"id":f"batch-{n}","frame":n,"scope":"batch","kind":"original",
+                "status":"generated"} for n in (2,4,6,7,9,13,14,17,19,20)]
+        external=[{"id":f"batch-{n}","frame":n,"scope":"batch","kind":"original",
+                   "status":"external_blocked","technical_failure_code":(
+                       "ASPECT_RATIO_MISMATCH" if n in (11,12,16)
+                       else "IMAGE_BACKEND_ERROR")} for n in (5,10,11,12,15,16)]
+        queue={"items":[*originals,*batch,*external]}
+        with patch.object(recovered,"eligible",
+                          side_effect=lambda ep,item: {"verified":True} if item["frame"] in (11,12,16) else None):
+            action=self._derive(state="VISUAL_CALIBRATED",queue=queue,
+                                ledger={},expected=20)
+        self.assertEqual((action["action"],action["executor"]),
+                         ("RECONCILE_PRESERVED_PROVIDER_RAW","MACHINE"))
+        self.assertEqual(action["frames"],[11,12,16])
+        self.assertFalse(action["hard_stop"])
+        self.assertTrue(action["auto_recoverable"])
+        with patch.object(recovered,"eligible",return_value=None):
+            blocked=self._derive(state="VISUAL_CALIBRATED",
+                                 queue=queue,ledger={},expected=20)
+        self.assertEqual(blocked["action"],"EXTERNAL_IMAGE_PROVIDER_BLOCKED")
+        self.assertTrue(blocked["hard_stop"])
+        self.assertEqual(sorted(blocked["frames"]),[5,10,11,12,15,16])
+
     def test_needs_user_baseline_routes_to_bounded_candidate_pool_before_human_stop(self):
         queue = {"items": []}
         ledger = {"01": {"status": "NEEDS_USER"}}
