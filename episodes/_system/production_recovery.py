@@ -13,6 +13,7 @@ import argparse
 import datetime as dt
 import hashlib
 import json
+import re
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
@@ -171,11 +172,33 @@ def write_lifecycle(ep: Path, item: dict, state: str, **details: object) -> dict
     }
     path = lifecycle_path(ep, item)
     old = _read(path)
+    # The native Runner's durable result is indexed by this exact request ID.
+    # A terminal worker write (notably FAILED after NETWORK_ERROR) previously
+    # replaced the whole JSON row and lost the BACKEND_INVOKED ID, making any
+    # later non-generating receipt reconciliation impossible. Bind the original
+    # ID to the SAME transaction, Queue item, frame and technical attempt only.
+    same_dispatch = bool(
+        data.get("transaction_id")
+        and old.get("transaction_id") == data["transaction_id"]
+        and old.get("item_id") == data["item_id"]
+        and int(old.get("frame") or 0) == data["frame"]
+        and int(old.get("attempt") or 0) == data["attempt"]
+    )
+    previous_runner_id = str(old.get("runner_request_id") or "").strip() if same_dispatch else ""
+    new_runner_id = str(data.get("runner_request_id") or "").strip()
+    for rid in (previous_runner_id, new_runner_id):
+        if rid and not re.fullmatch(r"[a-fA-F0-9]{32}", rid):
+            raise RuntimeError("RUNNER_REQUEST_ID_INVALID_LIFECYCLE_PROVENANCE")
+    if previous_runner_id and new_runner_id and previous_runner_id.lower() != new_runner_id.lower():
+        raise RuntimeError("RUNNER_REQUEST_ID_CONFLICT_WITH_SAME_GENERATION_ATTEMPT")
+    if previous_runner_id and not new_runner_id:
+        data["runner_request_id"] = previous_runner_id
+
     if old.get("started_at"):
         data["started_at"] = old["started_at"]
     elif state == "WORKER_STARTED":
         data["started_at"] = data["updated_at"]
-    if old.get("generation_key") and not data.get("generation_key"):
+    if same_dispatch and old.get("generation_key") and not data.get("generation_key"):
         data["generation_key"] = old["generation_key"]
     atomic_write_json(path, data)
     transaction_id = str(data.get("transaction_id") or "")
