@@ -16,6 +16,7 @@ SLOTS = {
         "tests/system/test_prompt_package_equivalent_projection.py",
         "tests/system/test_image_capability_blocked_plan.py",
         "tests/system/test_native_batch_reentry.py",
+        "tests/system/test_runner_host_loop_v262.py::NextActionAutonomousBatchTests::test_native_frame02_proof_preempts_other_capability_blocks_only_when_valid",
         "tests/system/test_native_driver_carrier_timeout.py",
         "tests/system/test_image_capability_preflight_failure_taxonomy.py",
         "tests/system/test_login_auth_payload_transport.py",

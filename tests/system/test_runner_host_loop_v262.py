@@ -973,6 +973,43 @@ class NextActionAutonomousBatchTests(unittest.TestCase):
                 patch.object(next_action.visual_lock_v21, "verify", return_value=visual_errors or []):
             return next_action.derive(episode)
 
+    def test_native_frame02_proof_preempts_other_capability_blocks_only_when_valid(self):
+        import production_native_batch_reentry as native_proof
+        import model_policy
+        originals = [{"id": f"vl-{n}", "frame": n, "scope": "visual_lock",
+                      "kind": "original", "status": "generated"} for n in (1, 3, 8, 18)]
+        batch = [{"id": f"batch-{n}", "frame": n, "scope": "batch",
+                  "kind": "original", "model": "gpt-image-2.5-flare",
+                  "status": "blocked",
+                  "technical_failure_code": native_proof.FAILURE}
+                 for n in range(1, 21) if n not in (1, 3, 8, 18)]
+        first = next(row for row in batch if row["frame"] == 2)
+        first["status"] = "queued"
+        first.pop("technical_failure_code")
+        first[native_proof.FLAG] = True
+        q = {"items": [*originals, *batch]}
+        with patch.object(image_scheduler, "ready_items", return_value=([first], [])), \
+                patch.object(native_proof, "eligible", return_value=True) as valid, \
+                patch.object(model_policy, "resolve", return_value={}):
+            action = self._derive(state="VISUAL_CALIBRATED", queue=q,
+                                  ledger={}, expected=20)
+        self.assertEqual((action["action"], action["executor"]),
+                         ("GENERATE_IMAGES", "CODEX_IMAGE"))
+        self.assertEqual(action["frames"], [2])
+        self.assertFalse(action["hard_stop"])
+        valid.assert_called_once()
+        self.assertEqual(sum(row["status"] == "blocked" for row in batch), 15)
+
+        # Even when a spoofed flag is present, official Attempt/pixel
+        # authority failure must preserve the existing hard stop.
+        with patch.object(image_scheduler, "ready_items", return_value=([first], [])), \
+                patch.object(native_proof, "eligible", return_value=False), \
+                patch.object(model_policy, "resolve", return_value={}):
+            blocked = self._derive(state="VISUAL_CALIBRATED", queue=q,
+                                   ledger={}, expected=20)
+        self.assertEqual(blocked["action"], "IMAGE_ATTEMPT_BLOCKED")
+        self.assertTrue(blocked["hard_stop"])
+
     def test_needs_user_baseline_routes_to_bounded_candidate_pool_before_human_stop(self):
         queue = {"items": []}
         ledger = {"01": {"status": "NEEDS_USER"}}
