@@ -157,9 +157,19 @@ if (Test-Path -LiteralPath $Endpoint -PathType Leaf) {
             # Existing endpoint may be busy or incompatible: do not replace it.
         }
     }
-    Write-Host 'CODEX_USER_RUNNER_UNAVAILABLE: shared endpoint exists but health is unverified' -ForegroundColor Red
-    Write-Host 'Do not overwrite it; diagnose or stop the existing runner explicitly.'
-    exit 4
+    # Only this interactive user may retire an endpoint whose exact prior PID
+    # is confirmed absent. Live/foreign/unknown records remain fail-closed.
+    $reconciledOutput = & $python @pythonArgs $Runner reconcile-endpoint 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host 'CODEX_USER_RUNNER_UNAVAILABLE: endpoint owner or PID unverified' -ForegroundColor Red
+        exit 4
+    }
+    $reconciled = $reconciledOutput | Out-String | ConvertFrom-Json
+    if ($reconciled.status -notin @('STALE_ENDPOINT_RECOVERED', 'ENDPOINT_ABSENT')) {
+        Write-Host 'CODEX_USER_RUNNER_UNAVAILABLE: endpoint reconciliation refused' -ForegroundColor Red
+        exit 4
+    }
+    Write-Step 'confirmed dead same-user endpoint reconciled (credentials untouched)'
 }
 # 3. Start the loopback runner.
 # ---------------------------------------------------------------------------
