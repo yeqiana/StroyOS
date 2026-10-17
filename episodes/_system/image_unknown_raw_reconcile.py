@@ -2,7 +2,7 @@
 
 A capability/model failure is NEVER an input to this path. The only source is
 one immutable, SHA-verified local provider RAW with its original provider receipt,
-the original Production Ledger transaction, and the original MySQL Attempt #1.
+the original Production Ledger transaction, and the original MySQL Attempt (#1, or the narrowly verified Episode13 #2).
 """
 from __future__ import annotations
 
@@ -75,8 +75,25 @@ def eligible(ep,item):
         frame=int(item["frame"])
         key=logical_asset_identity.frame_asset_key(ep,frame)
         state=authority.load_asset_state(ep,key)
-        old=authority.load_attempt(ep,key,1) or {}
-        gen=authority.stable_generation_key(logical_asset_identity.episode_id(ep),key,1)
+        idx=int(receipt.get("attempt_index") or 0)
+        if idx not in (1,2):
+            return None
+        # Only the three network-recovered Episode13 frames can use a second
+        # real Attempt. Frame15 already succeeded and cannot enter this gate.
+        if idx==2:
+            first=authority.load_attempt(ep,key,1) or {}
+            if (ep.name!="13_失物归还的那扇门"
+                or ep.parent.name!="00_独立篇"
+                or frame not in (5,10)
+                or int(item.get("native_network_terminal_rearm_count") or 0)!=1
+                or int(item.get("native_network_capability_requeue_count") or 0)!=1
+                or first.get("status")!="FAILED_AFTER_DISPATCH"
+                or first.get("failure_class")!="IMAGE_TOOL_NETWORK_ERROR_DURABLE_RECEIPT"
+                or first.get("provider")!="codex_subscription"
+                or first.get("result_ref")):
+                return None
+        old=authority.load_attempt(ep,key,idx) or {}
+        gen=authority.stable_generation_key(logical_asset_identity.episode_id(ep),key,idx)
         raw=Path(plan["raw_path"]).resolve()
         if (old.get("status")!="OUTCOME_UNKNOWN"
             or old.get("failure_class")!="generation_failed_before_candidate_commit"
@@ -87,12 +104,13 @@ def eligible(ep,item):
             or not old.get("generation_observed_at")
             or old.get("result_ref") not in (None,"")
             or old.get("generation_key")!=gen
-            or int(state.get("attempts_consumed") or 0)!=1
+            or int(state.get("attempts_consumed") or 0)!=idx
             or state.get("active_attempt_index") is not None
-            or int(state.get("fencing_counter") or 0)!=1
+            or int(state.get("fencing_counter") or 0)!=idx
+            or (idx==2 and old.get("runner_request_id")!=receipt.get("request_id"))
             or receipt.get("generation_key")!=gen
-            or int(receipt.get("attempt_index") or 0)!=1
-            or int(receipt.get("fencing_token") or 0)!=1
+            or int(receipt.get("attempt_index") or 0)!=idx
+            or int(receipt.get("fencing_token") or 0)!=idx
             or receipt.get("generation_route")!="codex_subscription"
             or receipt.get("payload_model")!=old.get("payload_model")
             or receipt.get("payload_quality")!=old.get("payload_quality")
@@ -106,6 +124,7 @@ def eligible(ep,item):
             return None
         return {**plan,"receipt_path":receipt_path,"raw_path":raw,"generation_key":gen,
                 "asset_key":key,"frame":frame,"item_id":item["id"],
+                "attempt_index":idx,
                 "raw_sha256":receipt["raw_sha256"],
                 "receipt_sha256":_receipt_digest(receipt),
                 "receipt_legacy_path":loaded["legacy_path"],
@@ -157,17 +176,22 @@ def _mysql_reconcile(ep,plan,output,output_sha):
                     or raw_payload.get("generation_key")!=plan["generation_key"]
                     or (raw_payload.get("release_canvas") or {}).get("sha256")!=output_sha):
                     _deny("CANONICAL_MYSQL_RECEIPT_CHANGED")
+                idx=int(plan.get("attempt_index") or 1)
+                if idx not in (1,2):
+                    _deny("INVALID_PRESERVED_RAW_ATTEMPT_INDEX")
                 state=authority._row(conn,authority._episode_id(ep),plan["asset_key"])
                 row=conn.query_one(
                     "SELECT * FROM TB_GENERATION_ATTEMPT WHERE EPISODE_ID=%s "
-                    "AND LOGICAL_ASSET_KEY=%s AND ATTEMPT_INDEX=1 FOR UPDATE",
-                    (authority._episode_id(ep),plan["asset_key"]))
+                    "AND LOGICAL_ASSET_KEY=%s AND ATTEMPT_INDEX=%s FOR UPDATE",
+                    (authority._episode_id(ep),plan["asset_key"],idx))
                 context=authority._context(row) if row else {}
                 if (not state or not row
-                    or int(state.get("ATTEMPTS_CONSUMED") or 0)!=1
+                    or int(state.get("ATTEMPTS_CONSUMED") or 0)!=idx
                     or state.get("ACTIVE_ATTEMPT_INDEX") is not None
-                    or int(state.get("FENCING_COUNTER") or 0)!=1
-                    or int(row.get("FENCING_TOKEN") or 0)!=1
+                    or int(state.get("FENCING_COUNTER") or 0)!=idx
+                    or int(row.get("FENCING_TOKEN") or 0)!=idx
+                    or (idx==2 and context.get("runner_request_id") is None)
+                    or (idx==2 and context.get("runner_request_id")!=raw_payload.get("request_id"))
                     or row.get("STATUS")!="OUTCOME_UNKNOWN"
                     or row.get("FAILURE_CLASS")!="generation_failed_before_candidate_commit"
                     or row.get("RESULT_REF") not in (None,"")
@@ -185,11 +209,11 @@ def _mysql_reconcile(ep,plan,output,output_sha):
                 result=conn.execute(
                     "UPDATE TB_GENERATION_ATTEMPT SET STATUS='SUCCEEDED', TERMINAL_AT=%s, "
                     "RESULT_REF=%s WHERE EPISODE_ID=%s AND LOGICAL_ASSET_KEY=%s "
-                    "AND ATTEMPT_INDEX=1 AND STATUS='OUTCOME_UNKNOWN' "
-                    "AND GENERATION_KEY=%s AND FENCING_TOKEN=1 "
+                    "AND ATTEMPT_INDEX=%s AND STATUS='OUTCOME_UNKNOWN' "
+                    "AND GENERATION_KEY=%s AND FENCING_TOKEN=%s "
                     "AND FAILURE_CLASS='generation_failed_before_candidate_commit' AND RESULT_REF IS NULL",
                     (authority._utcnow(),str(output),authority._episode_id(ep),
-                     plan["asset_key"],plan["generation_key"]))
+                     plan["asset_key"],idx,plan["generation_key"],idx))
                 if result!=1:
                     _deny("UNKNOWN_GENERATION_CAS_LOST")
                 if sha(plan["raw_path"])!=plan["raw_sha256"] or sha(output)!=output_sha:
@@ -243,7 +267,7 @@ def recover_one(ep,frame):
             row["output_path"]=output.resolve().relative_to(ROOT.resolve()).as_posix()
             row["completed_at"]=production_recovery.now()
             row["last_error"]=None
-            row["attempt_index"]=1
+            row["attempt_index"]=int(plan.get("attempt_index") or 1)
             row["generation_key"]=plan["generation_key"]
             row["normalization_recovery"]={"kind":"verified_provider_raw_after_unknown",
                                           "crop_applied":bool(normalization.get("crop_applied")),

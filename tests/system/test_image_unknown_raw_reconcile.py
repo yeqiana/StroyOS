@@ -188,3 +188,110 @@ def test_new_action_registered_in_permanent_regression():
     assert "RECONCILE_PRESERVED_PROVIDER_RAW" in next_
     assert "image_unknown_raw_reconcile.eligible(ep,x)" in next_
     assert "test_image_unknown_raw_reconcile.py" in fast
+
+
+def test_second_attempt_only_after_sha_reviewed_native_network_failure(tmp_path):
+    ep,raw,rpath,key,gen,receipt,row,plan,old,state,loaded=evidence(tmp_path)
+    # The raw payload and receipt remain exact and immutable; no provider call.
+    row["id"]="batch05"
+    row["frame"]=5
+    row["native_network_terminal_rearm_count"]=1
+    row["native_network_capability_requeue_count"]=1
+    receipt.update({"frame":"05","attempt_index":2,"fencing_token":2,
+                    "generation_key":"ga1-"+"2"*48+"-a2"})
+    second=copy.deepcopy(old)
+    second["generation_key"]=receipt["generation_key"]
+    second["runner_request_id"]=receipt["request_id"]
+    first={"status":"FAILED_AFTER_DISPATCH",
+           "failure_class":"IMAGE_TOOL_NETWORK_ERROR_DURABLE_RECEIPT",
+           "provider":"codex_subscription","result_ref":None}
+    state.update({"attempts_consumed":2,"fencing_counter":2})
+    with (patch.object(recovery.legacy,"inspect_item",return_value=plan),
+          patch.object(recovery.provider_receipt_persistence,"load_by_path",return_value=loaded),
+          patch.object(recovery.logical_asset_identity,"frame_asset_key",return_value=key),
+          patch.object(recovery.logical_asset_identity,"episode_id",return_value="episode"),
+          patch.object(recovery.authority,"stable_generation_key",return_value=receipt["generation_key"]),
+          patch.object(recovery.authority,"load_asset_state",return_value=state),
+          patch.object(recovery.authority,"load_attempt",
+                       side_effect=lambda ep,key,index: first if index==1 else second)):
+        valid=recovery.eligible(ep,row)
+        assert valid is not None and valid["attempt_index"]==2
+        assert valid["generation_key"]==receipt["generation_key"]
+        row["native_network_terminal_rearm_count"]=0
+        assert recovery.eligible(ep,row) is None
+        row["native_network_terminal_rearm_count"]=1
+        first["status"]="OUTCOME_UNKNOWN"
+        assert recovery.eligible(ep,row) is None
+        first["status"]="FAILED_AFTER_DISPATCH"
+        state["active_attempt_index"]=2
+        assert recovery.eligible(ep,row) is None
+        state["active_attempt_index"]=None
+        state["attempts_consumed"]=3
+        assert recovery.eligible(ep,row) is None
+        state["attempts_consumed"]=2
+        second["runner_request_id"]="b"*32
+        assert recovery.eligible(ep,row) is None
+
+
+def test_second_attempt_mysql_cas_touches_only_fenced_attempt2(tmp_path):
+    ep,raw,rpath,key,gen,receipt,row,plan,old,state,loaded=evidence(tmp_path)
+    output=ep/"media/candidates/scheduled/05-final.png"
+    output.parent.mkdir(parents=True)
+    output.write_bytes(b"normalized-sha-bound-existing-provider-png")
+    receipt2={**receipt,"attempt_index":2,"fencing_token":2,"request_id":"a"*32,
+              "generation_key":"ga1-"+"2"*48+"-a2"}
+    proof={**plan,"asset_key":key,"item_id":"batch05",
+           "attempt_index":2,"generation_key":receipt2["generation_key"],
+           "raw_path":raw,"raw_sha256":recovery.sha(raw),
+           "receipt_path":rpath,"receipt_legacy_path":loaded["legacy_path"],
+           "receipt_id":loaded["receipt_id"],
+           "frame_contract_sha256":"c"*64,"prompt_package_sha256":"p"*64}
+    db=FakeConnection(proof,recovery.sha(output))
+    db.receipt["request_id"]="a"*32
+    proof["receipt_sha256"]=recovery._receipt_digest(db.receipt)
+    db.attempt["FENCING_TOKEN"]=2
+    context=json.loads(db.attempt["CONTEXT"])
+    context["queue_item_id"]="batch05"
+    context["runner_request_id"]="a"*32
+    db.attempt["CONTEXT"]=json.dumps(context)
+    with (patch.object(recovery,"_freeze_three",return_value=nullcontext()),
+          patch.object(recovery.authority,"_connect",return_value=db),
+          patch.object(recovery.authority,"_row",return_value={
+              "ATTEMPTS_CONSUMED":2,"ACTIVE_ATTEMPT_INDEX":None,"FENCING_COUNTER":2}),
+          patch.object(recovery.authority,"_episode_id",return_value="episode"),
+          patch.object(recovery.provider_receipt_persistence,"_episode_id",return_value="episode")):
+        recovery._mysql_reconcile(ep,proof,output,recovery.sha(output))
+        assert db.writes==1
+        db.writes=0
+        db.attempt["FENCING_TOKEN"]=1
+        with pytest.raises(recovery.PreservedRawDenied,match="UNKNOWN_GENERATION_FENCE_CHANGED"):
+            recovery._mysql_reconcile(ep,proof,output,recovery.sha(output))
+        assert db.writes==0
+
+
+def test_second_attempt_cas_denies_stale_runner_identity(tmp_path):
+    ep,raw,rpath,key,gen,receipt,row,plan,old,state,loaded=evidence(tmp_path)
+    out=ep/"media/candidates/scheduled/05.png"
+    out.parent.mkdir(parents=True)
+    out.write_bytes(b"fixed")
+    plan={**plan,"asset_key":key,"item_id":"batch05","attempt_index":2,
+          "generation_key":"ga1-"+"2"*48+"-a2","raw_path":raw,
+          "raw_sha256":recovery.sha(raw),"receipt_path":rpath,
+          "receipt_legacy_path":loaded["legacy_path"],"receipt_id":loaded["receipt_id"],
+          "frame_contract_sha256":"c"*64,"prompt_package_sha256":"p"*64}
+    db=FakeConnection(plan,recovery.sha(out))
+    db.attempt["FENCING_TOKEN"]=2
+    db.receipt["request_id"]="a"*32
+    plan["receipt_sha256"]=recovery._receipt_digest(db.receipt)
+    db.attempt["CONTEXT"]=json.dumps({"scope":"batch","queue_item_id":"batch05",
+          "frame_contract_sha256":"c"*64,"prompt_package_sha256":"p"*64,
+          "runner_request_id":"unrelated"})
+    with (patch.object(recovery,"_freeze_three",return_value=nullcontext()),
+          patch.object(recovery.authority,"_connect",return_value=db),
+          patch.object(recovery.authority,"_row",return_value={
+              "ATTEMPTS_CONSUMED":2,"ACTIVE_ATTEMPT_INDEX":None,"FENCING_COUNTER":2}),
+          patch.object(recovery.authority,"_episode_id",return_value="episode"),
+          patch.object(recovery.provider_receipt_persistence,"_episode_id",return_value="episode")):
+        with pytest.raises(recovery.PreservedRawDenied,match="UNKNOWN_GENERATION_FENCE_CHANGED"):
+            recovery._mysql_reconcile(ep,plan,out,recovery.sha(out))
+        assert db.writes==0
