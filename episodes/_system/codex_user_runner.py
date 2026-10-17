@@ -582,6 +582,50 @@ def _pid_alive(pid) -> bool:
     return True
 
 
+def reconcile_dead_endpoint() -> dict:
+    """Reclaim only this user's provably dead Runner pointer, never its Codex credentials.
+
+    This is invoked by the *interactive* Task Scheduler carrier, not SYSTEM.
+    A live, foreign, malformed or unverifiable endpoint always blocks.
+    """
+    identity = current_identity()
+    if is_non_interactive(identity):
+        return {"status": "BLOCKED", "reason": "NON_INTERACTIVE_IDENTITY"}
+    path = endpoint_path()
+    if not path.is_file():
+        return {"status": "ENDPOINT_ABSENT"}
+    try:
+        snapshot = path.read_bytes()
+        record = json.loads(snapshot.decode("utf-8-sig"))
+        if not isinstance(record, dict):
+            return {"status": "BLOCKED", "reason": "ENDPOINT_IDENTITY_UNVERIFIED"}
+        recorded_pid = record.get("pid")
+        if (
+            not isinstance(record, dict)
+            or record.get("schema_version") != SCHEMA_VERSION
+            or str(record.get("user") or "").casefold() != identity.casefold()
+            or record.get("host") != "127.0.0.1"
+            or not isinstance(record.get("port"), int)
+            or not 1 <= record["port"] <= 65535
+            or not isinstance(recorded_pid, int)
+            or recorded_pid <= 0
+            or not str(record.get("token") or "")
+            or Path(str(record.get("codex_user_runner") or "")).resolve() != Path(__file__).resolve()
+        ):
+            return {"status": "BLOCKED", "reason": "ENDPOINT_IDENTITY_UNVERIFIED"}
+        import psutil
+
+        # A PID being alive includes reuse by an unrelated process; never reclaim
+        # unless the OS confirms no process with this PID exists.
+        if psutil.pid_exists(recorded_pid):
+            return {"status": "BLOCKED", "reason": "ENDPOINT_PID_OCCUPIED"}
+        if path.read_bytes() != snapshot or psutil.pid_exists(recorded_pid):
+            return {"status": "BLOCKED", "reason": "ENDPOINT_CHANGED_OR_PID_OCCUPIED"}
+        path.unlink()
+        return {"status": "STALE_ENDPOINT_RECOVERED"}
+    except (OSError, ValueError, TypeError, ImportError) as exc:
+        return {"status": "BLOCKED", "reason": "ENDPOINT_RECOVERY_UNVERIFIED", "error_type": type(exc).__name__}
+
 def read_endpoint(*, required: bool = True) -> dict:
     path = endpoint_path()
     if not path.is_file():
@@ -1621,6 +1665,11 @@ def serve(host: str = "127.0.0.1", port: int = 0, token: str | None = None) -> i
     if host not in {"127.0.0.1", "localhost", "::1"}:
         print(f"CODEX_USER_RUNNER_TASK_REJECTED: loopback binding required, got {host}", file=sys.stderr)
         return 2
+    # A direct serve must not overwrite a live/foreign/unverified runner pointer.
+    # Only the interactive reconciler may retire a confirmed-dead endpoint.
+    if endpoint_path().is_file():
+        print("CODEX_USER_RUNNER_ENDPOINT_NOT_RECONCILED", file=sys.stderr)
+        return 4
     tmp_root().mkdir(parents=True, exist_ok=True)
     resolved_token = token or secrets.token_urlsafe(32)
     httpd = ThreadingHTTPServer((host, int(port)), _Handler)
@@ -2156,6 +2205,7 @@ def main() -> int:
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=0)
     p.add_argument("--token", default=None)
+    sub.add_parser("reconcile-endpoint")
     p = sub.add_parser("health")
     p.add_argument("--json", action="store_true")
     sub.add_parser("status")
@@ -2171,6 +2221,10 @@ def main() -> int:
         return self_test()
     if args.cmd == "serve":
         return serve(args.host, args.port, args.token)
+    if args.cmd == "reconcile-endpoint":
+        report = reconcile_dead_endpoint()
+        print(json.dumps(report, ensure_ascii=False))
+        return 0 if report["status"] in {"ENDPOINT_ABSENT", "STALE_ENDPOINT_RECOVERED"} else 4
     if args.cmd == "health":
         return _cmd_health(args.json)
     if args.cmd == "status":
