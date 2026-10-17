@@ -14,6 +14,55 @@ ROOT=Path(__file__).resolve().parents[2]
 sys.path[:0]=[str(ROOT),str(ROOT/"episodes/_system")]
 import native_network_failure_rearm as n
 
+def test_original_batch_followon_must_admit_sha_verified_bounded_second_attempt(tmp_path):
+    import production_native_batch_followon as followon
+    ep=tmp_path/"ep"
+    ep.mkdir()
+    item={"id":"batch-05","frame":5,"scope":"batch","kind":"original",
+          "status":"queued","model":"gpt-image-2.5-flare",
+          "native_batch_verified_followon":True,
+          "native_batch_success_anchor_sha256":"a"*64,
+          "native_batch_followon_evidence_sha256":"b"*64}
+    payload={"model":"gpt-image-2.5-flare"}
+    with (patch.object(followon,"_batch",return_value=[item]),
+          patch.object(followon,"_episode_authorized",return_value=True),
+          patch.object(followon,"_anchor",return_value="a"*64),
+          patch.object(followon.attempts,"load_asset_state",return_value={
+              "attempts_consumed":1,"active_attempt_index":None,"outcome_unknown_count":1}),
+          patch.object(n,"remaining_second_attempt",return_value=True)):
+        assert followon.worker_eligible(ep,item,payload,{},queue={"items":[item]})
+    with (patch.object(followon,"_batch",return_value=[item]),
+          patch.object(followon,"_episode_authorized",return_value=True),
+          patch.object(followon,"_anchor",return_value="a"*64),
+          patch.object(followon.attempts,"load_asset_state",return_value={
+              "attempts_consumed":1,"active_attempt_index":None,"outcome_unknown_count":1}),
+          patch.object(n,"remaining_second_attempt",return_value=False)):
+        assert not followon.worker_eligible(ep,item,payload,{},queue={"items":[item]})
+
+
+def test_capability_preflight_denial_requeue_only_once_without_new_attempt(tmp_path):
+    ep=tmp_path/"ep";ep.mkdir()
+    row={"id":"batch-05","scope":"batch","kind":"original","frame":5,
+        "status":"blocked","attempts":1,
+        "technical_failure_code":"LOGIN_AUTH_IMAGE_TOOL_CAPABILITY_UNKNOWN",
+        "last_error":"LOGIN_AUTH_IMAGE_TOOL_CAPABILITY_UNKNOWN: independent payload route unavailable",
+        "native_network_terminal_rearm_count":1,
+        "native_network_capability_requeue_count":0}
+    q={"items":[row]}
+    assert n.requeue_capability_preflight(ep,5)["reason"]=="ACK_REQUIRED"
+    with (patch.object(n.scheduler_core,"queue_transaction",return_value=nullcontext()),
+          patch.object(n.scheduler_core,"load_queue",return_value=q),
+          patch.object(n,"remaining_second_attempt",return_value=True),
+          patch.object(n.scheduler_core,"save_queue") as save):
+        assert n.requeue_capability_preflight(ep,5,acknowledged=True)["status"]=="PASS"
+        save.assert_called_once()
+        assert row["status"]=="queued"
+        assert row["attempts"]==1  # preflight did not spend provider attempt
+        assert row["native_network_capability_requeue_count"]==1
+        assert n.requeue_capability_preflight(ep,5,acknowledged=True)["status"]=="BLOCKED"
+        save.assert_called_once()
+
+
 
 def events(message, extra=None):
     rows=[{"type":"thread.started","thread_id":"t"},{"type":"turn.started"},

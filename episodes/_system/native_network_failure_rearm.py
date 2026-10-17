@@ -22,6 +22,8 @@ import logical_asset_identity
 import production_ledger
 import scheduler_core
 
+ROOT = Path(__file__).resolve().parents[2]
+
 FAILURE_CLASS = "IMAGE_TOOL_NETWORK_ERROR_DURABLE_RECEIPT"
 RECOVERY_KEY = "native_network_terminal_rearm_count"
 NETWORK_WORDING = frozenset({
@@ -337,6 +339,117 @@ def rearm_one(ep: Path, frame: int, *, acknowledged: bool = False) -> dict:
         return {"status": "BLOCKED", "reason": "QUEUE_MUTATION_BUSY"}
     except EvidenceDenied as e:
         return {"status": "BLOCKED", "reason": str(e)}
+
+
+
+def remaining_second_attempt(ep: Path, row: dict) -> bool:
+    """Read-only: authorize a fresh NON-generating visibility probe for Attempt #2.
+
+    Only an original paid first Attempt with verified network-terminal receipt
+    can take this path. It never changes the original result or quota.
+    """
+    try:
+        ep = Path(ep).resolve()
+        frame = int(row.get("frame") or 0)
+        if (ep.name != "13_失物归还的那扇门"
+                or ep.parent.name != "00_独立篇"
+                or not ep.is_relative_to(ROOT / "episodes")
+                or frame not in (5, 10, 15)
+                or row.get("scope") != "batch" or row.get("kind") != "original"
+                or row.get("status") not in {"blocked","queued","running","generating"}
+                or row.get("native_batch_verified_followon") is not True
+                or int(row.get(RECOVERY_KEY) or 0) != 1
+                or int(row.get("native_network_capability_requeue_count") or 0) > 1
+                or row.get("output_path") or row.get("candidate_output_path")):
+            return False
+        receipt_sha = str(row.get("native_network_terminal_receipt_sha256") or "")
+        log_sha = str(row.get("native_network_terminal_original_log_sha256") or "")
+        if not HEX64.fullmatch(receipt_sha) or not HEX64.fullmatch(log_sha):
+            return False
+        if list((ep / "media/raw").glob(f"{frame:02d}-*.png")):
+            return False
+        _, original_output = _log_and_queue(ep, row)
+        if _hash(original_output) != log_sha:
+            return False
+        original_runner = _matched_receipt(original_output)
+        if original_runner["receipt_sha256"] != receipt_sha:
+            return False
+        key = logical_asset_identity.frame_asset_key(ep, frame)
+        state = authority.load_asset_state(ep, key) or {}
+        first = authority.load_attempt(ep, key, 1) or {}
+        second = authority.load_attempt(ep, key, 2) or {}
+        if (int(state.get("attempts_consumed") or 0) != 1
+                or state.get("active_attempt_index") is not None
+                or int(state.get("fencing_counter") or 0) != 1
+                or first.get("status") != "FAILED_AFTER_DISPATCH"
+                or first.get("failure_class") != FAILURE_CLASS
+                or first.get("provider") != "codex_subscription"
+                or first.get("runner_request_id") != original_runner["request_id"]
+                or first.get("generation_key") != authority.stable_generation_key(
+                    authority._episode_id(ep), key, 1)
+                or first.get("result_ref") or bool(second)):
+            return False
+        connection = authority._connect()
+        try:
+            dbrow = connection.query_one(
+                "SELECT CONTEXT, STATUS, GENERATION_KEY, FENCING_TOKEN "
+                "FROM TB_GENERATION_ATTEMPT WHERE EPISODE_ID=%s "
+                "AND LOGICAL_ASSET_KEY=%s AND ATTEMPT_INDEX=1",
+                (authority._episode_id(ep), key))
+        finally:
+            connection.close()
+        if (not isinstance(dbrow, dict) or dbrow.get("STATUS") != "FAILED_AFTER_DISPATCH"
+                or int(dbrow.get("FENCING_TOKEN") or 0) != 1
+                or dbrow.get("GENERATION_KEY") != first.get("generation_key")):
+            return False
+        context = authority._context(dbrow)
+        return bool(
+            context.get("scope") == "batch"
+            and context.get("queue_item_id") == row.get("id")
+            and context.get("runner_request_id") == original_runner["request_id"]
+            and context.get("network_failure_runner_receipt_sha256") == receipt_sha
+            and context.get("network_failure_original_log_sha256") == log_sha
+            and context.get("upstream_billing_outcome_unverified") is True
+        )
+    except Exception:
+        return False
+
+
+def requeue_capability_preflight(ep: Path, frame: int, *, acknowledged: bool = False) -> dict:
+    """One-shot requeue after pre-dispatch UNKNOWN capability gate rejected Attempt #2.
+
+    The non-generating secondary visibility probe is still checked freshly by
+    the canonical worker. No MySQL Attempt is reserved or reset here.
+    """
+    if not acknowledged:
+        return {"status": "BLOCKED", "reason": "ACK_REQUIRED"}
+    ep = Path(ep).resolve()
+    try:
+        with scheduler_core.queue_transaction(ep):
+            queue = scheduler_core.load_queue(ep)
+            row = next((x for x in queue.get("items", [])
+                        if x.get("scope") == "batch" and int(x.get("frame") or 0) == frame), None)
+            if (row is None or row.get("status") != "blocked"
+                    or row.get("technical_failure_code") != "LOGIN_AUTH_IMAGE_TOOL_CAPABILITY_UNKNOWN"
+                    or not str(row.get("last_error") or "").startswith(
+                        "LOGIN_AUTH_IMAGE_TOOL_CAPABILITY_UNKNOWN:")
+                    or int(row.get("attempts") or 0) != 1
+                    or int(row.get("native_network_capability_requeue_count") or 0) != 0
+                    or not remaining_second_attempt(ep, row)):
+                return {"status": "BLOCKED", "reason": "PROVENANCE_OR_ONE_SHOT_REARM_DENIED"}
+            row["native_network_capability_requeue_count"] = 1
+            row["native_network_preflight_error_before_requeue"] = row["last_error"]
+            row["status"] = "queued"
+            row["last_error"] = None
+            row.pop("technical_failure_code", None)
+            row.pop("external_block", None)
+            row.pop("completed_at", None)
+            row.pop("execution", None)
+            scheduler_core.save_queue(ep, queue)
+            return {"status": "PASS", "frame": frame, "provider_calls": 0,
+                    "additional_attempts_consumed": 0, "remaining_real_attempt_budget": 1}
+    except scheduler_core.QueueMutationBusy:
+        return {"status": "BLOCKED", "reason": "QUEUE_MUTATION_BUSY"}
 
 
 def main() -> int:
