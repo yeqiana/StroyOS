@@ -19,7 +19,9 @@ class HotStateSpec:
 
 SPECS = {
     "NEXT_ACTION": HotStateSpec("NEXT_ACTION", 900),
-    "DRIVER_STATE": HotStateSpec("DRIVER_STATE", 180),
+    # Driver epoch must outlive long blocking critic/model steps; its liveness is fenced by PID+beacon.
+    # A fixed 180s TTL caused a live Driver to be reported as NEVER_STARTED during final review.
+    "DRIVER_STATE": HotStateSpec("DRIVER_STATE", None),
     "DRIVER_HEARTBEAT": HotStateSpec("DRIVER_HEARTBEAT", 90),
     "CIRCUIT_BREAKER": HotStateSpec("CIRCUIT_BREAKER", 300),
     # In-flight scoped Codex task identity must outlive its remote runner request.
