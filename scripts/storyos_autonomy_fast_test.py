@@ -19,6 +19,7 @@ SLOTS = {
         "tests/system/test_native_batch_post_success_followon.py",
         "tests/system/test_image_unknown_raw_reconcile.py",
         "tests/system/test_native_image_failure_receipt_durability.py",
+        "tests/system/test_native_runner_mysql_dispatch_identity.py",
         "tests/system/test_runner_host_loop_v262.py::NextActionAutonomousBatchTests::test_preserved_native_raw_precedes_unknown_backend_block_without_retry",
         "tests/system/test_runner_host_loop_v262.py::NextActionAutonomousBatchTests::test_verified_first_batch_succeeded_unblocks_history_via_machine_action",
         "tests/system/test_runner_host_loop_v262.py::NextActionAutonomousBatchTests::test_native_frame02_proof_preempts_other_capability_blocks_only_when_valid",
