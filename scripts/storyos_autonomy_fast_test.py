@@ -13,6 +13,7 @@ SLOTS = {
     # 永久回归：M00/Frame Contract/Driver/Watchdog/Attempt 使用本次代码检查。
     "production-regression": [
         "tests/system/test_driver_long_review_hot_state.py",
+        "tests/system/test_repository_hygiene_contract.py",
         "tests/system/test_final_semantic_durable_output_fallback.py",
         "tests/system/test_final_semantic_atomic_closure.py",
         "tests/system/test_review_stall_diagnostic.py",

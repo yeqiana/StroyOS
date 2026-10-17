@@ -1,4 +1,4 @@
-﻿"""Redis-only Driver projection must survive long official reviews."""
+"""Redis-only Driver projection must survive long official reviews."""
 import copy
 import sys
 from pathlib import Path
