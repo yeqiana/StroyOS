@@ -165,9 +165,19 @@ def worker_eligible(ep, item, payload, controller, *, queue=None) -> bool:
             return False
         state = attempts.load_asset_state(
             ep, logical_asset_identity.frame_asset_key(ep, int(item["frame"]))) or {}
-        return (int(state.get("attempts_consumed") or 0) == 0
-                and state.get("active_attempt_index") is None
-                and int(state.get("outcome_unknown_count") or 0) == 0)
+        consumed = int(state.get("attempts_consumed") or 0)
+        if state.get("active_attempt_index") is not None:
+            return False
+        if consumed == 0:
+            return int(state.get("outcome_unknown_count") or 0) == 0
+        if consumed == 1:
+            # Exactly one proved local network-terminal first Attempt is
+            # re-admitted for its remaining second paid Attempt. The native
+            # original Runner receipt, MySQL CAS, queue id, frame and source
+            # hashes are re-verified; no generic UNKNOWN is accepted.
+            import native_network_failure_rearm
+            return native_network_failure_rearm.remaining_second_attempt(ep, current)
+        return False
     except Exception:
         return False
 
