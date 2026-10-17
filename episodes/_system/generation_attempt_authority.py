@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -388,11 +389,32 @@ def commit_dispatch(ep: str | Path, lease: dict, fencing_token: int, *, provider
             state, row = _locked_lease(connection, lease, fencing_token)
             if row.get("STATUS") != "RESERVED" or row.get("LEASE_EXPIRES_AT") <= now:
                 raise AttemptDenied("STALE_GENERATION_ATTEMPT_FENCE")
-            connection.execute(
-                "UPDATE TB_GENERATION_ATTEMPT SET STATUS='DISPATCH_COMMITTED',DISPATCH_COMMITTED_AT=%s,PROVIDER=COALESCE(%s,PROVIDER) "
-                "WHERE EPISODE_ID=%s AND LOGICAL_ASSET_KEY=%s AND ATTEMPT_INDEX=%s AND STATUS='RESERVED'",
-                (now, provider, lease["episode_id"], lease["logical_asset_key"], lease["attempt_index"]),
-            )
+            # Bind the native Runner task to the same fenced MySQL dispatch,
+            # so network failures cannot erase its authoritative request ID.
+            runner_id = lease.get("runner_request_id")
+            original = _context(row)
+            prior = str(original.get("runner_request_id") or "")
+            if runner_id is not None:
+                if (not isinstance(runner_id, str)
+                        or not re.fullmatch(r"[a-fA-F0-9]{32}", runner_id)
+                        or provider != "codex_subscription"):
+                    raise AttemptDenied("RUNNER_REQUEST_ID_INVALID_DISPATCH")
+            if prior and (not runner_id or prior.lower() != runner_id.lower()):
+                raise AttemptDenied("RUNNER_REQUEST_ID_DISPATCH_CONFLICT")
+            if runner_id:
+                original["runner_request_id"] = runner_id
+                connection.execute(
+                    "UPDATE TB_GENERATION_ATTEMPT SET STATUS='DISPATCH_COMMITTED',DISPATCH_COMMITTED_AT=%s,PROVIDER=COALESCE(%s,PROVIDER),CONTEXT=%s "
+                    "WHERE EPISODE_ID=%s AND LOGICAL_ASSET_KEY=%s AND ATTEMPT_INDEX=%s AND STATUS='RESERVED'",
+                    (now, provider, json.dumps(original, ensure_ascii=False, sort_keys=True),
+                     lease["episode_id"], lease["logical_asset_key"], lease["attempt_index"]),
+                )
+            else:
+                connection.execute(
+                    "UPDATE TB_GENERATION_ATTEMPT SET STATUS='DISPATCH_COMMITTED',DISPATCH_COMMITTED_AT=%s,PROVIDER=COALESCE(%s,PROVIDER) "
+                    "WHERE EPISODE_ID=%s AND LOGICAL_ASSET_KEY=%s AND ATTEMPT_INDEX=%s AND STATUS='RESERVED'",
+                    (now, provider, lease["episode_id"], lease["logical_asset_key"], lease["attempt_index"]),
+                )
             limit = (3 if _verified_compensatory_baseline(
                 connection, lease["episode_id"], lease["logical_asset_key"],
                 lease.get("generation_context"), int(state.get("ATTEMPTS_CONSUMED") or 0))
@@ -669,6 +691,7 @@ def load_attempt(ep: str | Path, logical_asset_key: str, attempt_index: int) -> 
             "provider": row.get("PROVIDER"),
             "payload_model": row.get("PAYLOAD_MODEL"),
             "payload_quality": row.get("PAYLOAD_QUALITY"),
+            "runner_request_id": _context(row).get("runner_request_id"),
         }
     finally:
         connection.close()

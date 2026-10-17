@@ -427,6 +427,7 @@ def execute(ep,item,timeout,codex):
         )
         runner_request_id = uuid.uuid4().hex
         item.setdefault("execution", {})["runner_request_id"] = runner_request_id
+        generation_lease["runner_request_id"] = runner_request_id
         ns=argparse.Namespace(
             episode_dir=ep,frame=f"{frame:02d}",prompt_file=prompt,output=out,log=log,
             reference=refs,timeout=timeout,codex=codex,image_model=model,image_quality=quality,overwrite=False,
