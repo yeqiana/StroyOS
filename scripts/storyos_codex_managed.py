@@ -18,6 +18,7 @@ import subprocess
 import sys
 
 from phase9_runtime_launcher import RUNTIME_ENV_KEYS, load_runtime_env_file
+import storyos_driver_exit_remediation as exit_remediation
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME_ENV = ROOT / ".storyos/runtime-launcher/runtime.env"
@@ -272,7 +273,7 @@ def full_auto_command(args: argparse.Namespace, episode: Path | None) -> list[st
     cmd = [sys.executable, str(SYSTEM / "story_os.py")]
     if args.command == "run":
         cmd += ["run", str(episode), "--full-auto", "--resume"]
-    elif args.command == "start":
+    elif args.command in {"start", "remediate-start"}:
         return [sys.executable, str(SYSTEM / "runtime_driver.py"), "start",
                 str(episode), "--resume", "--json"]
     else:
@@ -284,6 +285,55 @@ def full_auto_command(args: argparse.Namespace, episode: Path | None) -> list[st
     return cmd
 
 
+
+
+def dispatch_remediated_start(
+    env: dict[str, str], episode: Path, state: dict, expected: dict[str, str],
+) -> int:
+    """Exceptional, explicit, single-use restart of one previously fixed 900 exit.
+
+    The ordinary plan/start/watchdog still fail closed. The full independent
+    canonical preflight must have exactly the two historical Driver blockers.
+    """
+    if (not exit_remediation.only_historical_exit_blockers(state.get("blockers") or [])
+            or state.get("episode_stage", {}).get("status") != "STAGE_ELIGIBLE"
+            or state.get("mysql", {}).get("schema_status") != "READY_FOR_FURTHER_ADMISSION"
+            or state.get("attempt", {}).get("status") != "ATTEMPT_HISTORY_READ_ONLY"
+            or state.get("attempt", {}).get("outcome_unknown_assets")
+            or state.get("attempt", {}).get("active_attempt_assets")
+            or not all(state.get("codex", {}).get(k) is True for k in
+                       ("bridge_ok", "mode_ok", "model_client_version_ok"))):
+        raise exit_remediation.RemediationDenied("INDEPENDENT_PRODUCTION_ADMISSION_BLOCKED")
+    rel = episode.relative_to(ROOT).as_posix()
+    source = ROOT / "episodes/_system/frame_semantic_review.py"
+    rc, driver = _probe(env, "episodes/_system/runtime_driver.py",
+                        ["status", rel, "--json"])
+    if rc != 0:
+        raise exit_remediation.RemediationDenied("CANONICAL_DRIVER_READ_FAILED")
+    summary = state.get("driver_evidence") or {}
+    if any(driver.get(k) != summary.get(k) for k in
+           ("driver_state", "pid", "liveness", "exit_code")):
+        raise exit_remediation.RemediationDenied("PREFLIGHT_DRIVER_RECORD_DRIFT")
+    proof = exit_remediation.verify_exit(
+        episode, driver, source=source, expected=expected)
+    # Confirm exact identity once more immediately before O_EXCL reservation;
+    # the native Driver owner lock remains the final double-start authority.
+    rc, latest = _probe(env, "episodes/_system/runtime_driver.py",
+                        ["status", rel, "--json"])
+    if rc != 0:
+        raise exit_remediation.RemediationDenied("DRIVER_REREAD_FAILED")
+    again = exit_remediation.verify_exit(
+        episode, latest, source=source, expected=expected)
+    if again != proof:
+        raise exit_remediation.RemediationDenied("DRIVER_REMEDIATION_RACE")
+    ticket = exit_remediation.reserve_once(episode, proof)
+    print(json.dumps({"remediation": "SINGLE_USE_RESERVED",
+                      "receipt": ticket.relative_to(episode).as_posix(),
+                      "exit_code": "900"}, ensure_ascii=False))
+    return subprocess.call(
+        full_auto_command(argparse.Namespace(command="remediate-start"), episode),
+        cwd=ROOT, env=env)
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -292,6 +342,12 @@ def main(argv: list[str] | None = None) -> int:
         option.add_argument("episode")
         if name in {"run", "start"}:
             option.add_argument("--ack-real-production", action="store_true")
+    remedy = sub.add_parser("remediate-start")
+    remedy.add_argument("episode")
+    remedy.add_argument("--ack-real-production", action="store_true")
+    remedy.add_argument("--expected-driver-record-sha256", required=True)
+    remedy.add_argument("--expected-crash-log-sha256", required=True)
+    remedy.add_argument("--expected-fixed-source-sha256", required=True)
     create = sub.add_parser("create")
     create.add_argument("request_text")
     create.add_argument("--title")
@@ -308,6 +364,17 @@ def main(argv: list[str] | None = None) -> int:
         if not args.ack_real_production:
             print("NATIVE_CODEX_REAL_PRODUCTION_ACK_REQUIRED", file=sys.stderr)
             return 2
+        if args.command == "remediate-start":
+            expected = {
+                "driver_sha256": args.expected_driver_record_sha256,
+                "log_sha256": args.expected_crash_log_sha256,
+                "fix_sha256": args.expected_fixed_source_sha256,
+            }
+            try:
+                return dispatch_remediated_start(env, episode, state, expected)
+            except exit_remediation.RemediationDenied as error:
+                print(str(error), file=sys.stderr)
+                return 3
         if state["status"] != "READY_TO_START":
             print("NATIVE_CODEX_FULL_AUTO_BLOCKED_BY_AUTHORITY", file=sys.stderr)
             return 3
