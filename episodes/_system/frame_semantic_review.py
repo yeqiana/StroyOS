@@ -1633,13 +1633,41 @@ def _apply_candidate_gate(
             print("FAIL:", error)
         return 3
 
-    # Final Semantic authority, source bindings, receipt and evidence identity
-    # must all validate before the first Ledger/projection mutation.
-    commit_plan = prepare_review_commit(
-        ep, data=data, reviewed=reviewed, contexts=contexts,
-        provenance=provenance, attempt=attempt, review_scope=review_scope,
-        review_item=review_item,
-    )
+    # Full-frame semantic FAIL is a real model decision, not an invalid PASS.
+    # The PASS-only commit authority rejects all failed checks and previously
+    # crashed the Driver before the bounded Ledger repair path could run.
+    # Keep Phase5A model-receipt authority unchanged until that separate
+    # single-frame decision path can be atomically committed.
+    failed_rows = [
+        row for row in data.get("frames") or []
+        if str(row.get("decision") or "") == "fail"
+    ]
+    if failed_rows:
+        failure_errors = runtime_provenance.validate_critic_provenance(provenance)
+        if (review_scope != "FULL_FRAME_SET" or review_item is not None):
+            failure_errors.append("full-frame failure authority cannot commit Phase5A review items")
+        if (not isinstance(data.get("summary"), dict)
+                or data["summary"].get("passed") is not False):
+            failure_errors.append("critic summary.passed must be false for failed frames")
+        if failure_errors:
+            print("FRAME SEMANTIC FAILURE AUTHORITY INVALID")
+            for error in failure_errors:
+                print("FAIL:", error)
+            return 3
+        commit_plan = {
+            "attempt": int(attempt),
+            "review_scope": review_scope,
+            "frames": [row["frame"] for row in reviewed],
+            "failed_frames": sorted(str(row["frame"]).zfill(2) for row in failed_rows),
+            "ledger_actions": "validated_failure_pending_repair",
+        }
+    else:
+        # PASS authority remains strict, including provenance and atomic receipt.
+        commit_plan = prepare_review_commit(
+            ep, data=data, reviewed=reviewed, contexts=contexts,
+            provenance=provenance, attempt=attempt, review_scope=review_scope,
+            review_item=review_item,
+        )
 
     rows = {str(row.get("frame") or "").zfill(2): row for row in data.get("frames") or []}
 
@@ -1670,7 +1698,7 @@ def _apply_candidate_gate(
         # A Final Semantic FAIL is authoritative review evidence, not the
         # ordinary image-content critic's retry-exhaustion acceptance policy.
         # Never force-pass a candidate that this review has just rejected.
-        if status in {"LOCKED", "PASSED"}:
+        if status in {"LOCKED", "PASSED", "WEAK_PASS"}:
             plan.append(("escalate_needs_user", source, review, status))
         elif status == "NEEDS_USER":
             plan.append(("retain_needs_user", source, review, status))

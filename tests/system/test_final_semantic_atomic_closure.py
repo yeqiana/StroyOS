@@ -74,6 +74,7 @@ def test_final_semantic_applies_failure_escalation_before_new_pass_lock(tmp_path
             {"frame": "12", "decision": "fail", "checks": {}, "issue_codes": ["KEY_PROP_DRIFT"], "notes": "ring unreadable"},
         ],
         "issue_codes": ["KEY_PROP_DRIFT"],
+        "summary": {"passed": False},
     }
     ledger = {
         "policy": {"max_content_repairs_per_frame": 1},
@@ -120,6 +121,7 @@ def test_final_semantic_applies_failure_escalation_before_new_pass_lock(tmp_path
             patch.object(frame_semantic_review.production_ledger, "cmd_review", side_effect=review), \
             patch.object(frame_semantic_review.production_ledger, "cmd_promote", side_effect=promote), \
             patch.object(frame_semantic_review.production_ledger, "cmd_lock", side_effect=lock), \
+            patch.object(frame_semantic_review.runtime_provenance, "validate_critic_provenance", return_value=[]), \
             patch.object(frame_semantic_review, "prepare_review_commit",
                          return_value={"ledger_actions": "prevalidated"}), \
             patch.object(frame_semantic_review, "review_source_bindings", return_value={}):
@@ -158,11 +160,12 @@ def test_final_semantic_failure_with_budget_remaining_authorizes_only_the_bounde
             patch.object(frame_semantic_review.production_ledger, "cmd_review", side_effect=lambda args: calls.append(args)), \
             patch.object(frame_semantic_review.production_ledger, "cmd_authorize_repair", side_effect=lambda args: calls.append(args)), \
             patch.object(frame_semantic_review.production_ledger, "force_pass_content_exhaustion") as force_pass, \
+            patch.object(frame_semantic_review.runtime_provenance, "validate_critic_provenance", return_value=[]), \
             patch.object(frame_semantic_review, "prepare_review_commit",
                          return_value={"ledger_actions": "prevalidated"}), \
             patch.object(frame_semantic_review, "review_source_bindings", return_value={}):
         rc = frame_semantic_review._apply_candidate_gate(
-            tmp_path, data={"frames": [review], "issue_codes": []},
+            tmp_path, data={"frames": [review], "issue_codes": [], "summary": {"passed": False}},
             reviewed=[{"frame": "03", "path_rel": "candidate/03.png", "path": candidate,
                        "sha256": hashlib.sha256(candidate.read_bytes()).hexdigest()}],
             contexts={}, provenance={"review_source_bindings": {}}, attempt=2)
@@ -198,11 +201,12 @@ def test_final_semantic_failure_at_exhausted_budget_keeps_ready_candidate_needs_
             patch.object(frame_semantic_review.production_ledger, "cmd_review", side_effect=lambda args: seen.append(args)), \
             patch.object(frame_semantic_review.production_ledger, "cmd_authorize_repair") as authorize, \
             patch.object(frame_semantic_review.production_ledger, "force_pass_content_exhaustion") as force_pass, \
+            patch.object(frame_semantic_review.runtime_provenance, "validate_critic_provenance", return_value=[]), \
             patch.object(frame_semantic_review, "prepare_review_commit",
                          return_value={"ledger_actions": "prevalidated"}), \
             patch.object(frame_semantic_review, "review_source_bindings", return_value={}):
         rc = frame_semantic_review._apply_candidate_gate(
-            tmp_path, data={"frames": [review], "issue_codes": []},
+            tmp_path, data={"frames": [review], "issue_codes": [], "summary": {"passed": False}},
             reviewed=[{"frame": "12", "path_rel": "candidate/12.png", "path": candidate,
                        "sha256": hashlib.sha256(candidate.read_bytes()).hexdigest()}],
             contexts={}, provenance={"review_source_bindings": {}}, attempt=2)
@@ -563,3 +567,31 @@ def test_run_critic_uses_sharded_path_for_large_full_review():
     assert rc == 0
     sharded.assert_called_once()
     single.assert_not_called()
+
+
+
+def test_final_semantic_can_invalidate_prior_weak_pass_without_fake_acceptance(tmp_path):
+    ledger = {
+        "policy": {"max_content_repairs_per_frame": 1},
+        "frames": {
+            "01": {
+                "status": "WEAK_PASS", "content_repairs_used": 0,
+                "current_candidate": {"path": "candidate/01.png", "sha256": "a" * 64},
+                "approved_asset": None, "reviews": [],
+            }
+        }
+    }
+    (tmp_path / "meta").mkdir()
+    (tmp_path / "meta" / "production-ledger.json").write_text(
+        json.dumps(ledger), encoding="utf-8")
+    result = production_ledger.mark_review_needs_user(
+        tmp_path, "01", reason="independent Final Semantic found visual drift")
+    saved = json.loads((tmp_path / "meta" / "production-ledger.json").read_text(encoding="utf-8"))
+    row = saved["frames"]["01"]
+    assert result["status"] == "NEEDS_USER"
+    assert result["from_status"] == "WEAK_PASS"
+    assert row["status"] == "NEEDS_USER"
+    assert row["content_repairs_used"] == 0
+    assert row["review_escalations"][-1]["approval_granted"] is False
+    assert row["superseded_passes"][-1]["invalidation_basis"] == "later_downstream_actual_pixel_review"
+    assert not row.get("user_exception_authorizations")

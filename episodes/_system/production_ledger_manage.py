@@ -317,8 +317,8 @@ def mark_review_needs_user(ep: Path, frame_no: int | str, *, reason: str) -> dic
     path, data = get_ledger(ep)
     key, frame = frame_obj(data, frame_no)
     prior_status = str(frame.get("status") or "")
-    if prior_status not in {"LOCKED", "PASSED"}:
-        raise SystemExit(f"review escalation requires LOCKED or PASSED, got {prior_status}")
+    if prior_status not in {"LOCKED", "PASSED", "WEAK_PASS"}:
+        raise SystemExit(f"review escalation requires LOCKED, PASSED or WEAK_PASS, got {prior_status}")
     note = str(reason or "").strip()
     if not note:
         raise SystemExit("review escalation requires an evidence reason")
