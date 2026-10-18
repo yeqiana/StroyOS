@@ -2011,7 +2011,8 @@ def apply_pending_candidate(ep: Path, *, attempt: int) -> int:
     # Reentry reconstructs the same verified frozen sources as a fresh review.
     # This is not an authority bypass: _apply_candidate_gate rechecks them
     # against current Ledger/asset bindings before any mutation.
-    provenance["review_source_bindings"] = review_source_bindings(ep, current)
+    if review_scope == "FULL_FRAME_SET" and review_item is None:
+        provenance["review_source_bindings"] = review_source_bindings(ep, current)
     if isinstance(review_item, dict):
         if len(current) != 1:
             raise RuntimeError("FINAL_SEMANTIC_PENDING_FRAME_SCOPE_INVALID")
