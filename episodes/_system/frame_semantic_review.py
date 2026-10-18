@@ -2008,6 +2008,11 @@ def apply_pending_candidate(ep: Path, *, attempt: int) -> int:
     provenance["anatomy_integrity_enforced"] = True
     provenance["recovered_after_parent_timeout"] = True
     provenance["candidate_sha256"] = sha256_file(candidate)
+    # Reentry reconstructs the same verified frozen sources as a fresh review.
+    # This is not an authority bypass: _apply_candidate_gate rechecks them
+    # against current Ledger/asset bindings before any mutation.
+    if review_scope == "FULL_FRAME_SET" and review_item is None:
+        provenance["review_source_bindings"] = review_source_bindings(ep, current)
     if isinstance(review_item, dict):
         if len(current) != 1:
             raise RuntimeError("FINAL_SEMANTIC_PENDING_FRAME_SCOPE_INVALID")
