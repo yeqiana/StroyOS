@@ -579,42 +579,15 @@ def cmd_accept_after_retry_exhaustion(args: argparse.Namespace) -> None:
 
 
 def force_pass_content_exhaustion(ep: Path, frame_number: str, reason: str) -> dict:
-    """Accept an existing proven candidate once the content repair budget is spent."""
-    path, data = get_ledger(ep)
-    key, frame = frame_obj(data, frame_number)
-    limit = content_repair_limit(data)
-    used = int(frame.get("content_repairs_used") or 0)
-    if used < limit:
-        raise ValueError(f"frame {key} repair budget remains: {used}/{limit}")
-    if frame.get("status") not in {"ORIGINAL_READY", "REPAIR_READY", "PASSED", "LOCKED", "NEEDS_USER"}:
-        raise ValueError(f"frame {key} has no reviewable candidate: {frame.get('status')}")
-    candidate = frame.get("current_candidate") or {}
-    raw_path = candidate.get("path")
-    candidate_sha = str(candidate.get("sha256") or "").lower()
-    if not raw_path or not candidate_sha:
-        raise ValueError(f"frame {key} has no candidate")
-    candidate_path = (repo_root() / raw_path).resolve() if not Path(raw_path).is_absolute() else Path(raw_path).resolve()
-    if not candidate_path.is_file() or sha256_file(candidate_path) != candidate_sha:
-        raise ValueError(f"frame {key} candidate missing or drifted")
-    matching = next((a for a in reversed(frame.get("attempts") or [])
-                     if (a.get("candidate") or {}).get("sha256") == candidate_sha and a.get("result") == "success"), None)
-    if matching is None:
-        raise ValueError(f"frame {key} has no successful generation attempt")
-    verify_attempt_frame_contract_provenance(ep, key, matching)
-    verify_attempt_visual_provenance(ep, matching)
-    marker = {"at": now_iso(), "forced_pass": True, "basis": "direct_user_repair_exhaustion_policy",
-              "reason": reason, "candidate_sha256": candidate_sha,
-              "content_repairs_used": used, "content_repair_limit": limit,
-              "visual_quality_reviewed": False}
-    frame.setdefault("forced_passes", []).append(marker)
-    frame.setdefault("reviews", []).append({"at": marker["at"], "decision": "pass",
-        "forced_pass": True, "notes": reason, "candidate_sha256": candidate_sha})
-    if frame["status"] != "LOCKED":
-        frame["status"] = "PASSED"
-    data["updated_at"] = marker["at"]
-    save_json(path, data)
-    return marker
+    """Retired unsafe fallback; require separate SHA-bound soft-review evidence.
 
+    Historical callers accepted a failed candidate with only a successful
+    generation SHA and no verified review (visual_quality_reviewed=False).
+    Keep the public symbol fail-closed for compatibility with old adapters.
+    Visual Lock WEAK_PASS and explicit direct-user exceptions remain separate,
+    independently verified operations.
+    """
+    raise ValueError("unreviewed content exhaustion forced PASS is retired; verified soft review evidence is required")
 
 def cmd_accept_user_contract_exception(args: argparse.Namespace) -> None:
     """Keep an existing candidate under an explicitly selected old contract.
