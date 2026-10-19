@@ -445,6 +445,42 @@ def _handoff_valid(ep: Path) -> bool:
 @storyos_config.operation_cached
 @production_ledger_persistence.operation_cached
 @episode_contract_persistence.operation_cached
+def _frozen_authorized_repair_frames(ep: Path, ledger_frames: dict) -> list[int]:
+    """Project only committed Final Semantic FAILs into one repair action.
+
+    Read-only: the Aggregator independently verifies pixels, SHA bindings,
+    and remaining image attempt budget.
+    """
+    if not isinstance(ledger_frames, dict):
+        return []
+    path = Path(ep) / "meta/frame-semantic-candidate-attempt-1.json"
+    evidence = story_json.read_json(path, default={}) if path.is_file() else {}
+    if (not isinstance(evidence, dict)
+            or evidence.get("review_scope") != "CANDIDATE_FULL_FRAME_SET"
+            or not evidence.get("recorded_at")
+            or not isinstance(evidence.get("failed_frames"), list)
+            or not isinstance(evidence.get("reviewed_assets"), list)):
+        return []
+    reviewed = {str(row.get("frame") or "").zfill(2)
+                for row in evidence["reviewed_assets"] if isinstance(row, dict)}
+    failed = {str(value).zfill(2) for value in evidence["failed_frames"]}
+    eligible = sorted(int(frame) for frame in failed & reviewed
+                      if frame.isdigit()
+                      and isinstance(ledger_frames.get(frame), dict)
+                      and ledger_frames[frame].get("status") == "REPAIR_AUTHORIZED")
+    if not eligible:
+        return []
+    plan = story_json.read_json(Path(ep) / "meta/runtime/repair-wave-1.json", default={})
+    if plan:
+        if plan.get("status") not in {"PLANNED", "STARTED"}:
+            return []
+        outstanding = {str(row.get("frame_id") or "").zfill(2)
+                       for row in plan.get("frames") or []
+                       if row.get("repairable") and
+                       row.get("repair_status") in {"ELIGIBLE", "PROMPT_TECH_FAILED"}}
+        return sorted(int(frame) for frame in failed & outstanding if frame.isdigit())
+    return eligible
+
 def derive(ep: Path) -> dict:
     ep = Path(ep).resolve()
     runtime_portability.assert_episode_directory(ep)
@@ -958,6 +994,17 @@ def derive(ep: Path) -> dict:
                     frames=running_frames,
                     reason="image attempt is marked running; scheduler must reconcile durable worker evidence before any retry")
 
+        # A committed full-frame FAIL and its bounded repairs outrank human-only siblings.
+        if cur == "VISUAL_CALIBRATED" and vision_runtime == "CODEX":
+            frozen_ledger = (production_ledger.load_authority(ep, default={}) or {}).get("frames") or {}
+            authorized = _frozen_authorized_repair_frames(ep, frozen_ledger)
+            if authorized:
+                return action_result(
+                    action="MATERIALIZE_REPAIR_WAVE",
+                    executor="CODEX_VISION" if vision_runtime == "CODEX" else runtime,
+                    attempt=1, frames=authorized,
+                    reason="committed Final Semantic FAIL requires one SHA-verified repair wave before human-only siblings",
+                )
         if cur in {"VISUAL_CALIBRATED", "PRODUCTION_PASSED", "PUBLISH_READY"}:
             expected=_expected_frames(ep)
             ledger_frames=(production_ledger.load_authority(ep, default={}) or {}).get("frames") or {}
@@ -1163,6 +1210,7 @@ def apply_runtime_block_semantics(data: dict) -> dict:
         "REVIEW_VISUAL_LOCK",
         "REVIEW_GENERATED_IMAGES",
         "REVIEW_FINAL_PRODUCTION",
+        "MATERIALIZE_REPAIR_WAVE",
         "REVIEW_FINAL_PATCH",
         "REVIEW_FINAL_EXCEPTION",
         "REVIEW_FINAL_CONTINUATION",

@@ -30,6 +30,7 @@ ALLOWED_ACTIONS = {
     "REVIEW_VISUAL_LOCK",
     "REVIEW_GENERATED_IMAGES",
     "REVIEW_FINAL_PRODUCTION",
+    "MATERIALIZE_REPAIR_WAVE",
     "REVIEW_FINAL_PATCH",
     "REVIEW_FINAL_EXCEPTION",
     "REVIEW_FINAL_CONTINUATION",
@@ -265,6 +266,30 @@ def execute(ep: Path, action: dict) -> dict:
             return {"status": "FAIL", "action": name, "runtime": "CODEX_VISION", "attempt": 3, "frames": frames, "returncode": rc}
         return {"status": "TECHNICAL_FAILURE", "action": name, "runtime": "CODEX_VISION", "attempt": 3, "frames": frames, "returncode": rc}
 
+    if name == "MATERIALIZE_REPAIR_WAVE":
+        # Reuse the genuine first-pass review. No additional pixel Critic or
+        # unauthorized image retry; the Aggregator checks the original SHA
+        # receipt, Ledger states and live remaining per-frame image budget.
+        import repair_aggregator
+        if int(action.get("attempt") or 1) != 1:
+            raise VisionReviewError("repair wave requires frozen first-pass review")
+        findings = repair_aggregator.collect_first_pass_findings(ep, attempt=1)
+        wave = repair_aggregator.materialize_wave(ep, attempt=1, findings=findings)
+        status = str(wave.get("status") or "")
+        plan = wave.get("plan") or {}
+        if status in {"STARTED", "PLANNED"}:
+            # Failed prompt tasks must not be falsely reported as enqueued.
+            if any(row.get("repairable") and row.get("repair_status") in
+                   {"ELIGIBLE", "PROMPT_TECH_FAILED"} for row in plan.get("frames") or []):
+                return {"status": "TECHNICAL_FAILURE", "action": name,
+                        "runtime": "CODEX_VISION", "repair_wave": wave}
+            return {"status": "REPAIR_ENQUEUED", "action": name,
+                    "runtime": "CODEX_VISION", "repair_wave": wave}
+        if status in {"COMPLETED", "ALREADY_COMPLETED", "SECOND_AUTOMATIC_REPAIR_WAVE_FORBIDDEN"}:
+            return {"status": "NEEDS_USER", "action": name,
+                    "runtime": "CODEX_VISION", "repair_wave": wave}
+        return {"status": "TECHNICAL_FAILURE", "action": name,
+                "runtime": "CODEX_VISION", "repair_wave": wave}
     if name == "REVIEW_FINAL_PRODUCTION":
         attempt = int(action.get("attempt") or 1)
         wave_path = ep / "meta/runtime/repair-wave-1.json"

@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SLOTS = {
     # 永久回归：M00/Frame Contract/Driver/Watchdog/Attempt 使用本次代码检查。
     "production-regression": [
+        "tests/system/test_native_repair_wave_routing.py",
         "tests/system/test_one_repair_wave.py",
         "tests/system/test_driver_exit_remediation.py",
         "tests/system/test_final_semantic_reentry_source_binding.py",
