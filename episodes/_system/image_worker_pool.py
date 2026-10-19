@@ -37,6 +37,7 @@ import global_image_capacity
 import production_native_baseline_proof
 import production_native_batch_reentry
 import production_native_batch_followon
+import production_native_repair_pilot
 
 MODE="python_warm_pool_codex_ephemeral"
 CODEX_SESSION_REUSE=False
@@ -313,6 +314,23 @@ def execute(ep,item,timeout,codex):
                 payload_preflight, payload_policy, controller_policy, codex)
             if native_success_followon_probe is not None:
                 payload_preflight = native_success_followon_probe
+        # One and only one acknowledged repair pilot may repeat the native
+        # no-pixel visibility proof. UNKNOWN never becomes global SUPPORTED.
+        native_repair_probe = None
+        if (phase5a_grant_evidence is None
+                and native_baseline_probe is None and native_followon_probe is None
+                and native_content_probe is None and native_batch_probe is None
+                and native_success_followon_probe is None
+                and production_native_repair_pilot.eligible(
+                    ep, item, payload_policy, controller_policy)):
+            native_repair_probe = production_native_baseline_proof.attest_secondary(
+                payload_preflight, payload_policy, controller_policy, codex)
+            if (native_repair_probe is not None
+                    and production_native_baseline_proof.evidence_sha(native_repair_probe)
+                    == item.get("native_repair_visibility_sha256")):
+                payload_preflight = native_repair_probe
+            else:
+                native_repair_probe = None
         payload_preflight_status = str(payload_preflight.get("status") or "")
         payload_gate_pass = (
             payload_preflight_status == "PASS"
@@ -323,7 +341,8 @@ def execute(ep,item,timeout,codex):
                 and payload_preflight.get("image_attempt_authority_called") is False)
             or ((native_baseline_probe is not None or native_followon_probe is not None
                  or native_content_probe is not None or native_batch_probe is not None
-                 or native_success_followon_probe is not None)
+                 or native_success_followon_probe is not None
+                 or native_repair_probe is not None)
                 and payload_preflight_status == "READY_FOR_REAL_CAPABILITY_PROOF"
                 and payload_preflight.get("image_generation_called") is False
                 and payload_preflight.get("image_attempt_authority_called") is False)
@@ -396,6 +415,14 @@ def execute(ep,item,timeout,codex):
                 "native_visibility_evidence_sha256":
                     production_native_baseline_proof.evidence_sha(native_success_followon_probe),
                 "tool_capability_claim": "UNKNOWN_WITH_REAL_PIXEL_AND_FRESH_TOOL_VISIBILITY",
+            })
+        if native_repair_probe is not None:
+            attempt_context.update({
+                "image_capability_proof_purpose":
+                    "PRODUCTION_NATIVE_REPAIR_SINGLE_FRAME_PROOF",
+                "native_visibility_evidence_sha256":
+                    production_native_baseline_proof.evidence_sha(native_repair_probe),
+                "tool_capability_claim": "UNKNOWN_SINGLE_REPAIR_FRAME_NATIVE_PROOF_ONLY",
             })
         budget_ok,budget_row=raw_candidate_budget.claim(ep,frame,budget_kind,reason=f"formal_generation_entrypoint scope={item.get('scope')} attempt={attempt}",token=budget_token,semantic_key=budget_semantic_key,
             generation_context=attempt_context)
