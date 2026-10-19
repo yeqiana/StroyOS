@@ -89,3 +89,32 @@ python scripts/storyos_autonomy_fast_test.py --slot production-regression
 python scripts/storyos_autonomy_fast_test.py --slot all --stress
 
 上述新入口必须基于已合并最新HEAD完成CI以及现有生产模块SHA对齐之后才能执行。
+
+## 2026-10-19：原生 Codex 429 文本不等于图片 Provider 终态
+
+PR #115 正式单帧第02修复试跑中，Windows native Codex User Runner 登录正常，
+真实单Worker调度后没有图像。Codex JSONL 只有 thread.started / turn.started /
+item.completed(agent_message) / turn.completed，没有可信 image_generation_call、Runner
+exported PNG 或正式生图成功回执。agent_message 文本包含429，旧调度器因此归类
+RATE_LIMIT_429，但真正 MySQL Generation Attempt #2 已 DISPATCH_COMMITTED，
+然后记录 OUTCOME_UNKNOWN；剩余共享预算0。不能把文本错误直接解释为
+Provider 明确拒绝，更不能返还可能派发的 Attempt。
+
+新增最小预防性防护：
+- image_scheduler 两条 Worker 失败事件路径都在写失败代码前查真实 MySQL
+  Generation Attempt 当前索引与终态，并匹配本次队列 ID、持久 Worker 生命周期
+  Attempt 索引及 generation_key。
+- 属于同一次 OUTCOME_UNKNOWN 时，用 IMAGE_ATTEMPT_OUTCOME_UNKNOWN 覆盖表象
+  RATE_LIMIT_429；保留原消息作为诊断证据，标记 blocked，禁止技术重试。
+- MySQL不可用、原始生命周期identity不一致时，明确
+  IMAGE_ATTEMPT_AUTHORITY_UNVERIFIED；不当作已验证限流允许再生图。
+- 没有实际图片 Attempt / 之前独立可信 FAILED_AFTER_DISPATCH 回执时，
+  不误改原有429分类，也不扩大额度。
+- 不改MySQL schema或不可变历史。没有 JSONL image_generation 事件不能证明
+  未调用工具，原生Runner可能未暴露该事件。成功须由可信原生工具回执和图像SHA验证。
+- 历史Frame02 UNKNOWN原样保留，不直接清空/再发第三次Attempt；
+  其余12帧缺少成功 native proof 时仍 blocked。
+
+永久用例：tests/system/test_native_429_attempt_reconciliation_fence.py；
+所有相关修改基于最新主线运行 production-regression 与 all --stress，
+CI Windows/Ubuntu Story Gates 与 Qodana 全通过方可部署。

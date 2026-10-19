@@ -134,6 +134,7 @@ NON_REGENERATING_FAILURE_CODES = {
     "GLOBAL_IMAGE_CAPACITY_NESTED_WEIGHT_EXCEEDS_HELD",
     "EPISODE_IMAGE_LOOP_GUARD",
     "RUNTIME_CIRCUIT_OPEN",
+    "IMAGE_ATTEMPT_OUTCOME_UNKNOWN", "IMAGE_ATTEMPT_AUTHORITY_UNVERIFIED",
     "CANDIDATE_COMMIT_FAILED",  # STORY_OS_V2_6_0_PERFORMANCE_RUNTIME
     "PROMPT_SOURCE_DRIFT",
     "NO_AUTOMATABLE_IMAGE_PAYLOAD_PROVIDER", "PAYLOAD_MODEL_UNSUPPORTED",
@@ -567,6 +568,40 @@ def classify_error(text:str)->str:
     if "500" in low or "502" in low or "503" in low or "5xx" in low:return "BACKEND_5XX"
     if "contract" in low and "drift" in low:return "CONTRACT_DRIFT"
     return "IMAGE_BACKEND_ERROR"
+
+
+def _fence_native_rate_limit_unknown(ep:Path,item:dict,code:str)->str:
+    """Never interpret Codex assistant's '429' text as a terminal image verdict.
+
+    The image tool can be invoked without a JSONL image tool event, and the
+    thread's visible reply is NOT independent proof of paid-dispatch outcome.
+    Match the canonical MySQL Attempt to the durable item lifecycle first.
+    This function NEVER mutates the Attempt, lease, retry budget or provider.
+    """
+    if code != "RATE_LIMIT_429":
+        return code
+    try:
+        key=logical_asset_identity.frame_asset_key(ep,int(item["frame"]))
+        state=generation_attempt_authority.load_asset_state(ep,key)
+        consumed=int(state.get("attempts_consumed") or 0)
+        if consumed <= 0:
+            return code  # Truly pre-dispatch; no paid Attempt exists.
+        attempt=generation_attempt_authority.load_attempt(ep,key,consumed) or {}
+        if attempt.get("status") != "OUTCOME_UNKNOWN":
+            return code
+        lifecycle=production_recovery._read(
+            production_recovery.lifecycle_path(ep,item)) or {}
+        if (state.get("active_attempt_index") is not None
+                or int(attempt.get("attempt_index") or 0) != consumed
+                or int(lifecycle.get("attempt") or 0) != consumed
+                or str(lifecycle.get("item_id") or "") != str(item.get("id") or "")
+                or not str(attempt.get("generation_key") or "")
+                or attempt.get("generation_key") != lifecycle.get("generation_key")):
+            return "IMAGE_ATTEMPT_AUTHORITY_UNVERIFIED"
+        return "IMAGE_ATTEMPT_OUTCOME_UNKNOWN"
+    except Exception:
+        # On MySQL outage we cannot certify a 429 is safely retryable.
+        return "IMAGE_ATTEMPT_AUTHORITY_UNVERIFIED"
 
 
 def _terminal_technical_status(ep:Path,item:dict,code:str)->str:
@@ -1097,6 +1132,7 @@ async def _run_scheduler_async(ep:Path,max_workers:int,timeout:int,codex:str|Non
                     msg="image backend failed without terminal output"
                 has_failure=True
                 code=triage_failure_code if triage_blocked else ("CANDIDATE_COMMIT_FAILED" if backend_ok else classify_error(msg))
+                code=_fence_native_rate_limit_unknown(ep,item,code)
                 if not backend_ok: ledger_tech_fail(ep,item,code,msg)
                 item["status"]=_terminal_technical_status(ep,item,code)
                 item["technical_failure_code"]=code
@@ -1115,6 +1151,7 @@ async def _run_scheduler_async(ep:Path,max_workers:int,timeout:int,codex:str|Non
             has_failure=True
             msg=str(image_event.payload.get("error") or "async worker failed")
             code=classify_error(msg)
+            code=_fence_native_rate_limit_unknown(ep,item,code)
             ledger_tech_fail(ep,item,code,msg)
             item["status"]=_terminal_technical_status(ep,item,code)
             item["technical_failure_code"]=code
