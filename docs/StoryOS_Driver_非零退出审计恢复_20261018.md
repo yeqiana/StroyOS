@@ -173,3 +173,27 @@ python scripts/storyos_production_env.py scripts/storyos_native_image_outcome_ev
 CI Ubuntu/Windows Story Gates + Qodana PASS 后方可部署。正式恢复下一付费图像Attempt
 仍需明确合法额度、独立可信Provider终态证据和按项目已有治理流程的授权，
 不得由CLI自然语言/rc=0/缺失PNG推断。
+
+## 2026-10-19 原生 Codex 真生图但文字声称没得到图片的正式回归
+
+独立真实原生Codex 0.162.1 User Runner生图一次，request_id=e74ce937dd3340eda1c1c3181fde6005，
+Runner task_type=image、transport_route=native_codex，持久stdout原始SHA验证成功。
+Codex JSONL仅有thread/turn/agent_message事件，文字回复说没有图片；
+但Runner generated_artifacts确实保存一个1254x1254有效PNG，1,940,102字节，
+sha256=827f4b89cdfae98ce35cf9e13f73ada1359fff378d1144398c6fac36b9e73b0c。
+
+最小修复：
+- codex_subscription_image.runner_verified_exported_candidate检查原生Runner
+  request_id、task_type=image、native_codex、returncode=0、stdout摘要和字节长度、
+  唯一thread.started与Runner thread_id相同、generated_artifacts路径属于同一线程。
+- 必须仅找到一个有效且满足最小RAW尺寸的PNG/JPEG；原始候选必须验证完整图像，
+  路径不逃逸，不再依赖目录mtime扫描可能串图。只有真实产物可信时，
+  才能覆盖Codex的错误文字回复。没有可信回执则拒绝不当认定成功。
+- 用户本地独立Canary的成功不代表Episode13旧Frame02 UNKNOWN已结算；
+  旧MySQL Generation Key/预算和队列继续原样保护，绝不重发第三次Attempt。
+- 尺寸仍由provider_capability.inspect与canvas_normalize归一；1254方形图可归一
+  到匹配方形发布画布，不能未经原有比例许可直接用作竖屏1080x1350的正式图。
+
+永久用例tests/system/test_native_runner_artifact_first_success.py，
+纳入production-regression。每次相关代码变动基于最新代码树跑
+production-regression + all --stress，GitHub Windows/Ubuntu Story Gates与Qodana全绿再部署。
