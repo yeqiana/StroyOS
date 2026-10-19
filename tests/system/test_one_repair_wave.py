@@ -201,11 +201,11 @@ def test_formal_first_pass_failure_delegates_once_to_aggregator(monkeypatch,tmp_
     story_json.write_json(path,evidence)
     monkeypatch.setattr(vision_review_executor,"_require_capability",lambda:None)
     monkeypatch.setattr(vision_review_executor.frame_semantic_review,"run_critic",lambda *_a,**_k:2)
-    with patch("repair_aggregator.materialize_wave",return_value={"status":"STARTED","plan":{"repair_wave_id":"E/production/repair-wave-1"}}) as aggregate, \
+    with patch("repair_aggregator.materialize_wave",autospec=True,return_value={"status":"STARTED","plan":{"repair_wave_id":"E/production/repair-wave-1"}}) as aggregate, \
          patch.object(vision_review_executor.auto_repair_enqueue,"enqueue") as immediate:
         result=vision_review_executor.execute(tmp_path,{"action":"REVIEW_FINAL_PRODUCTION","executor":"CODEX_VISION","attempt":1})
     assert result["status"]=="REPAIR_ENQUEUED"
-    aggregate.assert_called_once()
+    aggregate.assert_called_once_with(tmp_path,attempt=1,findings=evidence)
     immediate.assert_not_called()
 
 

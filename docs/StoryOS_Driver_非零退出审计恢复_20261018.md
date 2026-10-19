@@ -20,3 +20,19 @@ python scripts/storyos_autonomy_fast_test.py --slot production-regression
 python scripts/storyos_autonomy_fast_test.py --slot all --stress
 
 新类型崩溃或新修复文件必须提交另一个明确范围的审核补丁，经 RED/GREEN 和 CI 后扩大范围。不能为一般退出码 20/21/25/901 放行。
+
+
+## 2026-10-19: 审核后修复波次调用签名
+
+真实生产经 PR111 单次恢复，最终审核 19 帧 FAIL 已转入正式 Ledger；可修复帧获得 REPAIR_AUTHORIZED，但 vision_review_executor 错误地传了 evidence= 给仅接受 findings= 的 repair_aggregator.materialize_wave，导致新的退出码 900。
+
+本次修复添加明确命名的 repair_wave_signature 恢复类别。仅允许以下同时满足时再恢复：
+- 当前真实退出原始 record SHA256、当前日志 SHA256 和对应修复源码 SHA256 逐项匹配；
+- 日志确切包含 materialize_wave 不接受 evidence 关键字参数的 TypeError；
+- vision_review_executor.py 的 Git blob 必须等于经过本次跨平台 CI 验证的 afbb49c80cf512312c9a0dd3043ee87e29bdea5a，且存在修正后的 findings= 调用；
+- 依旧经过非零退出有界门禁、交互 Codex User Runner、MySQL/Redis、Attempt 活动与 UNKNOWN 校验；同一真实退出只能原子预留一次票据，旧票据不重置。
+
+新入口在原参数上增加：
+  --remediation-kind repair_wave_signature
+
+普通 start/watchdog 继续拒绝所有非零退出。每次迭代必须 RED→GREEN、production-regression、all --stress、Story Gates (Windows/Ubuntu) 和 Qodana 通过再部署。

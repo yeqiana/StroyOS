@@ -23,6 +23,15 @@ REQUIRED_FIXED_MARKERS = (
     'if review_scope == "FULL_FRAME_SET" and review_item is None:',
     'provenance["review_source_bindings"] = review_source_bindings(ep, current)',
 )
+# A second, separately reviewed cause is permitted only when its own fixed
+# source file blob matches exactly. There is no generic "rc 900" override.
+APPROVED_REPAIR_WAVE_BLOB = "afbb49c80cf512312c9a0dd3043ee87e29bdea5a"
+KNOWN_REPAIR_WAVE_CRASH = """DRIVER CRASH TypeError("materialize_wave() got an unexpected keyword argument 'evidence'")"""
+REQUIRED_REPAIR_WAVE_MARKERS = (
+    'repair_aggregator.materialize_wave(ep,attempt=attempt,findings=evidence)',
+)
+REMEDIATION_KINDS = frozenset({"source_binding", "repair_wave_signature"})
+
 HISTORICAL_EXIT_BLOCKERS = frozenset({
     "EPISODE_DRIVER_OWNER_NOT_IDLE_OR_UNVERIFIED",
     "EPISODE_DRIVER_EXIT_REQUIRES_REMEDIATION",
@@ -42,8 +51,10 @@ def only_historical_exit_blockers(blockers: list[str]) -> bool:
     return set(blockers) == HISTORICAL_EXIT_BLOCKERS and len(blockers) == 2
 
 
-def verify_exit(ep: Path, driver: dict, *, source: Path, expected: dict[str, str]) -> dict:
+def verify_exit(ep: Path, driver: dict, *, source: Path, expected: dict[str, str], kind: str = "source_binding") -> dict:
     """Check immutable exact pointers; returning proof itself writes nothing."""
+    if kind not in REMEDIATION_KINDS:
+        raise RemediationDenied("UNKNOWN_REMEDIATION_KIND")
     ep = ep.resolve()
     if (not isinstance(driver, dict) or driver.get("driver_state") != "EXITED"
             or driver.get("pid") != 0 or driver.get("liveness") != "DEAD"
@@ -73,20 +84,26 @@ def verify_exit(ep: Path, driver: dict, *, source: Path, expected: dict[str, str
         raise RemediationDenied("REMEDIATION_EVIDENCE_MISSING") from None
     if hashlib.sha256(raw_log).hexdigest() != expected["log_sha256"]:
         raise RemediationDenied("DRIVER_CRASH_LOG_CHANGED")
-    if KNOWN_CRASH.encode("utf-8") not in raw_log:
+    known_crash = (KNOWN_REPAIR_WAVE_CRASH if kind == "repair_wave_signature"
+                   else KNOWN_CRASH)
+    approved_blob = (APPROVED_REPAIR_WAVE_BLOB if kind == "repair_wave_signature"
+                     else APPROVED_FIXED_BLOB)
+    required_markers = (REQUIRED_REPAIR_WAVE_MARKERS if kind == "repair_wave_signature"
+                        else REQUIRED_FIXED_MARKERS)
+    if known_crash.encode("utf-8") not in raw_log:
         raise RemediationDenied("UNRELATED_DRIVER_CRASH_NOT_REMEDIATED")
     if hashlib.sha256(raw_fix).hexdigest() != expected["fix_sha256"]:
         raise RemediationDenied("DEPLOYED_FIX_SHA_CHANGED")
-    if git_blob_sha(raw_fix) != APPROVED_FIXED_BLOB:
+    if git_blob_sha(raw_fix) != approved_blob:
         raise RemediationDenied("DEPLOYED_FIX_NOT_CI_REVIEWED")
     fixed_text = raw_fix.decode("utf-8")
-    if not all(marker in fixed_text for marker in REQUIRED_FIXED_MARKERS):
+    if not all(marker in fixed_text for marker in required_markers):
         raise RemediationDenied("DEPLOYED_FIX_INCOMPLETE")
     return {
         "schema_version": 1, "episode": str(ep), "exit_code": "900",
         "driver_sha256": digest, "log_sha256": expected["log_sha256"],
         "fix_sha256": expected["fix_sha256"],
-        "approved_git_blob": APPROVED_FIXED_BLOB,
+        "approved_git_blob": approved_blob, "remediation_kind": kind,
     }
 
 
