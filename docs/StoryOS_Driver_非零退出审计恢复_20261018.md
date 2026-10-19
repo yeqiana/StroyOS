@@ -141,3 +141,35 @@ AUTHORITIES_UNVERIFIED。不改 MySQL、历史回执、队列或 Provider。
 测试更新 tests/system/test_storyos_autonomy_r9_probe.py（已有永久 production-regression
 槽位），所有相关修改使用最新合并代码跑 production-regression 和
 all --stress，Ubuntu/Windows Story Gates、Qodana 全绿后再部署。
+
+## 2026-10-19：原生 Codex 第02帧 429/OUTCOME_UNKNOWN 的线程级只读对账
+
+经 PR#116/117 合并部署，正式 Episode「失物归还的那扇门」Frame02 Attempt#2
+在 MySQL 记录 OUTCOME_UNKNOWN（全剧26历史Attempt，1未决，0活动）。
+Native Codex Runner request receipt 存在，原始stdout base64 SHA-256/字节长度与
+不可变回执一致，task_type=image、request_id与Generation Attempt完全对应、
+唯一thread.started能与Runner thread_ids匹配。CLI rc=0，不代表生图成功。
+唯一 agent_message 声称图像服务 HTTP 429，JSONL没有image_generation工具事件；
+该消息不是独立Provider财务/调度终态。Runner完成时的图片导出0张、
+2秒settle后0张；之后从同一用户的CODEX_HOME/generated_images唯一线程目录
+再做了只读核验，仍无PNG。以上只能证明**没有可恢复的图像**，不能证明
+Provider一定没有调用/收费，绝不能替代PAID_ATTEMPT_OUTCOME_UNKNOWN的结算证据。
+
+新增 scripts/storyos_native_image_outcome_evidence.py（只读；标准env wrapper调用）
+安全核查 exact MySQL Generation Key + Attempt + Queue ID + lifecycle Runner request_id、
+Runner receipt stdout SHA、Codex Thread ID、仅该线程的 generated_images。
+若有后落盘的有效PNG，输出 RECOVERY_CANDIDATE_NEEDS_SHA_ADMISSION
+（只是原始候选，不会直接改MySQL为SUCCEEDED）。
+若线程目录和图片均不存在，输出 PAID_ATTEMPT_UNRESOLVED_NO_PIXEL
+（不授权重试或变更Attempt）；若任何身份/凭据路径/文件检验失败则fail closed。
+任何诊断结果都没有生产授权，保持 may_retry_paid_attempt=false、model_calls=0、
+sql_writes=0、image_generation_verified=false。
+
+示例：
+python scripts/storyos_production_env.py scripts/storyos_native_image_outcome_evidence.py <episode> --frame 2 --attempt 2
+
+永久回归 tests/system/test_native_image_outcome_evidence.py，
+每次相关改动随最新主线跑 production-regression 与 all --stress，
+CI Ubuntu/Windows Story Gates + Qodana PASS 后方可部署。正式恢复下一付费图像Attempt
+仍需明确合法额度、独立可信Provider终态证据和按项目已有治理流程的授权，
+不得由CLI自然语言/rc=0/缺失PNG推断。
