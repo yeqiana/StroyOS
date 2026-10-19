@@ -197,3 +197,38 @@ sha256=827f4b89cdfae98ce35cf9e13f73ada1359fff378d1144398c6fac36b9e73b0c。
 永久用例tests/system/test_native_runner_artifact_first_success.py，
 纳入production-regression。每次相关代码变动基于最新代码树跑
 production-regression + all --stress，GitHub Windows/Ubuntu Story Gates与Qodana全绿再部署。
+
+## 2026-10-19 第二轮内容审核 FAIL 收敛规则统一（唯一普通 Repair Wave）
+
+核查发现旧 production_ledger_run.cmd_review() 在普通图片已用尽普通内容返修额度时，
+即使审查刚得到真实 FAIL，仍可能隐式调用
+production_ledger_manage.force_pass_content_exhaustion() 将 Ledger 标记 PASSED。
+旧函数只校验现有图片、候选 SHA、成功生成Attempt和基本来源契约，
+但标记 visual_quality_reviewed=false，**没有审核本次 FAIL 是不是仅含可接受软问题**。
+因此同一张真实失败图，经普通 Ledger CLI 路径可能被隐式PASSED，
+经 frame_semantic_review（显式 prevent_exhaustion_force_pass=True）却是 NEEDS_USER。
+此行为违反语义真实性/人物/物理硬缺陷不得自动通过的要求。
+
+统一生产契约：
+- 初轮有效图片 + 审核FAIL：仍只授权已有冻结预算内的一次普通内容返修。
+- 二轮有效图片 + 审核PASS：Ledger PASSED，继续最终审核。
+- 二轮有效图片 + 审核FAIL（无独立已验证弱通过凭证）：
+  无论是 CLI直接review、局部auto_repair_enqueue或正式全帧语义审核，
+  都必须收敛为 NEEDS_USER；既不伪造PASS也不触发第三轮自动图片生成。
+- 只有经过**独立严格图像/审核凭证验证**的现有 Visual Lock WEAK_PASS
+  通道才能低分接受（必须保留图像、SHA、画风审核记录，并排除身份、场景、
+  语义、物理真实性、合同、安全等硬问题）；不能凭评论文本、候选文件存在、
+  生成预算耗尽就自动赋予WEAK_PASS。普通内容二审目前没有与Visual Lock等价
+  的可验证低分接受凭证，所以保持 NEEDS_USER，不能先放宽。
+- 需要额外第三张候选时，继续走已有的显式用户一次例外返修授权；
+  不动 max_content_repairs_per_frame=1 或 MAX_AUTOMATIC_REPAIR_WAVES=1。
+- 429/超时/OUTCOME_UNKNOWN 属于技术未决，不可视作内容FAIL、耗尽低分接受的依据，
+  也不因此回收或增加付费Attempt。
+
+实现：删除 cmd_review 耗尽预算后未经审查的隐式强制PASS逻辑；
+废弃旧无审核 force_pass_content_exhaustion 方法，保留其兼容导出并默认抛错，
+防止绕过真实软问题审核；原显式Visual Lock WEAK_PASS、已审核PASS和用户
+例外审批保持原样。不得转换、批量重写已有历史审计/图片/Attempt。
+新增 tests/system/test_second_round_review_convergence.py 并加入永久
+production-regression，每次相关更新用最新HEAD跑 production-regression、
+all --stress、Ubuntu/Windows Story Gates与Qodana 后才能部署。

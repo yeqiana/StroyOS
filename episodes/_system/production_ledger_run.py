@@ -496,19 +496,11 @@ def cmd_review(args: argparse.Namespace) -> None:
         frame["status"] = "NEEDS_USER"
     data["updated_at"] = now_iso()
     save_json(path, data)
-    if (decision == "repair"
-            and frame["status"] == "NEEDS_USER"
-            and frame.get("current_candidate")
-            and not getattr(args, "prevent_exhaustion_force_pass", False)):
-        # The user's standing continuity policy applies only after the frozen
-        # content budget is spent and only to an existing, provenance-bound image.
-        from production_ledger_manage import force_pass_content_exhaustion
-        try:
-            force_pass_content_exhaustion(ep, key, "Content critic failed after repair limit: " + str(args.notes or "")[:400])
-            frame["status"] = "PASSED"
-        except (ValueError, SystemExit):
-            pass  # No valid candidate/provenance: keep NEEDS_USER, never invent pixels.
-    print(f"{key}: {frame['status']}")
+    # Content review has one authoritative closure rule for ordinary and
+    # full-frame semantic paths: failed second review remains NEEDS_USER.
+    # File existence + generation SHA is NOT a low-score quality review.
+    # SHA-bound Visual Lock WEAK_PASS and direct user exceptions have their own
+    # separately validated authorities; never infer either from reviewer notes.    print(f"{key}: {frame['status']}")
 
 
 def cmd_authorize_repair(args: argparse.Namespace) -> None:
