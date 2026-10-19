@@ -54,3 +54,38 @@ python scripts/storyos_autonomy_fast_test.py --slot all --stress
 python scripts/storyos_codex_managed.py remediate-start <episode> --remediation-kind reviewed_repair_handoff --ack-real-production --expected-driver-record-sha256 <sha256> --expected-crash-log-sha256 <sha256> --expected-fixed-source-sha256 <sha256>
 
 原有两个 rc900 类别、普通 start 与 Watchdog 硬门禁保持不变。新测试纳入永久 production-regression，必须 latest HEAD all --stress、Windows/Ubuntu Story Gates、Qodana 全绿后部署。
+
+
+## 2026-10-19：13个Final Semantic修复帧的原生图片工具能力门禁
+
+PR#114 正式回归生成了 repair-wave-1.json，13 帧修复提示词与队列记录全部持久化。
+真实 image_scheduler 调用却在尚未取得任何新 MySQL 图片 Attempt 时，因
+LOGIN_AUTH_IMAGE_TOOL_CAPABILITY_UNKNOWN 阻断全部 13 行，正式 Driver rc=22。
+用户在交互Windows用户登录 Codex 只是认证，不是图片工具能力已经验证。
+
+新生产入口 production_native_repair_pilot.py 只用于《失物归还的那扇门》
+本次冻结的 repair-wave-1、且仅限源最早的 Frame02 单帧。要求：
+- 当前 MySQL Stage VISUAL_CALIBRATED、CODEX full_auto/dag、账号路由、本地数据库；
+- 真实队列精确13个预调度 UNKNOWN 阻断 repair 行，其余12行保持 blocked；
+- 第一轮完整审核原始文件 SHA 与不可变修复计划回执完全一致；
+- 第一帧原始候选 PNG SHA 与当前 Ledger、修复计划源哈希一致；
+- 修复帧队列 ID、source_generation_key、source_artifact_sha256、修复prompt fingerprint 均与波次锁定；
+- 第02帧已有且仅消耗原始图片 Attempt #1，MySQL 无 active / UNKNOWN，仍有一次合法 Attempt；
+- 显式 --ack-real-production 后，在不占队列锁期间，用原生 Codex 执行非生图工具可见性二次验真。
+  UNKNOWN不能当成SUPPORTED；无法验证则不重入。
+- 复核全部权威数据后仅修改第02帧为 queued，记录单次 rearm_count 和 visibility SHA，
+  其余12帧不变，不在此入口预留任何图片 Attempt。
+- 真正执行图像时，Worker 再做一次新鲜原生文本工具可见性验真、比对完全一致的 visibility SHA，
+  再由标准容量+MySQL Generation Attempt CAS 决定是否允许下一次真实图片生成。
+- 第02帧尚未形成原生 Runner 实际图像 SHA、唯一成功Attempt回执之前，其余12帧绝不批量放行。
+- 若图片 Provider 没有能力，或后端派发后结局不明，则维持 BLOCKED/OUTCOME_UNKNOWN，并人工核对。
+  不允许复用这张票据、不允许把像素质量审核写为PASS。
+
+入口：
+python scripts/storyos_production_env.py episodes/_system/production_native_repair_pilot.py <episode> --ack-real-production
+
+永久回归：
+python scripts/storyos_autonomy_fast_test.py --slot production-regression
+python scripts/storyos_autonomy_fast_test.py --slot all --stress
+
+上述新入口必须基于已合并最新HEAD完成CI以及现有生产模块SHA对齐之后才能执行。
