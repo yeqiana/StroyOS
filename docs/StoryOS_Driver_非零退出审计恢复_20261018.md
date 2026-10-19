@@ -118,3 +118,26 @@ Provider 明确拒绝，更不能返还可能派发的 Attempt。
 永久用例：tests/system/test_native_429_attempt_reconciliation_fence.py；
 所有相关修改基于最新主线运行 production-regression 与 all --stress，
 CI Windows/Ubuntu Story Gates 与 Qodana 全通过方可部署。
+
+## 2026-10-19：生产R9探针不得丢失MySQL UNKNOWN事实
+
+原有 scripts/storyos_autonomy_production_probe.py.inspect() 仅允许 attempt readonly
+preflight 的 rc=0。然而正式表出现 OUTCOME_UNKNOWN 时，
+scripts/storyos_attempt_readonly_preflight.py 正常只读返回
+status=OUTCOME_UNKNOWN_BLOCKED/rc=2。原探针把权威结果丢弃，错误报
+AUTHORITIES_UNVERIFIED，连历史Attempt数和UNKNOWN数量也丢失。
+
+修复规则：允许 rc=2 作为需进一步严审的事实输入，不是可恢复/生产授权；
+assess 仅接受已知只读 blocked 类别，要求对应 UNKNOWN/ACTIVE/
+UNVERIFIED 资产列表非空且MySQL Stage权威有效。满足时返回
+PAID_ATTEMPT_RECONCILIATION_REQUIRED 与准确计数，
+may_retry_paid_attempt=false、image_generation_verified=false、sql_writes=0、
+model_calls=0。缺失事实、坏状态、伪造blocked类别继续保留 AUTHORITIES_UNVERIFIED。
+
+正式Episode的真实只读回放：preflight rc2、OUTCOME_UNKNOWN_BLOCKED、
+26历史Attempt、1 UNKNOWN、0 ACTIVE；新探针正确返回待对账而不是
+AUTHORITIES_UNVERIFIED。不改 MySQL、历史回执、队列或 Provider。
+
+测试更新 tests/system/test_storyos_autonomy_r9_probe.py（已有永久 production-regression
+槽位），所有相关修改使用最新合并代码跑 production-regression 和
+all --stress，Ubuntu/Windows Story Gates、Qodana 全绿后再部署。
