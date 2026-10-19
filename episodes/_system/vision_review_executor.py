@@ -330,7 +330,7 @@ def execute(ep: Path, action: dict) -> dict:
             return {"status":"NEEDS_USER","action":name,"runtime":"CODEX_VISION",
                     "attempt":attempt,"frames":failed_frames,"repair_wave":finalized}
         import repair_aggregator
-        wave = repair_aggregator.materialize_wave(ep,attempt=attempt,evidence=evidence)
+        wave = repair_aggregator.materialize_wave(ep,attempt=attempt,findings=evidence)
         if wave.get("status") in {"STARTED","PLANNED"}:
             return {"status":"REPAIR_ENQUEUED","action":name,"runtime":"CODEX_VISION",
                     "attempt":attempt,"repair_wave":wave}

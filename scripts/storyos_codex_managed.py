@@ -289,6 +289,7 @@ def full_auto_command(args: argparse.Namespace, episode: Path | None) -> list[st
 
 def dispatch_remediated_start(
     env: dict[str, str], episode: Path, state: dict, expected: dict[str, str],
+    *, kind: str = "source_binding",
 ) -> int:
     """Exceptional, explicit, single-use restart of one previously fixed 900 exit.
 
@@ -305,7 +306,8 @@ def dispatch_remediated_start(
                        ("bridge_ok", "mode_ok", "model_client_version_ok"))):
         raise exit_remediation.RemediationDenied("INDEPENDENT_PRODUCTION_ADMISSION_BLOCKED")
     rel = episode.relative_to(ROOT).as_posix()
-    source = ROOT / "episodes/_system/frame_semantic_review.py"
+    source = ROOT / ("episodes/_system/vision_review_executor.py" if kind == "repair_wave_signature"
+                     else "episodes/_system/frame_semantic_review.py")
     rc, driver = _probe(env, "episodes/_system/runtime_driver.py",
                         ["status", rel, "--json"])
     if rc != 0:
@@ -315,7 +317,7 @@ def dispatch_remediated_start(
            ("driver_state", "pid", "liveness", "exit_code")):
         raise exit_remediation.RemediationDenied("PREFLIGHT_DRIVER_RECORD_DRIFT")
     proof = exit_remediation.verify_exit(
-        episode, driver, source=source, expected=expected)
+        episode, driver, source=source, expected=expected, kind=kind)
     # Confirm exact identity once more immediately before O_EXCL reservation;
     # the native Driver owner lock remains the final double-start authority.
     rc, latest = _probe(env, "episodes/_system/runtime_driver.py",
@@ -323,7 +325,7 @@ def dispatch_remediated_start(
     if rc != 0:
         raise exit_remediation.RemediationDenied("DRIVER_REREAD_FAILED")
     again = exit_remediation.verify_exit(
-        episode, latest, source=source, expected=expected)
+        episode, latest, source=source, expected=expected, kind=kind)
     if again != proof:
         raise exit_remediation.RemediationDenied("DRIVER_REMEDIATION_RACE")
     ticket = exit_remediation.reserve_once(episode, proof)
@@ -345,6 +347,7 @@ def main(argv: list[str] | None = None) -> int:
     remedy = sub.add_parser("remediate-start")
     remedy.add_argument("episode")
     remedy.add_argument("--ack-real-production", action="store_true")
+    remedy.add_argument("--remediation-kind", choices=("source_binding", "repair_wave_signature"), default="source_binding")
     remedy.add_argument("--expected-driver-record-sha256", required=True)
     remedy.add_argument("--expected-crash-log-sha256", required=True)
     remedy.add_argument("--expected-fixed-source-sha256", required=True)
@@ -371,7 +374,7 @@ def main(argv: list[str] | None = None) -> int:
                 "fix_sha256": args.expected_fixed_source_sha256,
             }
             try:
-                return dispatch_remediated_start(env, episode, state, expected)
+                return dispatch_remediated_start(env, episode, state, expected, kind=args.remediation_kind)
             except exit_remediation.RemediationDenied as error:
                 print(str(error), file=sys.stderr)
                 return 3
