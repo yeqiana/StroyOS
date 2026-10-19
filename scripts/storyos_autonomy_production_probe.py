@@ -25,12 +25,22 @@ def assess(driver: dict, attempt: dict, stage: dict) -> dict:
     unknown=attempt.get("outcome_unknown_assets")
     unverifiable=attempt.get("unverified_status_assets",[])
     historical=attempt.get("attempt_rows",0)
-    if (attempt.get("status")!="ATTEMPT_HISTORY_READ_ONLY"
+    attempt_status=str(attempt.get("status") or "")
+    permitted_statuses={"ATTEMPT_HISTORY_READ_ONLY","OUTCOME_UNKNOWN_BLOCKED",
+                        "ACTIVE_ATTEMPT_BLOCKED","UNVERIFIED_ATTEMPT_STATUS_BLOCKED"}
+    if (attempt_status not in permitted_statuses
             or not isinstance(active,list) or not isinstance(unknown,list)
             or not isinstance(unverifiable,list)
             or type(historical) is not int or historical < 0
             or stage.get("source")!="mysql"
             or stage.get("status") not in ("STAGE_ELIGIBLE","ALREADY_PUBLISH_READY")):
+        return report
+    # The MySQL readonly preflight exits 2 on a trusted UNKNOWN/ACTIVE
+    # diagnosis. Do not erase it into generic AUTHORITIES_UNVERIFIED; nor
+    # accept a claimed blocked status without its matching asset evidence.
+    if (attempt_status == "OUTCOME_UNKNOWN_BLOCKED" and not unknown
+            or attempt_status == "ACTIVE_ATTEMPT_BLOCKED" and not active
+            or attempt_status == "UNVERIFIED_ATTEMPT_STATUS_BLOCKED" and not unverifiable):
         return report
     report["historical_attempt_rows"]=historical
     report["active_attempt_count"]=len(active)
@@ -40,7 +50,7 @@ def assess(driver: dict, attempt: dict, stage: dict) -> dict:
     report["driver_running"]=running
     report["driver_heartbeat_status"]=str(driver.get("heartbeat_status") or "UNVERIFIED")
     report["canonical_mysql_stage"]=stage.get("stage")
-    if unknown or unverifiable:
+    if unknown or unverifiable or attempt_status != "ATTEMPT_HISTORY_READ_ONLY":
         report["status"]="PAID_ATTEMPT_RECONCILIATION_REQUIRED"
     elif stage.get("stage") in ("PUBLISH_READY","PUBLISHED","DATA_REVIEWED"):
         report["status"]="MYSQL_PUBLISH_READY"
@@ -74,7 +84,7 @@ def inspect(episode: str) -> dict:
                                    ["--episode",ref])
         rc3,stage=native._probe(env,"scripts/storyos_episode_stage_readonly.py",
                                  ["--episode",ref])
-        if rc1!=0 or rc2!=0 or rc3 not in (0,2):
+        if rc1!=0 or rc2 not in (0,2) or rc3 not in (0,2):
             return assess({}, {}, {})
         return {"episode":ref,**assess(driver,attempt,stage)}
     except (ValueError,OSError):
