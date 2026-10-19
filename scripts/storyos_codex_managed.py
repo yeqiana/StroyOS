@@ -306,8 +306,11 @@ def dispatch_remediated_start(
                        ("bridge_ok", "mode_ok", "model_client_version_ok"))):
         raise exit_remediation.RemediationDenied("INDEPENDENT_PRODUCTION_ADMISSION_BLOCKED")
     rel = episode.relative_to(ROOT).as_posix()
-    source = ROOT / ("episodes/_system/vision_review_executor.py" if kind == "repair_wave_signature"
-                     else "episodes/_system/frame_semantic_review.py")
+    source = ROOT / (
+        "episodes/_system/next_action.py" if kind == "reviewed_repair_handoff"
+        else "episodes/_system/vision_review_executor.py" if kind == "repair_wave_signature"
+        else "episodes/_system/frame_semantic_review.py"
+    )
     rc, driver = _probe(env, "episodes/_system/runtime_driver.py",
                         ["status", rel, "--json"])
     if rc != 0:
@@ -316,6 +319,17 @@ def dispatch_remediated_start(
     if any(driver.get(k) != summary.get(k) for k in
            ("driver_state", "pid", "liveness", "exit_code")):
         raise exit_remediation.RemediationDenied("PREFLIGHT_DRIVER_RECORD_DRIFT")
+    if kind == "reviewed_repair_handoff":
+        rc_action, action = _probe(env, "episodes/_system/next_action.py",
+                                   ["show", rel])
+        if (rc_action != 0 or not isinstance(action, dict)
+                or action.get("action") != "MATERIALIZE_REPAIR_WAVE"
+                or action.get("executor") != "CODEX_VISION"
+                or action.get("hard_stop") is not False
+                or action.get("auto_recoverable") is not True
+                or int(action.get("attempt") or 0) != 1
+                or not action.get("frames")):
+            raise exit_remediation.RemediationDenied("FORMAL_REPAIR_HANDOFF_NOT_ADMISSIBLE")
     proof = exit_remediation.verify_exit(
         episode, driver, source=source, expected=expected, kind=kind)
     # Confirm exact identity once more immediately before O_EXCL reservation;
@@ -328,10 +342,21 @@ def dispatch_remediated_start(
         episode, latest, source=source, expected=expected, kind=kind)
     if again != proof:
         raise exit_remediation.RemediationDenied("DRIVER_REMEDIATION_RACE")
+    if kind == "reviewed_repair_handoff":
+        rc_action, latest_action = _probe(env, "episodes/_system/next_action.py",
+                                         ["show", rel])
+        if (rc_action != 0 or not isinstance(latest_action, dict)
+                or latest_action.get("action") != "MATERIALIZE_REPAIR_WAVE"
+                or latest_action.get("executor") != "CODEX_VISION"
+                or latest_action.get("hard_stop") is not False
+                or latest_action.get("auto_recoverable") is not True
+                or int(latest_action.get("attempt") or 0) != 1
+                or latest_action.get("frames") != action.get("frames")):
+            raise exit_remediation.RemediationDenied("FORMAL_REPAIR_HANDOFF_DRIFT")
     ticket = exit_remediation.reserve_once(episode, proof)
     print(json.dumps({"remediation": "SINGLE_USE_RESERVED",
                       "receipt": ticket.relative_to(episode).as_posix(),
-                      "exit_code": "900"}, ensure_ascii=False))
+                      "exit_code": proof["exit_code"]}, ensure_ascii=False))
     return subprocess.call(
         full_auto_command(argparse.Namespace(command="remediate-start"), episode),
         cwd=ROOT, env=env)
@@ -347,7 +372,7 @@ def main(argv: list[str] | None = None) -> int:
     remedy = sub.add_parser("remediate-start")
     remedy.add_argument("episode")
     remedy.add_argument("--ack-real-production", action="store_true")
-    remedy.add_argument("--remediation-kind", choices=("source_binding", "repair_wave_signature"), default="source_binding")
+    remedy.add_argument("--remediation-kind", choices=("source_binding", "repair_wave_signature", "reviewed_repair_handoff"), default="source_binding")
     remedy.add_argument("--expected-driver-record-sha256", required=True)
     remedy.add_argument("--expected-crash-log-sha256", required=True)
     remedy.add_argument("--expected-fixed-source-sha256", required=True)

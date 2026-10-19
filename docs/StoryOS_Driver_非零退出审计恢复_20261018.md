@@ -36,3 +36,21 @@ python scripts/storyos_autonomy_fast_test.py --slot all --stress
   --remediation-kind repair_wave_signature
 
 普通 start/watchdog 继续拒绝所有非零退出。每次迭代必须 RED→GREEN、production-regression、all --stress、Story Gates (Windows/Ubuntu) 和 Qodana 通过再部署。
+
+
+## 2026-10-19：已落账审核的 rc=4 一次性恢复
+
+经过 PR #113 原生 Runner 修复，正式 NextAction（只读重新计算）已确认：MATERIALIZE_REPAIR_WAVE，executor=CODEX_VISION，auto_recoverable=true，hard_stop=false。旧 Driver rc=4 来自 PRODUCTION 后置质量门禁失败，不能混用此前针对 rc=900 RuntimeError 的审计入口。
+
+新恢复类别 --remediation-kind reviewed_repair_handoff 仅允许以下全部成立：
+- 当前历史 Driver EXITED/pid=0/DEAD/rc=4，原 Driver record 与当前真实日志逐字节 SHA256 匹配；原始日志必须包含确切 DRIVER EXIT rc=4 终止行。
+- 已部署 next_action.py Git blob 必须固定为 PR #113 CI 通过的 e53550f3bd030aafe9c019f9ce761892f036d0cf，vision_review_executor.py 必须固定为 124fd436ce343e4c85fcb07e98514d0606b4c034。
+- 同一正式 CODEX_MANAGED 运行环境下，官方 next_action.py show 动态投影必须返回 MATERIALIZE_REPAIR_WAVE + CODEX_VISION + attempt=1 + 可恢复 + 非hard_stop + 非空真实帧集合。重新读 Driver 和 NextAction 依旧完全一致后才可领取一次性票据。
+- 独立 MySQL Stage、User Runner、CLI、Generation Attempt active/UNKNOWN 前置准入全部通过，原 Driver 没有存活进程。
+- 每条 rc4 历史只允许一个独占 O_EXCL 审计票据；再次失败不能用旧票据重试。任何其他 rc4、尚未验证的审核、或只有 NEEDS_USER 动作均不许通过。
+
+显式生产入口（所有 SHA 取自当前只读证据，绝不从旧会话猜测）：
+
+python scripts/storyos_codex_managed.py remediate-start <episode> --remediation-kind reviewed_repair_handoff --ack-real-production --expected-driver-record-sha256 <sha256> --expected-crash-log-sha256 <sha256> --expected-fixed-source-sha256 <sha256>
+
+原有两个 rc900 类别、普通 start 与 Watchdog 硬门禁保持不变。新测试纳入永久 production-regression，必须 latest HEAD all --stress、Windows/Ubuntu Story Gates、Qodana 全绿后部署。
