@@ -30,7 +30,13 @@ KNOWN_REPAIR_WAVE_CRASH = """DRIVER CRASH TypeError("materialize_wave() got an u
 REQUIRED_REPAIR_WAVE_MARKERS = (
     'repair_aggregator.materialize_wave(ep,attempt=attempt,findings=evidence)',
 )
-REMEDIATION_KINDS = frozenset({"source_binding", "repair_wave_signature"})
+APPROVED_REVIEWED_REPAIR_BLOB = "e53550f3bd030aafe9c019f9ce761892f036d0cf"
+APPROVED_REVIEWED_VISION_BLOB = "124fd436ce343e4c85fcb07e98514d0606b4c034"
+REQUIRED_REVIEWED_REPAIR_MARKERS = (
+    'def _frozen_authorized_repair_frames(',
+    'action="MATERIALIZE_REPAIR_WAVE"',
+)
+REMEDIATION_KINDS = frozenset({"source_binding", "repair_wave_signature", "reviewed_repair_handoff"})
 
 HISTORICAL_EXIT_BLOCKERS = frozenset({
     "EPISODE_DRIVER_OWNER_NOT_IDLE_OR_UNVERIFIED",
@@ -56,13 +62,14 @@ def verify_exit(ep: Path, driver: dict, *, source: Path, expected: dict[str, str
     if kind not in REMEDIATION_KINDS:
         raise RemediationDenied("UNKNOWN_REMEDIATION_KIND")
     ep = ep.resolve()
+    expected_rc = "4" if kind == "reviewed_repair_handoff" else "900"
     if (not isinstance(driver, dict) or driver.get("driver_state") != "EXITED"
             or driver.get("pid") != 0 or driver.get("liveness") != "DEAD"
-            or str(driver.get("exit_code") or "").split(" ", 1)[0] != "900"):
+            or str(driver.get("exit_code") or "").split(" ", 1)[0] != expected_rc):
         raise RemediationDenied("DRIVER_EXIT_NOT_PROVEN_DEAD_900")
     record = driver.get("record")
     if (not isinstance(record, dict) or record.get("pid") != 0
-            or str(record.get("rc") or "").split(" ", 1)[0] != "900"
+            or str(record.get("rc") or "").split(" ", 1)[0] != expected_rc
             or Path(str(record.get("episode") or "")).resolve() != ep):
         raise RemediationDenied("DRIVER_EXIT_RECORD_MISMATCH")
     if not all(isinstance(expected.get(k), str) and
@@ -84,14 +91,30 @@ def verify_exit(ep: Path, driver: dict, *, source: Path, expected: dict[str, str
         raise RemediationDenied("REMEDIATION_EVIDENCE_MISSING") from None
     if hashlib.sha256(raw_log).hexdigest() != expected["log_sha256"]:
         raise RemediationDenied("DRIVER_CRASH_LOG_CHANGED")
-    known_crash = (KNOWN_REPAIR_WAVE_CRASH if kind == "repair_wave_signature"
-                   else KNOWN_CRASH)
-    approved_blob = (APPROVED_REPAIR_WAVE_BLOB if kind == "repair_wave_signature"
-                     else APPROVED_FIXED_BLOB)
-    required_markers = (REQUIRED_REPAIR_WAVE_MARKERS if kind == "repair_wave_signature"
-                        else REQUIRED_FIXED_MARKERS)
-    if known_crash.encode("utf-8") not in raw_log:
-        raise RemediationDenied("UNRELATED_DRIVER_CRASH_NOT_REMEDIATED")
+    if kind == "reviewed_repair_handoff":
+        # RC4 means the DAG quality postcondition refused to finalize, not a
+        # generic crash. The only admitted case is an exact terminal log plus
+        # a new, CI-pinned formal review->repair routing decision.
+        if not re.search(rb"(?m)^DRIVER EXIT rc=4[ \t]*\r?$", raw_log):
+            raise RemediationDenied("QUALITY_GATE_EXIT_LOG_NOT_EXACT")
+        approved_blob = APPROVED_REVIEWED_REPAIR_BLOB
+        required_markers = REQUIRED_REVIEWED_REPAIR_MARKERS
+        vision = source.parent / "vision_review_executor.py"
+        try:
+            vision_blob = git_blob_sha(vision.read_bytes())
+        except OSError:
+            raise RemediationDenied("REVIEWED_VISION_EXECUTOR_MISSING") from None
+        if vision_blob != APPROVED_REVIEWED_VISION_BLOB:
+            raise RemediationDenied("REVIEWED_VISION_EXECUTOR_NOT_CI_PINNED")
+    else:
+        known_crash = (KNOWN_REPAIR_WAVE_CRASH if kind == "repair_wave_signature"
+                       else KNOWN_CRASH)
+        approved_blob = (APPROVED_REPAIR_WAVE_BLOB if kind == "repair_wave_signature"
+                         else APPROVED_FIXED_BLOB)
+        required_markers = (REQUIRED_REPAIR_WAVE_MARKERS if kind == "repair_wave_signature"
+                            else REQUIRED_FIXED_MARKERS)
+        if known_crash.encode("utf-8") not in raw_log:
+            raise RemediationDenied("UNRELATED_DRIVER_CRASH_NOT_REMEDIATED")
     if hashlib.sha256(raw_fix).hexdigest() != expected["fix_sha256"]:
         raise RemediationDenied("DEPLOYED_FIX_SHA_CHANGED")
     if git_blob_sha(raw_fix) != approved_blob:
@@ -100,7 +123,7 @@ def verify_exit(ep: Path, driver: dict, *, source: Path, expected: dict[str, str
     if not all(marker in fixed_text for marker in required_markers):
         raise RemediationDenied("DEPLOYED_FIX_INCOMPLETE")
     return {
-        "schema_version": 1, "episode": str(ep), "exit_code": "900",
+        "schema_version": 1, "episode": str(ep), "exit_code": expected_rc,
         "driver_sha256": digest, "log_sha256": expected["log_sha256"],
         "fix_sha256": expected["fix_sha256"],
         "approved_git_blob": approved_blob, "remediation_kind": kind,
@@ -114,7 +137,10 @@ def reserve_once(ep: Path, proof: dict) -> Path:
     explicitly authorized remediation for the same prior exit event.
     """
     if (proof.get("schema_version") != 1 or proof.get("episode") != str(ep.resolve())
-            or proof.get("exit_code") != "900"
+            or (proof.get("exit_code") != "900" and not (
+                proof.get("exit_code") == "4"
+                and proof.get("remediation_kind") == "reviewed_repair_handoff"
+                and proof.get("approved_git_blob") == APPROVED_REVIEWED_REPAIR_BLOB))
             or not re.fullmatch(r"[0-9a-f]{64}", str(proof.get("driver_sha256") or ""))):
         raise RemediationDenied("INVALID_REMEDIATION_PROOF")
     path = ep / "meta/runtime" / f"driver-remediation-{proof['driver_sha256']}.json"
