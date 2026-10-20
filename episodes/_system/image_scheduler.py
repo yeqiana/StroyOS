@@ -234,8 +234,12 @@ def _merge_execution_references(base:list[dict], overlays:list[dict])->list[dict
     limit=int(reference_arbitrator.MAX_REFS)
     chosen=[]
     identity=[x for x in base if isinstance(x,dict) and x.get("kind")=="identity"]
+    overlay_identity=[x for x in overlays if isinstance(x,dict) and x.get("kind")=="identity"]
+    overlay_other=[x for x in overlays if not (isinstance(x,dict) and x.get("kind")=="identity")]
     others=[x for x in base if not (isinstance(x,dict) and x.get("kind")=="identity")]
-    for row in [*identity, *overlays, *others]:
+    # Give the remaining attachment slot to an explicitly provided identity
+    # before a user capture-style example, but never evict existing anchors.
+    for row in [*identity, *overlay_identity, *overlay_other, *others]:
         if not isinstance(row,dict) or not row.get("path"):
             continue
         if any(x.get("path")==row.get("path") for x in chosen):

@@ -16,6 +16,7 @@ from typing import Any
 
 import codex_critic_runner
 import image_payload_request
+import image_payload_hard_constraints
 import m00_style_guard
 import m00_scene_fidelity_guard
 import m00_episode_state_delta
@@ -229,6 +230,19 @@ def _build_validated_request(*, ep: Path, identity: dict, fields: dict,
         controller_input=controller_input,
         is_m00=m00_style_guard.is_m00(str(controller_input.get("visual_contract") or "")),
     )
+    # The Controller may compress or omit immutable facts. Project exactly the
+    # frozen Frame Contract obligations into the final provider scene prompt.
+    # image_payload_request fingerprints these transmitted bytes.
+    frozen_frame = str(controller_input.get("frame_prompt_contract") or "")
+    # Legacy direct Controller clients can supply synthetic fragments; the
+    # canonical image_worker_pool requires a fully compiled Frame Contract.
+    # Never pretend that an unbound fragment is a frozen authority.
+    if frozen_frame.startswith("RESOLVED FRAME CONTRACT |"):
+        effective_scene_prompt = image_payload_hard_constraints.inject(
+            effective_scene_prompt, frozen_frame,
+            original_scene=str(controller_input.get("source_scene_prompt") or ""),
+            m00=m00_style_guard.is_m00(str(controller_input.get("visual_contract") or "")),
+        )
     request = image_payload_request.build_request(
         **identity,
         controller_receipt_id=call_id,
@@ -284,11 +298,29 @@ def _reuse_existing_receipt(*, ep: Path, path: Path, call_id: str,
     output_sha = _sha256_bytes(_canonical_bytes(output))
     if receipt.get("controller_output_sha256") != output_sha:
         raise ImagePayloadControllerError("IMAGE_CONTROLLER_RECEIPT_OUTPUT_SHA_MISMATCH", call_id)
+    rebound_from_legacy = False
     if receipt.get("payload_request_fingerprint") != request.get("request_fingerprint"):
-        raise ImagePayloadControllerError("IMAGE_CONTROLLER_RECEIPT_REQUEST_MISMATCH", call_id)
+        # A historical SUCCESS receipt binds the same immutable Controller
+        # output but predates deterministic frozen-constraint projection.
+        # Reconstruct exactly the previous payload fingerprint (no model call),
+        # and only rebind the existing text receipt when its previous request
+        # matches byte-for-byte. Anything else remains a hard mismatch.
+        scene = str(request.get("scene_prompt") or "")
+        suffix = "\n\n" + image_payload_hard_constraints.BEGIN + "\n"
+        if not (str(controller_input.get("frame_prompt_contract") or "").startswith(
+                "RESOLVED FRAME CONTRACT |") and suffix in scene):
+            raise ImagePayloadControllerError("IMAGE_CONTROLLER_RECEIPT_REQUEST_MISMATCH", call_id)
+        legacy_fields = {key: val for key, val in request.items()
+                         if key not in ("request_fingerprint", "scene_prompt_sha256")}
+        legacy_fields["scene_prompt"] = scene.split(suffix, 1)[0]
+        old_request = image_payload_request.build_request(**legacy_fields)
+        if receipt.get("payload_request_fingerprint") != old_request.get("request_fingerprint"):
+            raise ImagePayloadControllerError("IMAGE_CONTROLLER_RECEIPT_REQUEST_MISMATCH", call_id)
+        rebound_from_legacy = True
     return {
         "status": "SUCCESS", "request": request, "request_fingerprint": request["request_fingerprint"],
-        "controller_call_id": call_id, "receipt": receipt, "receipt_path": str(path), "reused": True,
+        "controller_call_id": call_id, "receipt": receipt, "receipt_path": str(path),
+        "reused": True, "legacy_payload_rebound": rebound_from_legacy,
     }
 
 
