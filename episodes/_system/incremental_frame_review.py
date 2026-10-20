@@ -28,7 +28,6 @@ STATE_REL = Path("meta/incremental-frame-review.json")
 AUDIT_REL = Path("meta/incremental-frame-audit.json")
 CANDIDATE_REL = Path("meta/.incremental-frame-review.candidate.json")
 TARGET = (2, 0, 3, 4)
-PATCH_LIMIT_RATIO = 0.25
 
 
 def now() -> str:
@@ -452,7 +451,11 @@ def build_plan(ep: Path) -> dict:
             "caption_mode": captions["mode"],
         }
     ratio = len(dirty) / max(1, len(frames))
-    action = "FULL" if context_change or ratio > PATCH_LIMIT_RATIO else "PATCH"
+    # First-ever review must establish a whole-episode baseline. Once clean
+    # SHA-bound evidence exists, a large repair wave must not force rerunning
+    # every unaffected frame merely because its dirty ratio exceeds 25%.
+    first_review = bool(frames) and len(missing) == len(frames) and not reused and not accepted
+    action = "FULL" if context_change or first_review else "PATCH"
     return {
         "action": action,
         "dirty_frames": dirty,
@@ -465,6 +468,7 @@ def build_plan(ep: Path) -> dict:
         "accepted_known_defect_frames": accepted,
         "accepted_reasons": accepted_reasons,
         "dirty_ratio": round(ratio, 4),
+        "review_scope_reason": "GLOBAL_CONTEXT_CHANGED" if context_change else ("FIRST_REVIEW" if first_review else "DIRTY_FRAME_PATCH"),
         "caption_mode": captions["mode"],
     }
 
