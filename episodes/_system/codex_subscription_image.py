@@ -137,6 +137,78 @@ def runner_generated_artifact_evidence(request_id: str | None) -> dict[str, obje
     }
 
 
+def runner_verified_exported_candidate(workdir: Path, request_id: str | None) -> Path | None:
+    """Only admit the image in this exact durable native Runner receipt.
+
+    The assistant may claim image generation failed even when the tool saved a
+    real PNG. Conversely, a filesystem scan by mtime must not accept a sibling
+    thread's image. Neither the agent_message nor JSONL tool-event presence is
+    provider authority; the durable Runner export list and valid pixels are.
+    """
+    value = str(request_id or "").strip()
+    if not re.fullmatch(r"[0-9a-f]{32}", value, re.I):
+        return None
+    try:
+        receipt = codex_user_runner.read_task_result(value)
+        if not isinstance(receipt, dict) or receipt.get("request_id") != value:
+            return None
+        evidence = receipt.get("evidence")
+        if (not isinstance(evidence, dict)
+                or evidence.get("request_id") != value
+                or evidence.get("task_type") != "image"
+                or evidence.get("transport_route") != "native_codex"
+                or int(receipt.get("returncode", -1)) != 0):
+            return None
+        stdout = base64.b64decode(str(receipt.get("output_base64") or ""), validate=True)
+        if (len(stdout) != int(receipt.get("output_bytes", -1))
+                or hashlib.sha256(stdout).hexdigest() != receipt.get("output_sha256")):
+            return None
+        threads = evidence.get("thread_ids")
+        artifacts = evidence.get("generated_artifacts")
+        if (not isinstance(threads, list) or len(threads) != 1
+                or not isinstance(threads[0], str)
+                or not re.fullmatch(r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}",
+                                    threads[0], re.I)
+                or not isinstance(artifacts, list) or not artifacts):
+            return None
+        started = set()
+        for line in stdout.decode("utf-8", "replace").splitlines():
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(event, dict) and event.get("type") == "thread.started":
+                started.add(str(event.get("thread_id") or ""))
+        if threads[0] not in started:
+            return None
+        root = codex_user_runner.exported_artifacts_dir(workdir).resolve()
+        good = []
+        for rel in artifacts:
+            if not isinstance(rel, str):
+                return None
+            pieces = rel.replace("\\", "/").split("/")
+            if (len(pieces) != 2 or pieces[0] != threads[0]
+                    or not pieces[1] or pieces[1] in {".", ".."}):
+                return None
+            path = root.joinpath(*pieces)
+            if (path.is_symlink() or not path.is_file()
+                    or not path.resolve().is_relative_to(root)
+                    or path.suffix.lower() not in {".png", ".jpg", ".jpeg"}
+                    or not valid_image(path)
+                    or not provider_raw_candidate_viable(path)):
+                return None
+            with Image.open(path) as pixels:
+                pixels.verify()
+            good.append(path.resolve())
+        if len(good) != 1:
+            # One-shot single-frame image generation must yield one unambiguous
+            # source, not choose an arbitrary sibling image or extra output.
+            return None
+        return good[0]
+    except (OSError, ValueError, TypeError, KeyError):
+        return None
+
+
 def resolve_codex(raw: str | None) -> Path:
     explicit = bool(raw or os.environ.get("CODEX_EXE"))
     if not runtime_router.local_codex_image_allowed(explicit=explicit):
@@ -1684,15 +1756,12 @@ def invoke_codex(prompt_path: Path, refs: list[Path], raw_output: Path, log: Pat
             if recovered is not None:
                 candidate = recovered
         if not valid_image(candidate) and bridged:
-            # STORY_OS_V2_7_CODEX_USER_MODE_BRIDGE: the throwaway Codex home now
-            # lives in the runner user's profile, so the runner mirrors provider
-            # artifacts into this shared workdir instead.
-            staged = codex_user_runner.exported_artifacts_dir(workdir)
-            if staged.is_dir():
-                exported = [p for p in sorted(staged.rglob('*'))
-                            if p.is_file() and valid_image(p)]
-                if exported:
-                    candidate = max(exported, key=lambda p: p.stat().st_mtime)
+            # A real image can be exported even when the Codex agent_message
+            # says it is missing. Bind the recovery to this exact native
+            # request's durable Runner receipt, never an mtime directory scan.
+            recovered = runner_verified_exported_candidate(workdir, runner_request_id)
+            if recovered is not None:
+                candidate = recovered
         try:
             raw_log_text = log.read_text(encoding='utf-8', errors='replace') if log.is_file() else ''
             runtime_log_policy.write_codex_noise_summary(log, raw_log_text)

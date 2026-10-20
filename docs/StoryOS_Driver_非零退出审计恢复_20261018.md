@@ -141,3 +141,94 @@ AUTHORITIES_UNVERIFIED。不改 MySQL、历史回执、队列或 Provider。
 测试更新 tests/system/test_storyos_autonomy_r9_probe.py（已有永久 production-regression
 槽位），所有相关修改使用最新合并代码跑 production-regression 和
 all --stress，Ubuntu/Windows Story Gates、Qodana 全绿后再部署。
+
+## 2026-10-19：原生 Codex 第02帧 429/OUTCOME_UNKNOWN 的线程级只读对账
+
+经 PR#116/117 合并部署，正式 Episode「失物归还的那扇门」Frame02 Attempt#2
+在 MySQL 记录 OUTCOME_UNKNOWN（全剧26历史Attempt，1未决，0活动）。
+Native Codex Runner request receipt 存在，原始stdout base64 SHA-256/字节长度与
+不可变回执一致，task_type=image、request_id与Generation Attempt完全对应、
+唯一thread.started能与Runner thread_ids匹配。CLI rc=0，不代表生图成功。
+唯一 agent_message 声称图像服务 HTTP 429，JSONL没有image_generation工具事件；
+该消息不是独立Provider财务/调度终态。Runner完成时的图片导出0张、
+2秒settle后0张；之后从同一用户的CODEX_HOME/generated_images唯一线程目录
+再做了只读核验，仍无PNG。以上只能证明**没有可恢复的图像**，不能证明
+Provider一定没有调用/收费，绝不能替代PAID_ATTEMPT_OUTCOME_UNKNOWN的结算证据。
+
+新增 scripts/storyos_native_image_outcome_evidence.py（只读；标准env wrapper调用）
+安全核查 exact MySQL Generation Key + Attempt + Queue ID + lifecycle Runner request_id、
+Runner receipt stdout SHA、Codex Thread ID、仅该线程的 generated_images。
+若有后落盘的有效PNG，输出 RECOVERY_CANDIDATE_NEEDS_SHA_ADMISSION
+（只是原始候选，不会直接改MySQL为SUCCEEDED）。
+若线程目录和图片均不存在，输出 PAID_ATTEMPT_UNRESOLVED_NO_PIXEL
+（不授权重试或变更Attempt）；若任何身份/凭据路径/文件检验失败则fail closed。
+任何诊断结果都没有生产授权，保持 may_retry_paid_attempt=false、model_calls=0、
+sql_writes=0、image_generation_verified=false。
+
+示例：
+python scripts/storyos_production_env.py scripts/storyos_native_image_outcome_evidence.py <episode> --frame 2 --attempt 2
+
+永久回归 tests/system/test_native_image_outcome_evidence.py，
+每次相关改动随最新主线跑 production-regression 与 all --stress，
+CI Ubuntu/Windows Story Gates + Qodana PASS 后方可部署。正式恢复下一付费图像Attempt
+仍需明确合法额度、独立可信Provider终态证据和按项目已有治理流程的授权，
+不得由CLI自然语言/rc=0/缺失PNG推断。
+
+## 2026-10-19 原生 Codex 真生图但文字声称没得到图片的正式回归
+
+独立真实原生Codex 0.162.1 User Runner生图一次，request_id=e74ce937dd3340eda1c1c3181fde6005，
+Runner task_type=image、transport_route=native_codex，持久stdout原始SHA验证成功。
+Codex JSONL仅有thread/turn/agent_message事件，文字回复说没有图片；
+但Runner generated_artifacts确实保存一个1254x1254有效PNG，1,940,102字节，
+sha256=827f4b89cdfae98ce35cf9e13f73ada1359fff378d1144398c6fac36b9e73b0c。
+
+最小修复：
+- codex_subscription_image.runner_verified_exported_candidate检查原生Runner
+  request_id、task_type=image、native_codex、returncode=0、stdout摘要和字节长度、
+  唯一thread.started与Runner thread_id相同、generated_artifacts路径属于同一线程。
+- 必须仅找到一个有效且满足最小RAW尺寸的PNG/JPEG；原始候选必须验证完整图像，
+  路径不逃逸，不再依赖目录mtime扫描可能串图。只有真实产物可信时，
+  才能覆盖Codex的错误文字回复。没有可信回执则拒绝不当认定成功。
+- 用户本地独立Canary的成功不代表Episode13旧Frame02 UNKNOWN已结算；
+  旧MySQL Generation Key/预算和队列继续原样保护，绝不重发第三次Attempt。
+- 尺寸仍由provider_capability.inspect与canvas_normalize归一；1254方形图可归一
+  到匹配方形发布画布，不能未经原有比例许可直接用作竖屏1080x1350的正式图。
+
+永久用例tests/system/test_native_runner_artifact_first_success.py，
+纳入production-regression。每次相关代码变动基于最新代码树跑
+production-regression + all --stress，GitHub Windows/Ubuntu Story Gates与Qodana全绿再部署。
+
+## 2026-10-19 第二轮内容审核 FAIL 收敛规则统一（唯一普通 Repair Wave）
+
+核查发现旧 production_ledger_run.cmd_review() 在普通图片已用尽普通内容返修额度时，
+即使审查刚得到真实 FAIL，仍可能隐式调用
+production_ledger_manage.force_pass_content_exhaustion() 将 Ledger 标记 PASSED。
+旧函数只校验现有图片、候选 SHA、成功生成Attempt和基本来源契约，
+但标记 visual_quality_reviewed=false，**没有审核本次 FAIL 是不是仅含可接受软问题**。
+因此同一张真实失败图，经普通 Ledger CLI 路径可能被隐式PASSED，
+经 frame_semantic_review（显式 prevent_exhaustion_force_pass=True）却是 NEEDS_USER。
+此行为违反语义真实性/人物/物理硬缺陷不得自动通过的要求。
+
+统一生产契约：
+- 初轮有效图片 + 审核FAIL：仍只授权已有冻结预算内的一次普通内容返修。
+- 二轮有效图片 + 审核PASS：Ledger PASSED，继续最终审核。
+- 二轮有效图片 + 审核FAIL（无独立已验证弱通过凭证）：
+  无论是 CLI直接review、局部auto_repair_enqueue或正式全帧语义审核，
+  都必须收敛为 NEEDS_USER；既不伪造PASS也不触发第三轮自动图片生成。
+- 只有经过**独立严格图像/审核凭证验证**的现有 Visual Lock WEAK_PASS
+  通道才能低分接受（必须保留图像、SHA、画风审核记录，并排除身份、场景、
+  语义、物理真实性、合同、安全等硬问题）；不能凭评论文本、候选文件存在、
+  生成预算耗尽就自动赋予WEAK_PASS。普通内容二审目前没有与Visual Lock等价
+  的可验证低分接受凭证，所以保持 NEEDS_USER，不能先放宽。
+- 需要额外第三张候选时，继续走已有的显式用户一次例外返修授权；
+  不动 max_content_repairs_per_frame=1 或 MAX_AUTOMATIC_REPAIR_WAVES=1。
+- 429/超时/OUTCOME_UNKNOWN 属于技术未决，不可视作内容FAIL、耗尽低分接受的依据，
+  也不因此回收或增加付费Attempt。
+
+实现：删除 cmd_review 耗尽预算后未经审查的隐式强制PASS逻辑；
+废弃旧无审核 force_pass_content_exhaustion 方法，保留其兼容导出并默认抛错，
+防止绕过真实软问题审核；原显式Visual Lock WEAK_PASS、已审核PASS和用户
+例外审批保持原样。不得转换、批量重写已有历史审计/图片/Attempt。
+新增 tests/system/test_second_round_review_convergence.py 并加入永久
+production-regression，每次相关更新用最新HEAD跑 production-regression、
+all --stress、Ubuntu/Windows Story Gates与Qodana 后才能部署。

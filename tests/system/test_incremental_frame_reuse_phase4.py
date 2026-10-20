@@ -180,6 +180,25 @@ class IncrementalFrameReusePhase4Tests(unittest.TestCase):
                          plan["context_frames"])
         self.assertEqual(17, len(plan["reused_frames"]))
 
+    def test_six_repaired_frames_do_not_trigger_full_review_by_ratio(self) -> None:
+        frames = self._frames()
+        for key in ("02", "05", "08", "11", "14", "17"):
+            row = next(item for item in frames if item["frame"] == key)
+            row["sha256"] = "f" * 64
+            row["generation_key"] = f"generation-{key}-2"
+        plan = self._planned(frames=frames)
+        self.assertEqual("PATCH", plan["action"])
+        self.assertEqual(0.3, plan["dirty_ratio"])
+        self.assertEqual(6, len(plan["dirty_frames"]))
+        self.assertEqual(14, len(plan["reused_frames"]))
+        self.assertEqual("DIRTY_FRAME_PATCH", plan["review_scope_reason"])
+
+    def test_first_review_all_missing_still_requires_full_baseline(self) -> None:
+        plan = self._planned(frames=self._frames(), missing={f"{i:02d}" for i in range(1, 21)})
+        self.assertEqual("FULL", plan["action"])
+        self.assertEqual("FIRST_REVIEW", plan["review_scope_reason"])
+        self.assertEqual(20, len(plan["missing_evidence_frames"]))
+
     def test_story_source_drift_invalidates_global_frame_context(self) -> None:
         plan = self._planned(frames=self._frames(), contexts={
             "story_sha256": "story-changed", "visual_sha256": "visual-stable"})

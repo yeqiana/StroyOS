@@ -297,24 +297,24 @@ agent_runtime:
       production_enabled: true
       legacy_fallback_on_technical: true
     story_semantic_critic:
-      # P3 starts with a decision-only shadow request; existing Story Review remains authoritative.
-      shadow_enabled: true
+      # 正式生产默认关闭研究性 Shadow；Story Review 仍为唯一裁决。
+      shadow_enabled: false
       production_enabled: false
       legacy_fallback_on_technical: true
       bounded_reflection:
         max_review_attempts: 2
         max_auto_repairs: 1
     preimage_semantic_critic:
-      # P3 PREIMAGE Critic is advisory-only; canonical verifier/barrier/commit stay authoritative.
-      shadow_enabled: true
+      # 正式生产默认关闭 PREIMAGE Shadow；确定性校验继续生效。
+      shadow_enabled: false
       production_enabled: false
       legacy_fallback_on_technical: true
       bounded_reflection:
         max_review_attempts: 2
         max_auto_repairs: 1
     final_semantic_critic:
-      # P3 Final Semantic Critic observes the frozen reviewable frame set; existing review stays authoritative.
-      shadow_enabled: true
+      # 正式生产默认关闭 Final Shadow；帧语义正式裁决继续生效。
+      shadow_enabled: false
       production_enabled: false
       legacy_fallback_on_technical: true
       bounded_reflection:
