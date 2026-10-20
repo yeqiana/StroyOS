@@ -155,6 +155,7 @@ def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
     stage: dict = {}
     creative_recovery: dict = {}
     visual_lock_admission: dict = {"status": "NOT_APPLICABLE"}
+    driver_recovery: dict = {"status": "NOT_APPLICABLE", "read_only": True}
     if episode is not None:
         rc, stage = _probe(env, "scripts/storyos_episode_stage_readonly.py",
                            ["--episode", episode.relative_to(ROOT).as_posix()])
@@ -184,9 +185,43 @@ def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
             blockers.append("GENERATION_ATTEMPT_AUTHORITY_RECONCILIATION_REQUIRED")
         rc, driver = _probe(env, "episodes/_system/runtime_driver.py",
                             ["status", rel, "--json"])
-        if rc != 0 or not resident_restart_permitted(driver):
+        restartable = (rc == 0 and resident_restart_permitted(driver))
+        if (not restartable and rc == 0
+                and driver.get("driver_state") == "EXITED"
+                and driver.get("exit_code") == "4"
+                and driver.get("pid") == 0
+                and driver.get("liveness") == "DEAD"
+                and stage.get("status") == "STAGE_ELIGIBLE"
+                and attempts.get("status") == "ATTEMPT_HISTORY_READ_ONLY"
+                and not attempts.get("outcome_unknown_assets")
+                and not attempts.get("active_attempt_assets")):
+            # The previous quality-gate rc4 cannot be cleared or ignored. A
+            # separate read-only authority proves the old event was superseded
+            # by a newer, canonical A15 PASS for the exact locked source.
+            recovery_rc, recovery = _probe(
+                env, "scripts/storyos_post_review_rc4_readonly.py",
+                ["--episode", rel]
+            )
+            if (recovery_rc == 0
+                    and recovery.get("status") ==
+                       "HISTORICAL_STORY_RC4_SUPERSEDED_BY_VERIFIED_A15_PASS"
+                    and recovery.get("story_gate_verified") is True
+                    and recovery.get("driver_record_sha256") ==
+                        exit_remediation.canonical_sha(driver.get("record") or {})):
+                restartable = True
+                driver_recovery = {
+                    "status": "HISTORICAL_STORY_RC4_SUPERSEDED_BY_VERIFIED_A15_PASS",
+                    "driver_record_sha256": recovery["driver_record_sha256"],
+                    "read_only": True, "production_authorization": False,
+                }
+            else:
+                driver_recovery = {
+                    "status": recovery.get("status") or "STORY_RC4_READ_AUTHORITY_ERROR",
+                    "read_only": True, "production_authorization": False,
+                }
+        if not restartable:
             blockers.append("EPISODE_DRIVER_OWNER_NOT_IDLE_OR_UNVERIFIED")
-        if driver.get("driver_state") == "EXITED" and not resident_restart_permitted(driver):
+        if driver.get("driver_state") == "EXITED" and not restartable:
             blockers.append("EPISODE_DRIVER_EXIT_REQUIRES_REMEDIATION")
         if stage.get("stage") == "STORYBOARD_LOCKED":
             # A DAG may be safe to start without being eligible to finish.
@@ -239,6 +274,7 @@ def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
                     "outcome_unknown_assets": attempts.get("outcome_unknown_assets", []),
                     "active_attempt_assets": attempts.get("active_attempt_assets", [])},
         "driver_state": driver.get("driver_state") if episode else None,
+        "driver_recovery": driver_recovery,
         # Read-only identity needed by the bounded autonomy watchdog. Never
         # promote a PID / heartbeat sample into a Writer fencing permit.
         "driver_evidence": {
@@ -406,6 +442,24 @@ def main(argv: list[str] | None = None) -> int:
         if state["status"] != "READY_TO_START":
             print("NATIVE_CODEX_FULL_AUTO_BLOCKED_BY_AUTHORITY", file=sys.stderr)
             return 3
+        if (args.command in {"start", "run"}
+                and (state.get("driver_recovery") or {}).get("status") ==
+                    "HISTORICAL_STORY_RC4_SUPERSEDED_BY_VERIFIED_A15_PASS"):
+            # No separate reservation: the original explicit remediation
+            # receipt already exists, and the actual Driver still owns its
+            # double-start lock. Reconfirm this proof immediately before the
+            # host performs its explicitly acknowledged dispatch.
+            recovery_rc, latest = _probe(
+                env, "scripts/storyos_post_review_rc4_readonly.py",
+                ["--episode", episode.relative_to(ROOT).as_posix()]
+            )
+            if (recovery_rc != 0 or latest.get("status") !=
+                    "HISTORICAL_STORY_RC4_SUPERSEDED_BY_VERIFIED_A15_PASS"
+                    or latest.get("driver_record_sha256") !=
+                    state["driver_recovery"]["driver_record_sha256"]):
+                print("HISTORICAL_STORY_RC4_AUTHORITY_CHANGED_BEFORE_START",
+                      file=sys.stderr)
+                return 3
         return subprocess.call(full_auto_command(args, episode), cwd=ROOT, env=env)
     except (ValueError, OSError) as exc:
         # Print only fixed internal admission error codes, never credentials.
