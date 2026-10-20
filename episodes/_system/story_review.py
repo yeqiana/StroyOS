@@ -26,7 +26,9 @@ import review_policy_binding
 import story_review_rubric_migration
 import story_review_a10_source_revision
 import story_review_a11_source_repair
+import story_serial_recheck
 import runtime_request
+import story_narrative_form
 
 ROOT = Path(__file__).resolve().parents[2]
 REVIEW_REL = Path("meta/story-semantic-review.json")
@@ -399,13 +401,26 @@ def validate_payload(data: dict, *, story_sha: str, storyboard_sha: str, version
         and provenance.get("previous_storyboard_sha256")!=storyboard_sha
         and provenance.get("subtitle_source_sha256")==data.get("subtitle_source_sha256")
     )
+    serial_episode_epoch = (
+        attempt == story_serial_recheck.ATTEMPT
+        and provenance.get("direct_user_continuation_review") is True
+        and provenance.get("review_scope") == story_serial_recheck.REVIEW_SCOPE
+        and provenance.get("review_epoch") == 11
+        and provenance.get("epoch_attempt") == 1
+        and all(isinstance(provenance.get(k),str) and len(provenance[k])==64
+                and all(ch in "0123456789abcdef" for ch in provenance[k].lower())
+                for k in ("previous_review_sha256","current_rubric_sha256",
+                          "subtitle_source_sha256"))
+        and data.get("subtitle_source_sha256") == provenance.get("subtitle_source_sha256")
+    )
     if attempt not in {1, 2} and not (
-        continuation or source_revision or symbolic_remediation or paired_caption
+        serial_episode_epoch or continuation or source_revision or symbolic_remediation or paired_caption
         or photo_text_repair or character_source_repair or concept_selection_revision
         or concept_selection_source_repair or concept_selection_source_repair_a5 or migrated_rubric_epoch or a10_source_epoch or a11_source_epoch
     ):
         errors.append("critic attempt must be 1 or 2 unless explicitly authorized policy continuation or SHA-bound source/caption revision")
-    revisions = ({10} if a11_source_epoch else
+    revisions = ({11} if serial_episode_epoch else
+                 {10} if a11_source_epoch else
                  {9} if a10_source_epoch else
                  {8} if migrated_rubric_epoch else
                  {0, 1, 2, 3, 4} if concept_selection_source_repair_a5 else
@@ -547,6 +562,8 @@ def verify(ep: Path) -> list[str]:
                 story_review_a10_source_revision.EPOCH_REL,
             story_review_a11_source_repair.REVIEW_SCOPE:
                 story_review_a11_source_repair.EPOCH_REL,
+            story_serial_recheck.REVIEW_SCOPE:
+                story_serial_recheck.EPOCH_REL,
         }
         rel = manifest_by_scope.get(scope)
         if rel is None:
@@ -575,6 +592,7 @@ def verify(ep: Path) -> list[str]:
                     "CONCEPT_SELECTION_SOURCE_REPAIR_AFTER_FAIL_A5",
                     story_review_a10_source_revision.REVIEW_SCOPE,
                     story_review_a11_source_repair.REVIEW_SCOPE,
+                    story_serial_recheck.REVIEW_SCOPE,
                 }
                 story_revised = scope == "CHARACTER_STORY_SOURCE_REPAIR_AFTER_FAIL"
                 concept_revised = scope in {
@@ -667,6 +685,9 @@ def verify(ep: Path) -> list[str]:
         if not story_review_a11_source_repair.validate_epoch(
                 ep, data.get("critic_provenance") or {}):
             errors.append("A11 source repair previous A10 FAIL or SHA binding mismatch")
+    if (data.get("critic_provenance") or {}).get("review_scope") == story_serial_recheck.REVIEW_SCOPE:
+        if not story_serial_recheck.validate_epoch(ep, data.get("critic_provenance") or {}):
+            errors.append("serial episode A12 predecessor, source or rubric SHA mismatch")
     if propagation_core_gate.required(ep):
         errors.extend(propagation_core_gate.verify(ep))
     return errors
@@ -820,6 +841,42 @@ Required JSON shape:
 If any hard rule fails, set its boolean false, add specific codes such as STORY_COMPREHENSION_FAIL, CAUSAL_CHAIN_BROKEN, MECHANISM_CONTRADICTION, CLIMAX_DISCOVERY_ONLY, ENDING_PAYOFF_TOO_WEAK, STORYBOARD_STALL, and set summary.passed=false.
 Episode: {rel_ep}
 """
+    if (story_narrative_form.for_episode(ep) == story_narrative_form.SERIAL_EPISODE
+            and not _locked_documentary_rubric(ep)):
+        # Episodic suspense is not a failed standalone ending merely because the
+        # series mystery remains open. Retain the original schema and all hard
+        # checks; the independent Critic must still find a real episode-level
+        # consequence, grounded causal logic, fidelity, and useful frames.
+        start = prompt.index("Hard rules:\n")
+        end = prompt.index("Write ONLY valid JSON", start)
+        serial_rules = """SERIAL EPISODE HARD RULES (STORY_OS_SERIAL_EPISODE):
+1. This is one installment of a multi-episode work. Do not demand full escape,
+   rescue, final explanation of the series mystery, or the next episode's result.
+2. The installment MUST still have a legible local event arc: concrete setup,
+   characters acting/reacting, causal escalation, and at least one irreversible
+   change in options, relationship, safety, stakes, identity or knowledge by the
+   last frame. An unrelated last-minute teaser or mere sighting is not a payoff.
+3. The climax may be a forced reversal or consequential trap instead of a
+   successful voluntary escape. Assess the actual cost/change truthfully in
+   contract.climax_choice and blind_retell.climax_resolution; do not invent
+   actions absent from the user-locked source.
+4. The ending must reframe at least THREE concrete earlier on-screen or paired
+   subtitle facts; preserve the open series question without introducing a
+   brand-new unrelated mechanism as a substitute for this episode's payoff.
+5. Preserve the user's locked scene order, frame count, characters and subtitles.
+   Do NOT demand rewriting the source merely to fit standalone 20-25-frame
+   pacing; still reject demonstrably redundant frames and stagnant 5-frame runs.
+6. Judge one coherent mechanism with believable earlier setup; flag real
+   contradictory temperature, timing, identities or unsupported causal claims.
+   The series mystery may be unexplained, but the observable local cause/effect
+   cannot contradict itself.
+7. Keep V2.5 propagation core: protagonist action -> direct anomaly response
+   -> visible consequence -> 10-second retell. A late trigger needs an actually
+   evidenced reason, never a fabricated exception.
+8. All unchanged hard_checks remain mandatory. Fail with specific issue_codes
+   when episode-level consequence, character stakes, coherence, or pacing fails.
+"""
+        prompt = prompt[:start] + serial_rules + "\n" + prompt[end:]
     if _locked_documentary_rubric(ep):
         # Replace incompatible anomaly-oriented *instructions*, not the review
         # authority, mandatory fields, true/false checks or independent critic.

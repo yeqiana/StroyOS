@@ -22,6 +22,7 @@ import intro_policy
 import multi_level_cache
 import runtime_execution
 import runtime_request
+import story_narrative_form
 import scoped_codex_worker
 import runtime_mode_router
 import directing_quality
@@ -505,6 +506,8 @@ def _run_targeted_review(ep, *, kind, attempt, codex, timeout, run_id, trace_id)
     import product_review_adapter
 
     if kind == "story-semantic":
+        block=story_narrative_form.failed_locked_review_block(ep)
+        if block:return 22,block
         import story_review_attempt_admission
         import story_review
         # DAG step counters include dozens of REUSED runs; they are NOT Critic
@@ -1003,6 +1006,8 @@ def _execute(ep,codex=None,timeout=None,run_id=None,trace_id=None,until=None,tel
                 if blocker:
                     rc=4
                     note="MISSING_EVIDENCE_FAIL_CLOSED: "+blocker
+        elif (s.step_id=="CREATIVE_STORY" and (block := story_narrative_form.failed_locked_review_block(ep))):
+            rc=22;note=block
         elif (s.step_id=="CREATIVE_STORY" and incremental_runtime_strategy(
                 incremental_plan,s.step_id,cur)=="VERIFY_STORY_EVIDENCE"):
             rc,note=_run_targeted_review(
@@ -1213,7 +1218,7 @@ def _execute(ep,codex=None,timeout=None,run_id=None,trace_id=None,until=None,tel
         if rc==0 and s.target_state:
             ok,msg=validate_target(ep,s.target_state)
             if not ok: rc=4; note=(note+"\nPOSTCONDITION FAIL\n"+msg)[-5000:]
-        status="PASS" if rc==0 else ("HOST_WAIT" if rc==product_runtime_adapter.HOST_ACTION_REQUIRED_RC else ("BLOCKED" if rc in {124,3,4} else "FAILED"))
+        status="PASS" if rc==0 else ("HOST_WAIT" if rc==product_runtime_adapter.HOST_ACTION_REQUIRED_RC else ("BLOCKED" if rc in {124,3,4,22} else "FAILED"))
         runtime_observability.safe_record_runtime_event(
             ep,"STEP_FINISHED" if rc==0 else "STEP_FAILED",run_id=event_run_id,trace_id=trace_id,
             step=s.step_id,timestamp=runtime_node_execution.now(),duration_ms=elapsed*1000,

@@ -672,6 +672,10 @@ def _deadline_epoch(record):
 
 def run_step(ep,step,codex_raw=None,timeout=None,attach_poll_seconds=None,run_id=None,trace_id=None):
     if step not in STEP_DIRECTIVES: raise ValueError(f"unknown scoped step: {step}")
+    if step=="CREATIVE_STORY":
+        import story_narrative_form
+        block=story_narrative_form.failed_locked_review_block(ep)
+        if block:return 22,block
     if timeout is None:
         timeout = runtime_timeout_policy.seconds("codex_scoped_step")
     perf_run=episode_performance.safe_begin_stage(ep,step,source="scoped_codex_worker")

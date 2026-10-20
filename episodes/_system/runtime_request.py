@@ -270,11 +270,14 @@ def compile_request(text):
     if intent.get("intent") != expected_intent:
         intent={**intent,"intent":expected_intent,"reason_codes":[*(intent.get("reason_codes") or []),f"MODE_OVERRIDE_{mode.upper()}"]}
     rid=request_id(text)
+    from story_narrative_form import from_request as get_form
+    narrative_form=get_form({"topic":{"title":title},"provenance":{"original_request":text}})
     data={
         "schema_version":1,"request_id":rid,"created_at":now(),"mode":mode,
         "repository":{"branch":branch,"source":branch_source},
         "topic":{"title":title,"raw":raw_topic},
         "story_input":story,
+        "narrative_form":narrative_form,
         "intent":intent,
         "creative_hints":creative_hints(text),
         "image_model":image["model"],
@@ -304,6 +307,7 @@ def validate_request(data):
         if intent.get("intent") != expected_intent: errors.append("intent.intent must match runtime mode")
         if intent.get("source") != "deterministic_rules": errors.append("intent.source must be deterministic_rules")
     if story.get("mode") not in STORY_MODES:errors.append("invalid story_input.mode")
+    if data.get("narrative_form") is not None and (not isinstance(data["narrative_form"],str) or data["narrative_form"] not in {"STANDALONE","SERIAL_EPISODE"}):errors.append("invalid narrative_form")
     if story.get("mode")=="user_seed" and not str(story.get("raw") or "").strip():errors.append("user_seed requires raw story seed")
     if story.get("mode")=="core_constraints" and not isinstance(story.get("constraints"),list):errors.append("core_constraints requires constraints list")
     image=data.get("image") or {}

@@ -23,6 +23,7 @@ from final_candidate_snapshot import required as final_snapshot_required, verify
 from post_publish_review import REQUIRED_FOR_DATA_REVIEWED, required as post_publish_required, verify as verify_post_publish
 from final_acceptance import allows as acceptance_allows, visual_asset_for_frame
 import runtime_request
+import story_narrative_form
 
 STATE_MIN = {name: idx for idx, name in enumerate(STATES)}
 PRODUCTION_DECISIONS = {"pending", "pass", "fail"}
@@ -308,7 +309,7 @@ def locked_story_contract(episode_dir: Path) -> bool:
     )
 
 
-def check_story_gate(gates: dict, total: int, findings: list[Finding], *, creative_gates_required: bool = True) -> None:
+def check_story_gate(gates: dict, total: int, findings: list[Finding], *, creative_gates_required: bool = True, narrative_form: str = story_narrative_form.STANDALONE) -> None:
     story = gates.get("story")
     reviews = gates.get("reviews") if isinstance(gates.get("reviews"), dict) else {}
     if not isinstance(story, dict):
@@ -323,7 +324,8 @@ def check_story_gate(gates: dict, total: int, findings: list[Finding], *, creati
         if story.get("mechanism_skin_swap_veto") is True:
             findings.append(Finding("FAIL", "mechanism_skin_swap_veto", "已触发机制换皮一票否决"))
     if story.get("task_closed") is not True:
-        findings.append(Finding("FAIL", "task_not_closed", "任务/事件闭环尚未完成"))
+        detail=("本集没有可核实的状态改变与悬念兑现" if narrative_form==story_narrative_form.SERIAL_EPISODE else "任务/事件闭环尚未完成")
+        findings.append(Finding("FAIL", "task_not_closed", detail))
     if creative_gates_required:
         ce = story.get("competing_explanations")
         if isinstance(ce, bool) or not isinstance(ce, int) or ce < 2:
@@ -582,7 +584,7 @@ def check_stage(repo_root: Path, episode_dir: Path, manifest: dict, current: str
             findings.append(Finding("WARN", "readme_state_drift", f"machine state is {current} but episode README says 已发布"))
 
 
-def check_story_os_for_effective(repo_root: Path, state: dict, manifest: dict, gates: dict, effective: str, findings: list[Finding], *, metadata_only: bool, waive: bool = False, legacy_gates_pending: bool = False, creative_story_gates_required: bool = True) -> None:
+def check_story_os_for_effective(repo_root: Path, state: dict, manifest: dict, gates: dict, effective: str, findings: list[Finding], *, metadata_only: bool, waive: bool = False, legacy_gates_pending: bool = False, creative_story_gates_required: bool = True, narrative_form: str = story_narrative_form.STANDALONE) -> None:
     check_gates_common(state, manifest, gates, findings)
     total = (manifest.get("release") or {}).get("body_frame_count")
     if not isinstance(total, int) or total <= 0:
@@ -592,6 +594,7 @@ def check_story_os_for_effective(repo_root: Path, state: dict, manifest: dict, g
         check_story_gate(
             gates, total, findings,
             creative_gates_required=creative_story_gates_required,
+            narrative_form=narrative_form,
         )
     if idx >= STATE_MIN["VISUAL_CALIBRATED"]:
         check_visual_gate(gates, total, findings)
@@ -662,6 +665,7 @@ def validate_episode(episode_dir: Path, repo_root: Path, metadata_only: bool, ta
             waive=acceptance_allows(episode_dir, "production_gate"),
             legacy_gates_pending=legacy_gates_pending,
             creative_story_gates_required=not locked_story_contract(episode_dir),
+            narrative_form=(story_narrative_form.for_episode(episode_dir) if Path(repo_root).resolve()==repo_root_from_script().resolve() else story_narrative_form.STANDALONE),
         )
 
     # V2.1 Concept Ambition is pre-Story-Lock evidence, not a second episode stage.
