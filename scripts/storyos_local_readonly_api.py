@@ -34,6 +34,41 @@ from platform.operations.local_provider_call_readonly import observe_provider_ca
 
 SOURCE = "local_workspace_episode_state_file"
 
+def read_local_story_excerpt(directory: Path) -> str | None:
+    """Bounded synopsis from a canonical Episode draft, not a reviewed release copy."""
+    docs = directory / "docs"
+    story = docs / "story.md"
+    try:
+        if (docs.is_symlink() or story.is_symlink() or not docs.is_dir()
+                or not story.is_file() or story.stat().st_size > 96 * 1024):
+            return None
+        if not story.resolve(strict=True).is_relative_to(directory.resolve(strict=True)):
+            return None
+        lines = story.read_text(encoding="utf-8").splitlines()
+        heading = next((i for i, line in enumerate(lines)
+                        if re.match(r"^##\s*(完整故事|故事梗概|剧情简介|故事简介|内容简介|故事概述|剧情概述)", line)), None)
+        if heading is None:
+            return None
+        paragraph: list[str] = []
+        for line in lines[heading + 1:]:
+            line = line.strip()
+            if not line and not paragraph:
+                continue
+            if not line or line.startswith("#"):
+                break
+            if line.startswith(("-", "*", ">", "|")):
+                return None
+            paragraph.append(line)
+            if len("".join(paragraph)) > 500:
+                break
+        value = re.sub(r"\s+", " ", " ".join(paragraph)).strip()
+        if len(value) < 25:
+            return None
+        return value[:150].rstrip("，；、 ") + ("…" if len(value) > 150 else "")
+    except (OSError, ValueError, UnicodeError):
+        return None
+
+
 
 class LocalEpisodeFileStatuses:
     def __init__(self, workspace: str | Path) -> None:
@@ -201,11 +236,14 @@ class LocalEpisodeFileStatuses:
             mysql_snapshot = observe_mysql_episode(
                 item["_namespace"], str(item.get("business_episode_id") or ""))
             provider_calls = observe_provider_calls(directory, mysql_snapshot)
+        story_excerpt = read_local_story_excerpt(directory) if directory is not None else None
         generation = mysql_snapshot.get("generation_attempt_records", [])
         attempted_frames = {rec["frame"] for rec in generation
                             if isinstance(rec.get("frame"), int)}
         return {
             **{k: v for k, v in item.items() if not k.startswith("_")},
+            "story_excerpt": story_excerpt,
+            "story_excerpt_source": "local_story_draft" if story_excerpt else None,
             "projection_level": "detail", "execution_status": live["execution_status"],
             "current_action": live["current_action"], "next_step": None,
             "blocking_reason": live["blocking_reason"], "last_event_at": live["last_event_at"],

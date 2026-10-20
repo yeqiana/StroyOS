@@ -128,6 +128,8 @@ export interface LocalProviderCallObservation {
 }
 
 export interface RuntimeStatusDetail {
+  story_excerpt?: string | null;
+  story_excerpt_source?: 'local_story_draft' | null;
   schema_version?: number;
   observed_at?: string | null;
   episode?: string | null;

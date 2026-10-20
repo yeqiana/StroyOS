@@ -127,5 +127,47 @@ class LiveEpisodeMonitoringTests(unittest.TestCase):
 
 
 
+    def test_story_excerpt_only_from_safe_bounded_draft(self):
+        from scripts.storyos_local_readonly_api import read_local_story_excerpt
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp) / "episode"
+            docs = directory / "docs"
+            docs.mkdir(parents=True)
+            story = docs / "story.md"
+            paragraph = "深秋山路发生滑坡，三名年轻人误入纯白色的疗养院，并逐渐意识到这里隐藏着令人不安的秘密。"
+            story.write_text("# 标题\n\n## 完整故事（草稿）\n\n" + paragraph + "\n\n## 角色\n无", encoding="utf-8")
+            self.assertEqual(read_local_story_excerpt(directory), paragraph)
+            story.write_text("# 标题\n\n## 角色\n信息", encoding="utf-8")
+            self.assertIsNone(read_local_story_excerpt(directory))
+            story.write_text("# 标题\n## 完整故事\n\n" + "字" * (96 * 1024), encoding="utf-8")
+            self.assertIsNone(read_local_story_excerpt(directory))
+
+    def test_story_excerpt_detail_does_not_turn_into_release_approval(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            directory = root / "episodes" / Path(NAMESPACE)
+            (directory / "meta").mkdir(parents=True)
+            (directory / "docs").mkdir()
+            (directory / "meta" / "release-manifest.json").write_text("{}", encoding="utf-8")
+            (directory / "docs" / "story.md").write_text(
+                "# 标题\n\n## 完整故事\n\n"
+                "三人意外误入深山中的纯白疗养院，逐渐发现异常迹象，却无法立即确认背后的真相。\n",
+                encoding="utf-8")
+            record = {"namespace": NAMESPACE, "title": "深渊疗愈所",
+                      "business_episode_id": "00-14", "production_stage": "IDEA_LOCKED",
+                      "updated_at": "2026-10-20T09:00:00+00:00"}
+            with patch("scripts.storyos_local_readonly_api.observe_mysql_catalog",
+                       return_value={"available": True, "reason": None,
+                                     "items": [record], "truncated": False}):
+                service = LocalEpisodeFileStatuses(root)
+                summary = service.list_episode_statuses()["items"][0]
+                self.assertNotIn("story_excerpt", summary, "story source is detail-only")
+                detail = service.get_episode_status(summary["episode_ref"])
+                self.assertIn("三人意外误入", detail["story_excerpt"])
+                self.assertEqual(detail["story_excerpt_source"], "local_story_draft")
+                self.assertEqual(detail["production_stage"], "IDEA_LOCKED")
+
+
+
 if __name__ == "__main__":
     unittest.main()

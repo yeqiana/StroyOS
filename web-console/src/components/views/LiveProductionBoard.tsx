@@ -1,10 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Progress } from 'antd';
-import { Activity, AlertTriangle, ArrowRight, Check, Circle, RefreshCw } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowRight, Check, Circle, Image as ImageIcon, RefreshCw } from 'lucide-react';
 import { platformApi, type RuntimeStatusDetail, type RuntimeStatusSummary, stageLabel } from '../../api/platformApi';
 import { PRODUCTION_MILESTONES, projectProductionProgress } from '../../api/productionProgress';
+import { useLocalApprovedMedia } from '../../api/localApprovedMedia';
+import { matchCanonicalHistoricalEpisode } from '../../api/canonicalRuntimeCatalog';
+import type { Episode } from '../../types';
 
 interface Props {
+  episodes: Episode[];
   onOpenEpisode: (episodeRef: string) => void;
 }
 
@@ -26,7 +30,13 @@ const stateOrder: Record<string, number> = {
   completed: 4,
 };
 
-function ProductionProgressCard({ entry, onOpenEpisode }: { entry: ObservedEpisode; onOpenEpisode: Props['onOpenEpisode'] }) {
+function ProductionProgressCard({ entry, onOpenEpisode, thumbnailUrl, synopsis, synopsisSource }: {
+  entry: ObservedEpisode;
+  onOpenEpisode: Props['onOpenEpisode'];
+  thumbnailUrl?: string;
+  synopsis: string | null;
+  synopsisSource: string | null;
+}) {
   const { summary, detail, detailLoaded } = entry;
   const ref = summary.episode_ref || summary.episode_id || '';
   const progress = projectProductionProgress(summary, detail);
@@ -35,11 +45,16 @@ function ProductionProgressCard({ entry, onOpenEpisode }: { entry: ObservedEpiso
   const reason = progress.blockedReason === 'STEP_BLOCKED' ? '当前节点被生产门禁阻断，请进入详情查看原始日志与恢复条件' : progress.blockedReason;
 
   return <article className="min-w-0 rounded-[6px] border border-[var(--border-normal)] bg-[var(--bg-surface)] px-4 py-3.5" aria-label={'生产进度 '+(summary.title || ref)}>
-    <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="flex flex-wrap items-start gap-3">
+      <div className="relative flex h-[100px] w-[76px] shrink-0 items-center justify-center overflow-hidden rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] sm:h-[112px] sm:w-[84px]">
+        {thumbnailUrl
+          ? <img src={thumbnailUrl} loading="lazy" alt={(summary.title || '作品') + '的已批准图片缩略图'} className="h-full w-full object-cover object-top"/>
+          : <div className="flex flex-col items-center gap-1 text-[var(--text-tertiary)]"><ImageIcon size={20} strokeWidth={1.4}/><span className="text-center text-[10px] leading-4">暂无已批准图片</span></div>}
+      </div>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <h3 className="max-w-full truncate text-[14px] font-semibold text-[var(--text-primary)]" title={summary.title || ref}>{summary.title || ref || '未命名作品'}</h3>
-          <span className={'rounded-[3px] border px-2 py-0.5 text-[11px] '+(
+          <h3 className="min-w-0 max-w-full truncate text-[14px] font-semibold text-[var(--text-primary)]" title={summary.title || ref}>{summary.title || ref || '未命名作品'}</h3>
+          <span className={'shrink-0 rounded-[3px] border px-2 py-0.5 text-[11px] '+(
             progress.state === 'blocked' ? 'border-[var(--danger)] text-[var(--danger)]' :
             progress.state === 'verified_generating' ? 'border-[var(--info)] text-[var(--info)]' :
             'border-[var(--border-normal)] text-[var(--text-secondary)]'
@@ -49,8 +64,10 @@ function ProductionProgressCard({ entry, onOpenEpisode }: { entry: ObservedEpiso
           {stageLabel(summary.production_stage || 'NO_STATE')} · {summary.state_source === 'mysql_episode_state_read_only' ? 'MySQL 权威阶段' : '本地只读来源'}
           {progress.action ? ' · 最近节点 '+progress.action : ''}
         </p>
+        <p className="mt-2 line-clamp-2 text-[12px] leading-[1.65] text-[var(--text-secondary)]" title={synopsis || undefined}>{synopsis || '暂无可核验的剧情简介'}</p>
+        <p className="mt-1 text-[10px] text-[var(--text-tertiary)]">{synopsisSource || '简介未收录'}{thumbnailUrl ? ' · 封面为已批准素材' : ''}</p>
       </div>
-      <Button size="small" onClick={() => ref && onOpenEpisode(ref)} disabled={!ref}>监控详情 <ArrowRight size={13}/></Button>
+      <Button size="small" className="!shrink-0" onClick={() => ref && onOpenEpisode(ref)} disabled={!ref}>监控详情 <ArrowRight size={13}/></Button>
     </div>
     <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
       <span className="text-[11px] font-medium text-[var(--text-secondary)]">生产流程 · 阶段完成率</span>
@@ -90,7 +107,8 @@ function ProductionProgressCard({ entry, onOpenEpisode }: { entry: ObservedEpiso
   </article>;
 }
 
-export const LiveProductionBoard: React.FC<Props> = ({ onOpenEpisode }) => {
+export const LiveProductionBoard: React.FC<Props> = ({ episodes, onOpenEpisode }) => {
+  const { findEpisode } = useLocalApprovedMedia();
   const [entries, setEntries] = useState<ObservedEpisode[]>([]);
   const [status, setStatus] = useState<'loading'|'ready'|'partial'|'offline'>('loading');
   const [total, setTotal] = useState<number | null>(null);
@@ -160,7 +178,19 @@ export const LiveProductionBoard: React.FC<Props> = ({ onOpenEpisode }) => {
           <span className="ml-auto text-[11px] text-[var(--text-tertiary)]">阶段百分比 ≠ 时间或生图完成率</span>
         </div>
         {visible.length ? <div className="grid min-w-0 gap-3 xl:grid-cols-2">
-          {visible.map(entry => <ProductionProgressCard key={entry.summary.episode_ref || entry.summary.episode_id} entry={entry} onOpenEpisode={onOpenEpisode}/>)}
+          {visible.map(entry => {
+            const row = entry.summary;
+            const historical = matchCanonicalHistoricalEpisode(row, episodes, entries.map(item => item.summary));
+            const fromDraft = entry.detail?.story_excerpt?.trim();
+            const fromHistory = historical?.synopsis?.trim() || historical?.logline?.trim();
+            const synopsis = fromDraft || fromHistory || null;
+            const synopsisSource = fromDraft ? '工作区故事草稿 · 未经发布审核' : fromHistory ? '已匹配的历史作品简介' : null;
+            const approved = row.title && row.business_episode_id
+              ? findEpisode(row.title, row.business_episode_id) : undefined;
+            const thumbnailUrl = approved?.episode_ref === row.episode_ref ? approved.frames[0]?.url : undefined;
+            return <ProductionProgressCard key={row.episode_ref || row.episode_id} entry={entry} onOpenEpisode={onOpenEpisode}
+              thumbnailUrl={thumbnailUrl} synopsis={synopsis} synopsisSource={synopsisSource}/>;
+          })}
         </div> : <p className="p-4 text-[12px] text-[var(--text-secondary)]">尚未找到可以展示的生产作品。</p>}
         {ranked.length > 4 && <button type="button" className="flex w-full items-center justify-center gap-1 border-b border-[var(--border-subtle)] py-2 text-[12px] text-[var(--info)] hover:bg-[var(--bg-hover)]" onClick={()=>setExpanded(value=>!value)}>
           {expanded?'收起作品':'查看全部 '+ranked.length+' 部作品'} <ArrowRight size={13}/>

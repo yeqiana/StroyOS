@@ -101,8 +101,6 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
       <span className="text-[11px] text-[var(--text-tertiary)]">MySQL 阶段与只读执行证据 · 在线状态需核验</span>
     </header>
 
-    <LiveProductionBoard onOpenEpisode={onOpenRuntimeEpisode}/>
-
     <section aria-label="创作快捷入口" className="space-y-3">
       <div><h2 className="text-[22px] font-semibold leading-8 tracking-tight">今天想创作什么？</h2><p className="mt-1 text-[12px] text-[var(--text-secondary)]">从已有作品接着做，或去素材库查看批准图片；正式生图仍使用受控流程。</p></div>
       <div className="grid min-w-0 gap-px border-y border-[var(--border-subtle)] bg-[var(--border-subtle)] sm:grid-cols-2" role="group" aria-label="继续制作与素材入口">
@@ -137,6 +135,8 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
       </div>:<div className="flex flex-wrap items-center gap-3 border-y border-[var(--border-subtle)] py-4 text-[12px] text-[var(--text-secondary)]"><ImageIcon size={19}/>本机暂无可验证的已批准图片。{featured&&<button type="button" onClick={()=>onSelectEpisode(featured)} className="text-[var(--info)]">继续最近作品 <ArrowRight size={13} className="inline"/></button>}</div>}
       {recentApproved.length>0&&<p className="text-[11px] text-[var(--text-tertiary)]">已批准图片属于素材证据，工作区帧进度属于历史快照；两者不代表本次生成完成。</p>}
     </section>
+
+    <LiveProductionBoard episodes={episodes} onOpenEpisode={onOpenRuntimeEpisode}/>
 
     <details aria-label="工作台完整管理与数据核对" className="group border-t border-[var(--border-subtle)] pt-2">
       <summary className="flex cursor-pointer items-center justify-between gap-3 py-2 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
