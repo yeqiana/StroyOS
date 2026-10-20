@@ -48,5 +48,5 @@ def test_shadow_review_adapters_cannot_create_authority():
     cfg=storyos_config.load_config()
     adapters=storyos_config.get_path(cfg,"agent_runtime.adapters")
     for name in ("story_semantic_critic","preimage_semantic_critic","final_semantic_critic"):
-        assert adapters[name]["shadow_enabled"] is True
+        assert adapters[name]["shadow_enabled"] is False
         assert adapters[name]["production_enabled"] is False
