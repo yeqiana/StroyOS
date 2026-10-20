@@ -27,6 +27,7 @@ import story_review_rubric_migration
 import story_review_a10_source_revision
 import story_review_a11_source_repair
 import story_serial_recheck
+import story_source_revision_a13_review
 import runtime_request
 import story_narrative_form
 
@@ -413,13 +414,26 @@ def validate_payload(data: dict, *, story_sha: str, storyboard_sha: str, version
                           "subtitle_source_sha256"))
         and data.get("subtitle_source_sha256") == provenance.get("subtitle_source_sha256")
     )
+    authorized_serial_source_a13=(
+        attempt==story_source_revision_a13_review.ATTEMPT
+        and provenance.get("direct_user_continuation_review") is True
+        and provenance.get("review_scope")==story_source_revision_a13_review.REVIEW_SCOPE
+        and provenance.get("review_epoch")==12
+        and provenance.get("epoch_attempt")==1
+        and all(isinstance(provenance.get(k),str) and len(provenance[k])==64
+                and all(c in "0123456789abcdef" for c in provenance[k].lower())
+                for k in ("previous_review_sha256","source_approval_sha256",
+                          "current_rubric_sha256","subtitle_source_sha256"))
+        and data.get("subtitle_source_sha256")==provenance.get("subtitle_source_sha256")
+    )
     if attempt not in {1, 2} and not (
-        serial_episode_epoch or continuation or source_revision or symbolic_remediation or paired_caption
+        authorized_serial_source_a13 or serial_episode_epoch or continuation or source_revision or symbolic_remediation or paired_caption
         or photo_text_repair or character_source_repair or concept_selection_revision
         or concept_selection_source_repair or concept_selection_source_repair_a5 or migrated_rubric_epoch or a10_source_epoch or a11_source_epoch
     ):
         errors.append("critic attempt must be 1 or 2 unless explicitly authorized policy continuation or SHA-bound source/caption revision")
-    revisions = ({11} if serial_episode_epoch else
+    revisions = ({12} if authorized_serial_source_a13 else
+                 {11} if serial_episode_epoch else
                  {10} if a11_source_epoch else
                  {9} if a10_source_epoch else
                  {8} if migrated_rubric_epoch else
@@ -564,6 +578,8 @@ def verify(ep: Path) -> list[str]:
                 story_review_a11_source_repair.EPOCH_REL,
             story_serial_recheck.REVIEW_SCOPE:
                 story_serial_recheck.EPOCH_REL,
+            story_source_revision_a13_review.REVIEW_SCOPE:
+                story_source_revision_a13_review.EPOCH_REL,
         }
         rel = manifest_by_scope.get(scope)
         if rel is None:
@@ -593,6 +609,7 @@ def verify(ep: Path) -> list[str]:
                     story_review_a10_source_revision.REVIEW_SCOPE,
                     story_review_a11_source_repair.REVIEW_SCOPE,
                     story_serial_recheck.REVIEW_SCOPE,
+                    story_source_revision_a13_review.REVIEW_SCOPE,
                 }
                 story_revised = scope == "CHARACTER_STORY_SOURCE_REPAIR_AFTER_FAIL"
                 concept_revised = scope in {
@@ -688,6 +705,9 @@ def verify(ep: Path) -> list[str]:
     if (data.get("critic_provenance") or {}).get("review_scope") == story_serial_recheck.REVIEW_SCOPE:
         if not story_serial_recheck.validate_epoch(ep, data.get("critic_provenance") or {}):
             errors.append("serial episode A12 predecessor, source or rubric SHA mismatch")
+    if (data.get("critic_provenance") or {}).get("review_scope")==story_source_revision_a13_review.REVIEW_SCOPE:
+        if not story_source_revision_a13_review.validate_epoch(ep,data.get("critic_provenance") or {}):
+            errors.append("A13 authorized source revision, A12 predecessor or rubric SHA mismatch")
     if propagation_core_gate.required(ep):
         errors.extend(propagation_core_gate.verify(ep))
     return errors
