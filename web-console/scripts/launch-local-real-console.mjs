@@ -93,7 +93,7 @@ async function main(){
  start(process.execPath,[vite,'--host','127.0.0.1','--port',String(webPort),'--strictPort'],web,viteEnv);
  await poll('http://127.0.0.1:'+webPort+'/',async r=>(await r.text()).includes('id="root"'));
  await poll('http://127.0.0.1:'+webPort+'/api/v1/runtime/statuses?limit=1&offset=0',async r=>{
-  const payload=await r.json();return payload.code==='OK'&&payload.data?.items?.[0]?.state_source==='local_workspace_episode_state_file'&&payload.data?.total>0;
+  const payload=await r.json();return payload.code==='OK'&&['local_workspace_episode_state_file','mysql_episode_state_read_only','local_episode_directory_unverified'].includes(payload.data?.items?.[0]?.state_source)&&payload.data?.total>0;
  });
  console.log('LOCAL_STORYOS_READY http://127.0.0.1:'+webPort+'/');
  console.log('LOCAL_REAL_FILES_API http://127.0.0.1:'+apiPort+'/healthz');
