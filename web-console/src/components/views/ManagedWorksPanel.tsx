@@ -1,9 +1,10 @@
 import React, {useEffect, useMemo, useState} from 'react';
-import {Button, Input, Modal, Table, Tooltip} from 'antd';
-import {ArrowRight, FilePlus2, Pencil, RefreshCw, Search, Trash2} from 'lucide-react';
+import {Button, Drawer, Input, Modal, Segmented, Table, Tooltip} from 'antd';
+import {ArrowRight, Eye, FilePlus2, Image as ImageIcon, Images, List, Pencil, RefreshCw, Search, Trash2} from 'lucide-react';
 import type {Episode} from '../../types';
-import {platformApi, stageLabel, type RuntimeStatusSummary} from '../../api/platformApi';
+import {platformApi, stageLabel, type RuntimeStatusDetail, type RuntimeStatusSummary} from '../../api/platformApi';
 import {isManagedDraft, validateDraftProfile, type DraftProfile} from '../../api/localWorkCrud';
+import {useLocalApprovedMedia} from '../../api/localApprovedMedia';
 
 type ManagedRow = {key:string; kind:'runtime'|'draft'; title:string; code:string; updated:string; stage:string; draft?:Episode; official?:RuntimeStatusSummary};
 interface Props {
@@ -15,13 +16,19 @@ interface Props {
   onOpenRuntimeEpisode: (ref:string)=>void;
 }
 const emptyProfile = ():DraftProfile=>({title:'',synopsis:'',genre:'未分类'});
+const dateText=(text:string)=>text?text.replace('T',' ').slice(0,16):'未知';
 export const ManagedWorksPanel:React.FC<Props>=({episodes,onCreateDraft,onUpdateDraft,onDeleteDraft,onSelectDraft,onOpenRuntimeEpisode})=>{
+  const {findEpisode}=useLocalApprovedMedia();
   const [official,setOfficial]=useState<RuntimeStatusSummary[]>([]);
   const [serverState,setServerState]=useState<'loading'|'ready'|'partial'|'offline'>('loading');
   const [warning,setWarning]=useState('');
   const [refreshKey,setRefreshKey]=useState(0);
   const [search,setSearch]=useState('');
+  const [scope,setScope]=useState<'all'|'runtime'|'draft'>('all');
+  const [viewMode,setViewMode]=useState<'list'|'gallery'>('list');
   const [page,setPage]=useState(1);
+  const [selectedKey,setSelectedKey]=useState<string|null>(null);
+  const [detail,setDetail]=useState<RuntimeStatusDetail|null>(null);
   const [modal,setModal]=useState<{mode:'create'|'edit';id?:string}|null>(null);
   const [profile,setProfile]=useState<DraftProfile>(emptyProfile);
   const [formError,setFormError]=useState('');
@@ -41,10 +48,10 @@ export const ManagedWorksPanel:React.FC<Props>=({episodes,onCreateDraft,onUpdate
         });
         setOfficial(approved);
         setServerState(result.errors?.length||result.has_more?'partial':'ready');
-        setWarning(result.has_more?'正式作品超过当前 100 条读取窗口；请到正式目录分页查看':
+        setWarning(result.has_more?'正式作品超过当前 100 条读取窗口，请到 Runtime 目录分页查看':
           result.errors?.length?'部分正式作品状态读取失败，请勿据此推断已删除':'');
       }catch{
-        if(mounted){setServerState('offline');setWarning('MySQL 生产目录暂时不可访问，不能据此判断正式作品是否存在');setOfficial([]);}
+        if(mounted){setServerState('offline');setWarning('正式 Runtime 目录暂时不可访问，不能据此判断正式作品是否存在');setOfficial([]);}
       }
     };
     void read();
@@ -56,13 +63,32 @@ export const ManagedWorksPanel:React.FC<Props>=({episodes,onCreateDraft,onUpdate
       title:item.title!,code:item.business_episode_id!,updated:item.updated_at||'',
       stage:stageLabel(item.production_stage||'NO_STATE'),official:item}));
     const local:ManagedRow[]=episodes.filter(isManagedDraft).map(ep=>({key:'draft:'+ep.id,kind:'draft',
-      title:ep.title,code:ep.code,updated:ep.updatedAt,stage:'草稿（未进入生产）',draft:ep}));
+      title:ep.title,code:ep.code,updated:ep.updatedAt,stage:'本机草稿 · 未启动生产',draft:ep}));
     return [...local,...canonical].sort((a,b)=>(Date.parse(b.updated)||0)-(Date.parse(a.updated)||0));
   },[episodes,official]);
-  const matches=rows.filter(item=>[item.title,item.code,item.stage,item.draft?.synopsis||''].join(' ').toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
+  const matches=rows.filter(item=>(scope==='all'||scope===item.kind)&&
+    [item.title,item.code,item.stage,item.draft?.synopsis||''].join(' ').toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   const selectedPage=Math.min(page,Math.max(1,Math.ceil(matches.length/10)));
+  const displayed=matches.slice((selectedPage-1)*10,selectedPage*10);
+  const selected=rows.find(item=>item.key===selectedKey)||null;
+  const coverFor=(item:ManagedRow)=>{
+    if(item.kind!=='runtime'||!item.official?.episode_ref)return null;
+    const found=findEpisode(item.title,item.code);
+    return found?.episode_ref===item.official.episode_ref ? found.frames[0]?.url||null : null;
+  };
+  useEffect(()=>{
+    let active=true;
+    setDetail(null);
+    const ref=selected?.official?.episode_ref;
+    if(ref)void platformApi.runtimeStatus(ref).then(value=>{if(active && value.episode_ref===ref)setDetail(value);}).catch(()=>{});
+    return ()=>{active=false;};
+  },[selected?.official?.episode_ref]);
   const beginCreate=()=>{setProfile(emptyProfile());setFormError('');setModal({mode:'create'});};
-  const beginEdit=(ep:Episode)=>{setProfile({title:ep.title,synopsis:ep.synopsis||'',genre:ep.genre||'未分类'});setFormError('');setModal({mode:'edit',id:ep.id});};
+  const beginEdit=(ep:Episode)=>{
+    if(!isManagedDraft(ep))return;
+    setProfile({title:ep.title,synopsis:ep.synopsis||'',genre:ep.genre||'未分类'});
+    setFormError('');setModal({mode:'edit',id:ep.id});
+  };
   const save=()=>{
     try{
       const validated=validateDraftProfile(profile);
@@ -76,42 +102,85 @@ export const ManagedWorksPanel:React.FC<Props>=({episodes,onCreateDraft,onUpdate
     if(!isManagedDraft(ep))return;
     Modal.confirm({title:'删除本机草稿？',content:<span>《{ep.title}》将从当前浏览器的草稿库中移除。<strong>此操作不能撤销</strong>，但不会删除 MySQL 正式作品、图片或生产记录。</span>,
       okText:'确认删除草稿',okButtonProps:{danger:true},cancelText:'取消',
-      onOk:()=>{onDeleteDraft(ep.id);setPage(1);}
+      onOk:()=>{onDeleteDraft(ep.id);if(selectedKey==='draft:'+ep.id)setSelectedKey(null);setPage(1);}
     });
   };
+  const open=(item:ManagedRow)=>setSelectedKey(item.key);
+  const action=(item:ManagedRow)=>(
+    <div className="flex flex-wrap items-center gap-1.5">
+      <Button type="link" size="small" icon={<Eye size={12}/>} onClick={()=>open(item)} aria-label={'查看作品 '+item.title}>查看</Button>
+      {item.kind==='draft'?<>
+        <Button size="small" icon={<Pencil size={12}/>} aria-label={'编辑草稿 '+item.title} onClick={()=>beginEdit(item.draft!)}>编辑</Button>
+        <Button size="small" danger icon={<Trash2 size={12}/>} aria-label={'删除草稿 '+item.title} onClick={()=>confirmDelete(item.draft!)}>删除</Button>
+      </>:<Tooltip title="正式作品关联 MySQL、生产锁与审核证据；此监控实例只读，需通过独立授权流程才能编辑或归档">
+        <span className="whitespace-nowrap text-[11px] text-[var(--text-tertiary)]">编辑/归档需授权</span>
+      </Tooltip>}
+    </div>
+  );
+  const cover=(item:ManagedRow,size:'small'|'large')=><div className={(size==='small'?'h-11 w-9':'h-[164px] w-full')+' flex shrink-0 items-center justify-center overflow-hidden rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)]'}>
+    {coverFor(item)?<img src={coverFor(item)!} loading="lazy" alt={item.title+'的已批准图片'} className="h-full w-full object-cover object-top"/>:
+      <div className="flex flex-col items-center gap-1 text-[var(--text-tertiary)]"><ImageIcon size={size==='small'?16:22}/>{size==='large'&&<span className="text-[11px]">暂无已批准封面</span>}</div>}
+  </div>;
   return <section id="storyos-managed-works" aria-label="作品增删改查" className="min-w-0 space-y-3 border-t border-[var(--border-subtle)] pt-3">
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <div><h2 className="os-section-heading">作品管理</h2><p className="mt-1 text-[11px] text-[var(--text-secondary)]">正式作品查阅与监控 · 本机草稿新建、编辑、删除</p></div>
+      <div><h2 className="os-section-heading">作品列表</h2><p className="mt-1 text-[11px] text-[var(--text-secondary)]">统一检索正式作品与本机草稿，按来源开放可用操作</p></div>
       <div className="flex items-center gap-2">
         <Button size="small" icon={<RefreshCw size={13}/>} onClick={()=>setRefreshKey(v=>v+1)}>刷新正式作品</Button>
         <Button size="small" type="primary" icon={<FilePlus2 size={13}/>} onClick={beginCreate}>新建作品</Button>
       </div>
     </div>
-    <div className="flex flex-wrap items-center gap-3">
-      <Input prefix={<Search size={14}/>} value={search} onChange={event=>{setSearch(event.target.value);setPage(1);}} placeholder="搜索作品名称、编号、阶段" allowClear className="max-w-[350px]" aria-label="搜索正式作品与本机草稿"/>
-      <span className="text-[11px] text-[var(--text-tertiary)]">正式 {official.length} 部 · 本机草稿 {episodes.filter(isManagedDraft).length} 部</span>
-      {serverState==='loading'&&<span role="status" className="text-[11px] text-[var(--text-tertiary)]">正在读取正式目录…</span>}
+    <div className="os-console-filterbar flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] pb-2">
+      <Input prefix={<Search size={14}/>} value={search} onChange={event=>{setSearch(event.target.value);setPage(1);}} placeholder="搜索作品名称、编号、阶段" allowClear className="min-w-[210px] max-w-[320px] flex-1" aria-label="搜索正式作品与本机草稿"/>
+      <Segmented size="small" aria-label="作品来源" value={scope} onChange={v=>{setScope(v as typeof scope);setPage(1);}}
+        options={[{label:'全部',value:'all'},{label:'正式作品',value:'runtime'},{label:'本机草稿',value:'draft'}]}/>
+      <Segmented size="small" aria-label="作品显示方式" value={viewMode} onChange={v=>{setViewMode(v as typeof viewMode);setPage(1);}}
+        options={[{label:<span className="inline-flex items-center gap-1"><List size={13}/>列表</span>,value:'list'},
+                  {label:<span className="inline-flex items-center gap-1"><Images size={13}/>画廊</span>,value:'gallery'}]}/>
+    </div>
+    <div className="flex flex-wrap items-center gap-4 text-[11px] text-[var(--text-tertiary)]">
+      <span>正式 <strong className="text-[var(--text-primary)]">{official.length}</strong> 部</span>
+      <span>本机草稿 <strong className="text-[var(--text-primary)]">{episodes.filter(isManagedDraft).length}</strong> 部</span>
+      <span>匹配 <strong className="text-[var(--text-primary)]">{matches.length}</strong> 部</span>
+      {serverState==='loading'&&<span role="status">正在读取正式目录…</span>}
     </div>
     {warning&&<p role="alert" className="text-[11px] text-[var(--warning)]">{warning}</p>}
-    <Table<ManagedRow> rowKey="key" size="small" dataSource={matches} scroll={{x:760}}
+    {viewMode==='list'?<Table<ManagedRow> rowKey="key" size="small" dataSource={matches} scroll={{x:820}}
       locale={{emptyText:serverState==='loading'?'正在读取作品…':'没有匹配的作品'}}
       columns={[
-        {title:'作品',key:'title',render:(_,item)=><div className="min-w-0"><div className="truncate text-[13px] font-medium" title={item.title}>{item.title}</div><div className="text-[11px] text-[var(--text-tertiary)]">{item.code} · {item.kind==='runtime'?'正式 Runtime':'浏览器草稿'}</div></div>},
-        {title:'状态',key:'stage',width:155,render:(_,item)=><span className="text-[12px] text-[var(--text-secondary)]">{item.stage}</span>},
-        {title:'更新时间',key:'date',width:140,render:(_,item)=><span className="tabular-nums text-[11px] text-[var(--text-tertiary)]">{item.updated?item.updated.replace('T',' ').slice(0,16):'未知'}</span>},
-        {title:'操作',key:'action',width:240,render:(_,item)=><div className="flex items-center gap-2 whitespace-nowrap">
-          <Button type="link" size="small" onClick={()=>item.kind==='draft'?onSelectDraft(item.draft!):onOpenRuntimeEpisode(item.official!.episode_ref!)}>查看 <ArrowRight size={12}/></Button>
-          {item.kind==='draft'?<>
-            <Button size="small" icon={<Pencil size={12}/>} aria-label={'编辑草稿 '+item.title} onClick={()=>beginEdit(item.draft!)}>编辑</Button>
-            <Button size="small" danger icon={<Trash2 size={12}/>} aria-label={'删除草稿 '+item.title} onClick={()=>confirmDelete(item.draft!)}>删除</Button>
-          </>:<Tooltip title="正式作品关联 MySQL、生产锁与审核证据，必须经授权流程编辑或归档；此只读控制台不允许直接修改">
-            <span className="text-[11px] text-[var(--text-tertiary)]">编辑/归档需授权</span>
-          </Tooltip>}
-        </div>},
+        {title:'作品',key:'title',render:(_,item)=><div className="flex min-w-0 items-center gap-2.5">{cover(item,'small')}<div className="min-w-0"><button className="block max-w-[32vw] truncate text-left text-[13px] font-semibold hover:text-[var(--info)]" onClick={()=>open(item)} title={item.title}>{item.title}</button><span className="text-[11px] text-[var(--text-tertiary)]">{item.code} · {item.kind==='runtime'?'正式 Runtime':'浏览器草稿'}</span></div></div>},
+        {title:'状态',key:'stage',width:165,render:(_,item)=><span className="text-[12px] text-[var(--text-secondary)]">{item.stage}</span>},
+        {title:'更新',key:'date',width:136,render:(_,item)=><span className="tabular-nums text-[11px] text-[var(--text-tertiary)]">{dateText(item.updated)}</span>},
+        {title:'操作',key:'action',width:242,render:(_,item)=>action(item)}
       ]}
       pagination={{current:selectedPage,pageSize:10,total:matches.length,showSizeChanger:false,onChange:setPage,showTotal:n=>'共 '+n+' 部'}}
-    />
-    <p className="text-[11px] text-[var(--text-tertiary)]">新建操作保存为当前浏览器草稿，不会自动注册正式 Episode 或启动模型。正式作品的改名、归档和物理清理必须经生产控制面权限核验。</p>
+    />:<>
+      <div aria-label="作品管理画廊" className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {displayed.map(item=><article key={item.key} className="min-w-0 overflow-hidden rounded-[5px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+          {cover(item,'large')}
+          <div className="space-y-2 px-3 py-2.5">
+            <button type="button" title={item.title} onClick={()=>open(item)} className="block max-w-full truncate text-left text-[13px] font-semibold hover:text-[var(--info)]">{item.title}</button>
+            <p className="truncate text-[11px] text-[var(--text-tertiary)]">{item.code} · {item.stage}</p>
+            {action(item)}
+          </div>
+        </article>)}
+      </div>
+      {!matches.length&&<p className="py-7 text-center text-[12px] text-[var(--text-tertiary)]">没有匹配的作品</p>}
+      <div className="flex justify-end"><Button size="small" disabled={selectedPage===1} onClick={()=>setPage(v=>v-1)}>上一页</Button><span className="px-3 py-1 text-[11px]">第 {selectedPage} / {Math.max(1,Math.ceil(matches.length/10))} 页</span><Button size="small" disabled={selectedPage>=Math.ceil(matches.length/10)} onClick={()=>setPage(v=>v+1)}>下一页</Button></div>
+    </>}
+    <p className="text-[11px] text-[var(--text-tertiary)]">新建及编辑/删除只作用于当前浏览器草稿，不会启动生产或修改正式 Episode；正式作品的编辑、归档需生产写入授权和锁核验。</p>
+    <Drawer open={Boolean(selected)} title="作品详情" width="min(440px, 100vw)" onClose={()=>setSelectedKey(null)} destroyOnClose>
+      {selected&&<div className="space-y-3 text-[12px]">
+        {cover(selected,'large')}
+        <h3 className="break-words text-[16px] font-semibold">{selected.title}</h3>
+        <p className="text-[var(--text-secondary)]">{selected.code} · {selected.kind==='runtime'?'MySQL 正式作品':'浏览器本机草稿'}</p>
+        <p>生产阶段：{selected.stage}</p><p>更新时间：{dateText(selected.updated)}</p>
+        <div><h4 className="font-medium">故事简介</h4><p className="mt-1 whitespace-pre-wrap text-[var(--text-secondary)]">{selected.kind==='draft'
+          ?selected.draft?.synopsis||'暂无简介'
+          : detail?.story_excerpt||'未收录可核验的故事简介'}</p></div>
+        {selected.kind==='runtime'?<Button type="primary" block onClick={()=>onOpenRuntimeEpisode(selected.official!.episode_ref!)}>进入生产监控 <ArrowRight size={13}/></Button>:
+          <div className="flex gap-2"><Button type="primary" onClick={()=>onSelectDraft(selected.draft!)}>进入故事制作</Button><Button onClick={()=>beginEdit(selected.draft!)}>编辑</Button><Button danger onClick={()=>confirmDelete(selected.draft!)}>删除</Button></div>}
+      </div>}
+    </Drawer>
     <Modal open={modal!==null} title={modal?.mode==='edit'?'编辑本机草稿':'新建作品草稿'} onCancel={()=>setModal(null)} onOk={save} okText={modal?.mode==='edit'?'保存修改':'保存草稿'} cancelText="取消" destroyOnClose>
       <div className="space-y-3 py-2">
         <label className="block text-[12px]">作品名称 <Input autoFocus maxLength={100} value={profile.title} onChange={e=>setProfile(v=>({...v,title:e.target.value}))} placeholder="请输入作品名称" aria-label="草稿作品名称" className="mt-1"/></label>

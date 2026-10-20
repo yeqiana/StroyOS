@@ -8,8 +8,6 @@ import { reconcileRuntimeCatalog } from '../../api/runtimeCatalogReconciliation'
 import { useLocalApprovedMedia } from '../../api/localApprovedMedia';
 import { CanonicalRuntimeDirectory } from '../catalog/CanonicalRuntimeDirectory';
 import { LiveProductionBoard } from './LiveProductionBoard';
-import {ManagedWorksPanel} from './ManagedWorksPanel';
-import type {DraftProfile} from '../../api/localWorkCrud';
 
 interface Props {
   episodes: Episode[];
@@ -17,9 +15,6 @@ interface Props {
   onSelectEpisode: (episode: Episode) => void;
   onNavigate: (tab: NavigationTab) => void;
   onOpenRuntimeEpisode: (episodeRef:string)=>void;
-  onCreateDraft:(profile:DraftProfile)=>void;
-  onUpdateDraft:(id:string,profile:DraftProfile)=>void;
-  onDeleteDraft:(id:string)=>void;
 }
 
 const STAGES: Record<string, string> = {
@@ -40,7 +35,7 @@ const readableDate = (raw?: string) => {
   return value ? new Date(value).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) : '未知';
 };
 
-export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelectEpisode, onNavigate, onOpenRuntimeEpisode, onCreateDraft, onUpdateDraft, onDeleteDraft }) => {
+export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelectEpisode, onNavigate, onOpenRuntimeEpisode }) => {
   const { findEpisode } = useLocalApprovedMedia();
   // No generated placeholder image can pass this contract: the image is from the approved-only media catalog.
   const approvedFrames = (episode: Episode) => findEpisode(episode.title, episode.code)?.frames ?? [];
@@ -142,8 +137,6 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
     </section>
 
     <LiveProductionBoard episodes={episodes} onOpenEpisode={onOpenRuntimeEpisode}/>
-
-    <ManagedWorksPanel episodes={episodes} onCreateDraft={onCreateDraft} onUpdateDraft={onUpdateDraft} onDeleteDraft={onDeleteDraft} onOpenRuntimeEpisode={onOpenRuntimeEpisode} onSelectDraft={onSelectEpisode}/>
 
     <details aria-label="工作台完整管理与数据核对" className="group border-t border-[var(--border-subtle)] pt-2">
       <summary className="flex cursor-pointer items-center justify-between gap-3 py-2 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]">

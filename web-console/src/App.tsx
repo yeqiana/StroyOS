@@ -498,7 +498,7 @@ export default function App() {
           )}
 
           <Suspense fallback={<div role="status" className="py-10 text-center text-[13px] text-[var(--text-secondary)]">正在载入工作区…</div>}>
-          {currentTab === 'overview' && <AntdSurface><HomeOverviewView episodes={episodes} projects={projects} onCreateDraft={handleCreateManagedDraft} onUpdateDraft={handleUpdateManagedDraft} onDeleteDraft={handleDeleteManagedDraft} onSelectEpisode={(ep) => { setActiveEpisode(ep); setCurrentTab('workbench'); }} onNavigate={setCurrentTab} onOpenRuntimeEpisode={openRuntimeEpisode} /></AntdSurface>}
+          {currentTab === 'overview' && <AntdSurface><HomeOverviewView episodes={episodes} projects={projects} onSelectEpisode={(ep) => { setActiveEpisode(ep); setCurrentTab('workbench'); }} onNavigate={setCurrentTab} onOpenRuntimeEpisode={openRuntimeEpisode} /></AntdSurface>}
 
           {/* 生产监控台主控页 (StoryOS 生产监控台 V1.0 - Dense Operations Console) */}
           {currentTab === 'production_monitor' && (
@@ -540,6 +540,9 @@ export default function App() {
                 onGoToMonitor={openRuntimeEpisode}
                 projects={projects}
                 onRestoreLocalDrafts={restoreLocalDrafts}
+                onCreateDraft={handleCreateManagedDraft}
+                onUpdateDraft={handleUpdateManagedDraft}
+                onDeleteDraft={handleDeleteManagedDraft}
               /></AntdSurface>
             </div>
           )}

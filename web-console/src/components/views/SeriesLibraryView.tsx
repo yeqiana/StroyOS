@@ -6,11 +6,13 @@ import type {Episode,ProjectItem} from '../../types';
 import {useLocalApprovedMedia} from '../../api/localApprovedMedia';
 import {CanonicalRuntimeDirectory} from '../catalog/CanonicalRuntimeDirectory';
 import {LocalDraftSafetyPanel} from '../catalog/LocalDraftSafetyPanel';
+import {ManagedWorksPanel} from './ManagedWorksPanel';
+import type {DraftProfile} from '../../api/localWorkCrud';
 
-interface Props { episodes:Episode[]; activeEpisode:Episode; onSelectEpisode:(episode:Episode)=>void; onGoToWorkbench:()=>void; onGoToMonitor:(episodeRef:string)=>void; projects:ProjectItem[];onRestoreLocalDrafts:(json:string)=>void; }
+interface Props { episodes:Episode[]; activeEpisode:Episode; onSelectEpisode:(episode:Episode)=>void; onGoToWorkbench:()=>void; onGoToMonitor:(episodeRef:string)=>void; projects:ProjectItem[];onRestoreLocalDrafts:(json:string)=>void;onCreateDraft:(profile:DraftProfile)=>void;onUpdateDraft:(id:string,profile:DraftProfile)=>void;onDeleteDraft:(id:string)=>void; }
 const STAGES:Record<string,string> = {IDEA_LOCK:'创意锁定',STORYBOARD_LOCK:'分镜锁定',VISUAL_CALIBRATE:'视觉校准',PROD_APPROVED:'生产审核',READY_TO_PUBLISH:'待发布',PUBLISHED:'已发布',POST_MORTEM:'数据复盘'};
 const readableTime=(value:string)=>{if(!value)return '未知';const d=new Date(value);return Number.isNaN(d.valueOf())?value:new Intl.DateTimeFormat('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).format(d);};
-export const SeriesLibraryView: React.FC<Props> = ({episodes,activeEpisode,onSelectEpisode,onGoToWorkbench,onGoToMonitor,projects,onRestoreLocalDrafts}) => {
+export const SeriesLibraryView: React.FC<Props> = ({episodes,activeEpisode,onSelectEpisode,onGoToWorkbench,onGoToMonitor,projects,onRestoreLocalDrafts,onCreateDraft,onUpdateDraft,onDeleteDraft}) => {
   const {findEpisode}=useLocalApprovedMedia();
   const coverFor=(ep:Episode)=>findEpisode(ep.title,ep.code)?.frames[0]?.url || (ep.coverImage && !ep.coverImage.startsWith('data:image/svg+xml') ? ep.coverImage : '');
   const [query,setQuery]=useState('');
@@ -39,6 +41,8 @@ export const SeriesLibraryView: React.FC<Props> = ({episodes,activeEpisode,onSel
     <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-3">
       <div><h1 className="os-page-heading">作品与项目</h1><p className="mt-1 text-[12px] text-[var(--text-secondary)]">作品素材库 · 图片优先，工作区状态与批准素材分开计数</p></div>
     </header>
+    <ManagedWorksPanel episodes={episodes} onCreateDraft={onCreateDraft} onUpdateDraft={onUpdateDraft} onDeleteDraft={onDeleteDraft} onOpenRuntimeEpisode={onGoToMonitor} onSelectDraft={onSelectEpisode}/>
+
     <details aria-label="草稿管理工具" className="border-b border-[var(--border-subtle)] text-[12px]">
       <summary className="cursor-pointer py-2.5 font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]">草稿管理 · 保存、备份与恢复</summary>
       <div className="pb-3"><LocalDraftSafetyPanel episodes={episodes} projects={projects} onRestore={onRestoreLocalDrafts}/></div>
@@ -48,6 +52,7 @@ export const SeriesLibraryView: React.FC<Props> = ({episodes,activeEpisode,onSel
       <div className="pb-3"><CanonicalRuntimeDirectory episodes={episodes} onSelectHistorical={onSelectEpisode} onOpenMonitor={onGoToMonitor}/></div>
     </details>
 
+    <details aria-label="历史工作区作品与已批准素材" className="border-t border-[var(--border-subtle)] pt-2"><summary className="cursor-pointer py-2 text-[12px] text-[var(--text-tertiary)]">历史工作区快照 / 旧素材画廊（仅供对照）</summary>
     <section aria-label="作品库概况" className="flex flex-wrap items-center gap-x-8 gap-y-2 border-b border-[var(--border-subtle)] py-1.5">
       {[{label:'已收录',count:episodes.length},{label:'工作区未发布',count:episodes.length-publishedCount},{label:'含已批准图片',count:verifiedCount}].map(metric=><div key={metric.label} className="flex items-baseline gap-2"><span className="text-[11px] text-[var(--text-tertiary)]">{metric.label}</span><strong className="text-[16px] font-semibold tabular-nums">{metric.count}</strong></div>)}
       <span className="ml-auto text-[11px] text-[var(--text-tertiary)]">数据范围：当前工作区 · 本机素材目录只读</span>
@@ -89,5 +94,6 @@ export const SeriesLibraryView: React.FC<Props> = ({episodes,activeEpisode,onSel
       </section>}
     </Drawer>
     <p className="border-t border-[var(--border-subtle)] pt-2 text-[11px] leading-5 text-[var(--text-tertiary)]">阶段与帧数来自工作区记录，已批准图片仅取自可验证的素材目录；正式生产与发布状态以受控 Runtime 为准。</p>
+    </details>
   </section>;
 };
