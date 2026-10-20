@@ -33,13 +33,13 @@ function localMySqlMonitorEnv(){
        !/^[A-Za-z0-9_.:-]{1,64}$/.test(user||'')||
        typeof password!=='string'||password.length<32||
        config.STORYOS_MONITOR_MYSQL_RO_DB!=='STORY_OS_RUNTIME'||
-       String(config.STORYOS_MONITOR_MYSQL_RO_PORT)!=='3307') return {};
+       !['3307','13307'].includes(String(config.STORYOS_MONITOR_MYSQL_RO_PORT))) return {};
     return {
       STORYOS_LOCAL_MONITOR_MYSQL:'1',
       STORYOS_MONITOR_MYSQL_RO_USER:user,
       STORYOS_MONITOR_MYSQL_RO_PASSWORD:password,
       STORYOS_MONITOR_MYSQL_RO_DB:'STORY_OS_RUNTIME',
-      STORYOS_MONITOR_MYSQL_RO_PORT:'3307',
+      STORYOS_MONITOR_MYSQL_RO_PORT:String(config.STORYOS_MONITOR_MYSQL_RO_PORT),
     };
   }catch{
     // Missing, unreadable or malformed secrets keep monitoring disabled.

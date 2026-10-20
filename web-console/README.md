@@ -62,3 +62,24 @@ npm run build
 ```bash
 docker build -f docker/Dockerfile -t story-os-web-console .
 ```
+
+### 实时监控：MySQL 权威只读目录
+
+本地真实控制台在启动时读取用户专属的
+`%LOCALAPPDATA%\\StoryOS\\monitoring\\mysql-monitor-ro.json`（仅供本机 Python API）；
+需要独立 SELECT-only MySQL 账号，并由 API 自行验证 `SHOW GRANTS`、
+`START TRANSACTION READ ONLY`，不复用正式生产凭据。
+
+- 配置项：`STORYOS_LOCAL_MONITOR_MYSQL=1`、
+  `STORYOS_MONITOR_MYSQL_RO_USER`、
+  `STORYOS_MONITOR_MYSQL_RO_PASSWORD`、
+  `STORYOS_MONITOR_MYSQL_RO_DB=STORY_OS_RUNTIME`、
+  `STORYOS_MONITOR_MYSQL_RO_PORT=13307`（也支持本机旧端口 `3307`）
+- 账号仅需 `TB_EPISODE`、`TB_EPISODE_STATE`、`TB_TASK`、
+  `TB_PRODUCTION_ATTEMPT`、`TB_GENERATION_ATTEMPT` 五张表的 SELECT。
+- 接通后从 MySQL ACTIVE Episode 目录发现新故事，`CURRENT_STATE` 为阶段权威；
+  目录文件只补充 Driver 观察与最近执行节点，不作为在线执行或成功出图的证明。
+- 未配置只读数据库时，会显示已有磁盘快照，并从本机正式 Episode 目录补充
+  无状态文件的新故事，阶段显示 `UNKNOWN`，不会猜测数据库阶段。
+- Redis 旧 TaskState 不包含可靠 Episode 身份，不能把它的任务计数当作本剧集进度。
+- 只在 `127.0.0.1` 提供 GET，前端经同源代理访问。不得提交本地监控凭据。

@@ -159,6 +159,9 @@ export interface RuntimeStatusDetail {
   source_states?: Record<string, unknown>;
   sources?: Record<string, RuntimeSourceRef>;
   episode_ref?: string | null;
+  image_attempted_frames_observed?: number | null;
+  image_attempt_source?: string | null;
+  last_event_at?: string | null;
 }
 
 // R35: GET /api/v1/runtime/authority?episode=... — explicitly read-only.

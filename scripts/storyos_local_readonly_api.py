@@ -24,6 +24,8 @@ from platform.operations.runtime_authority_evidence import RuntimeAuthorityEvide
 from platform.api.http_server import PlatformApiDispatcher, PlatformApiRequestHandler, build_http_server
 from platform.operations.local_episode_monitoring import read_recorded_production
 from platform.operations.local_mysql_monitor_readonly import observe_mysql_episode, empty as empty_mysql_monitor
+from platform.operations.local_mysql_catalog_readonly import observe_mysql_catalog
+from platform.operations.local_runtime_trace_readonly import latest_node
 from platform.operations.local_worker_heartbeat_readonly import observe_local_redis_heartbeats
 from platform.operations.local_task_state_readonly import observe_local_redis_task_states
 from platform.operations.local_writer_owner_readonly import observe_writer_owner, unknown as unknown_writer_owner
@@ -59,36 +61,101 @@ class LocalEpisodeFileStatuses:
             except OSError:
                 continue
 
+    def _episode_dir(self, namespace: str) -> Path | None:
+        """Resolve a canonical two-level Episode without exposing arbitrary paths."""
+        parts = namespace.split("/") if isinstance(namespace, str) else []
+        if len(parts) != 2 or any(not part or part.startswith((".", "_")) or
+                                  part in (".", "..") or "\\" in part for part in parts):
+            return None
+        original = self.episodes.joinpath(*parts)
+        try:
+            if (any(path.is_symlink() for path in
+                    (original, original.parent, original / "meta")) or
+                    not original.is_dir()):
+                return None
+            real = original.resolve(strict=True)
+            if not real.is_relative_to(self.episodes):
+                return None
+            return real
+        except OSError:
+            return None
+
+    @staticmethod
+    def _ref(namespace: str) -> str:
+        return "LOCAL_" + hashlib.sha256(
+            (namespace + "/meta/episode-state.json").encode("utf-8")).hexdigest()[:24]
+
     def _load(self) -> tuple[list[dict], list[str]]:
-        rows: list[dict] = []
+        rows: dict[str, dict] = {}
         errors: list[str] = []
         for state_file in self._production_state_files():
-            resolved = state_file
-            relative = resolved.relative_to(self.episodes).as_posix()
+            namespace = state_file.parent.parent.relative_to(self.episodes).as_posix()
             try:
-                state = json.loads(resolved.read_text(encoding="utf-8"))
-                if not isinstance(state, dict):
-                    raise ValueError("state must be object")
-                stage = state.get("current_state")
-                if not isinstance(stage, str) or not stage.strip():
-                    raise ValueError("no recorded current_state")
-                identity = "LOCAL_" + hashlib.sha256(relative.encode("utf-8")).hexdigest()[:24]
-                rows.append({
-                    "schema_version": 1,
-                    "projection_level": "summary",
-                    "episode_id": identity,
-                    "episode_ref": identity,
+                state = json.loads(state_file.read_text(encoding="utf-8"))
+                if not isinstance(state, dict) or not isinstance(state.get("current_state"), str):
+                    raise ValueError("invalid stage")
+                ref = self._ref(namespace)
+                rows[namespace] = {
+                    "schema_version": 1, "projection_level": "summary",
+                    "episode_id": ref, "episode_ref": ref,
                     "business_episode_id": str(state.get("episode_id") or ""),
                     "series": str(state.get("series") or ""),
                     "title": str(state.get("title") or state_file.parent.parent.name),
-                    "production_stage": stage,
+                    "production_stage": state["current_state"],
                     "state_source": SOURCE,
-                    "writer_owner_status": observe_writer_owner(resolved.parent.parent)["status"],
-                    "updated_at": state.get("updated_at"),
-                })
+                    "writer_owner_status": observe_writer_owner(state_file.parent.parent)["status"],
+                    "updated_at": state.get("updated_at"), "_namespace": namespace,
+                }
             except (OSError, ValueError, UnicodeError, json.JSONDecodeError):
                 errors.append("unreadable episode-state record")
-        return rows, errors
+
+        # If an Episode was created in MySQL but the old JSON projection never
+        # existed, still discover it locally. Stage stays UNKNOWN, not guessed.
+        for manifest in self.episodes.glob("*/*/meta/release-manifest.json"):
+            try:
+                directory = manifest.parent.parent
+                namespace = directory.relative_to(self.episodes).as_posix()
+                if namespace in rows or self._episode_dir(namespace) is None or manifest.is_symlink():
+                    continue
+                ref = self._ref(namespace)
+                rows[namespace] = {
+                    "schema_version": 1, "projection_level": "summary",
+                    "episode_id": ref, "episode_ref": ref, "business_episode_id": "",
+                    "series": namespace.split("/")[0], "title": directory.name,
+                    "production_stage": "UNKNOWN", "state_source": "local_episode_directory_unverified",
+                    "writer_owner_status": observe_writer_owner(directory)["status"],
+                    "updated_at": None, "_namespace": namespace,
+                }
+            except OSError:
+                continue
+
+        catalog = observe_mysql_catalog()
+        if catalog["available"]:
+            # MySQL is the sole authority for canonical stage. Keep filesystem-only
+            # rows visibly unverified rather than silently treating them as current.
+            for rec in catalog["items"]:
+                namespace = rec["namespace"]
+                directory = self._episode_dir(namespace)
+                ref = self._ref(namespace)
+                rows[namespace] = {
+                    "schema_version": 1, "projection_level": "summary",
+                    "episode_id": ref, "episode_ref": ref,
+                    "business_episode_id": rec["business_episode_id"],
+                    "series": namespace.split("/")[0], "title": rec["title"],
+                    "production_stage": rec["production_stage"],
+                    "state_source": "mysql_episode_state_read_only",
+                    "writer_owner_status": (observe_writer_owner(directory)["status"]
+                                            if directory is not None else "UNKNOWN"),
+                    "updated_at": rec["updated_at"], "_namespace": namespace,
+                }
+            if catalog["truncated"]:
+                errors.append("MYSQL_CATALOG_LIMIT_REACHED")
+        else:
+            errors.append("MYSQL_MONITOR:" + str(catalog["reason"]))
+        ordered = sorted(rows.values(), key=lambda row: (
+            row["state_source"] == "mysql_episode_state_read_only",
+            row.get("updated_at") or "", row["episode_ref"]), reverse=True)
+        return ordered, errors
 
     @staticmethod
     def _pagination(limit: str, offset: str) -> tuple[int, int]:
@@ -107,15 +174,12 @@ class LocalEpisodeFileStatuses:
         for row in rows:
             stage = row["production_stage"]
             counts[stage] = counts.get(stage, 0) + 1
+        items = [{k: v for k, v in row.items() if not k.startswith("_")}
+                 for row in rows[skip:skip + take]]
         return {
-            "items": rows[skip:skip + take],
-            "count": len(rows[skip:skip + take]),
-            "total": len(rows),
-            "limit": take,
-            "offset": skip,
-            "has_more": skip + take < len(rows),
-            "stage_counts": counts,
-            "errors": errors,
+            "items": items, "count": len(items), "total": len(rows),
+            "limit": take, "offset": skip, "has_more": skip + take < len(rows),
+            "stage_counts": counts, "errors": errors,
         }
 
     def get_episode_status(self, episode: str) -> dict | None:
@@ -123,42 +187,40 @@ class LocalEpisodeFileStatuses:
         item = next((record for record in rows if record["episode_ref"] == episode), None)
         if item is None:
             return None
+        directory = self._episode_dir(item["_namespace"])
         recorded = {}
         mysql_snapshot = empty_mysql_monitor("EPISODE_IDENTITY_UNVERIFIED")
         writer_owner = unknown_writer_owner("NO_CANONICAL_DRIVER_OWNER_EVIDENCE")
         provider_calls = unknown_provider_calls("PROVIDER_OBSERVATION_MISSING")
-        for state_file in self._production_state_files():
-            try:
-                resolved = state_file
-                relative = resolved.relative_to(self.episodes).as_posix()
-                candidate_ref = "LOCAL_" + hashlib.sha256(relative.encode("utf-8")).hexdigest()[:24]
-                if candidate_ref == episode:
-                    recorded = read_recorded_production(resolved.parent)
-                    writer_owner = observe_writer_owner(resolved.parent.parent)
-                    mysql_snapshot = observe_mysql_episode(
-                        resolved.parent.parent.relative_to(self.episodes).as_posix(),
-                        str(item.get("business_episode_id") or ""),
-                    )
-                    provider_calls = observe_provider_calls(resolved.parent.parent, mysql_snapshot)
-                    break
-            except OSError:
-                continue
+        live = {"execution_status": "UNKNOWN", "current_action": None,
+                "blocking_reason": None, "last_event_at": None}
+        if directory is not None:
+            recorded = read_recorded_production(directory / "meta")
+            writer_owner = observe_writer_owner(directory)
+            live = latest_node(directory)
+            mysql_snapshot = observe_mysql_episode(
+                item["_namespace"], str(item.get("business_episode_id") or ""))
+            provider_calls = observe_provider_calls(directory, mysql_snapshot)
+        generation = mysql_snapshot.get("generation_attempt_records", [])
+        attempted_frames = {rec["frame"] for rec in generation
+                            if isinstance(rec.get("frame"), int)}
         return {
-            **item,
-            "projection_level": "detail",
-            # Even a recently modified file cannot prove a live Writer or Worker.
-            "execution_status": "UNKNOWN",
-            "current_action": None,
-            "next_step": None,
-            "blocking_reason": None,
-            "needs_user": None,
-            "auto_recoverable": None,
-            "heartbeat": {"health": "unknown"},
+            **{k: v for k, v in item.items() if not k.startswith("_")},
+            "projection_level": "detail", "execution_status": live["execution_status"],
+            "current_action": live["current_action"], "next_step": None,
+            "blocking_reason": live["blocking_reason"], "last_event_at": live["last_event_at"],
+            "needs_user": None, "auto_recoverable": None,
+            "heartbeat": {"health": ("producer-claim-fresh" if
+                                    writer_owner["status"] == "FRESH_PRODUCER_LOCK_CLAIM"
+                                    else "unknown")},
             "mysql_monitor": mysql_snapshot,
             "writer_owner_observation": writer_owner,
             "provider_call_observation": provider_calls,
             "recorded_production_progress": summarize_production_progress(mysql_snapshot, writer_owner),
             **recorded,
+            # Attempt count is not a successful image count.
+            "image_attempted_frames_observed": len(attempted_frames) if mysql_snapshot["available"] else None,
+            "image_attempt_source": "mysql_generation_attempt_read_only" if mysql_snapshot["available"] else None,
         }
 
 # R16: only approved images from canonical episode directories; no arbitrary path API.

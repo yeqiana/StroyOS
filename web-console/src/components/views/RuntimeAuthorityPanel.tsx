@@ -82,13 +82,15 @@ export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMor
   const text = (value?: string | number | boolean | null) => value === null || value === undefined || value === '' ? '未提供' : String(value);
   return <section aria-label="只读状态记录及数据来源" className="min-w-0 overflow-hidden border-y border-[var(--border-subtle)] text-[12px] text-[var(--text-primary)]">
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-3 py-2">
-      <div className="flex flex-wrap items-baseline gap-3"><h2 className="os-section-heading">{items.some(item => item.state_source === 'local_workspace_episode_state_file') ? '本机作品状态文件记录' : '平台阶段证据'}</h2><span className="text-[11px] text-[var(--text-tertiary)]">只读 · 非实时 Runtime</span></div>
+      <div className="flex flex-wrap items-baseline gap-3"><h2 className="os-section-heading">{items.some(item => item.state_source === 'mysql_episode_state_read_only') ? '生产阶段 · MySQL 权威只读' : '本机作品状态记录'}</h2><span className="text-[11px] text-[var(--text-tertiary)]">每 10 秒刷新详情 · 不派发生产</span></div>
       <span className="shrink-0 text-[11px] text-[var(--text-tertiary)]">{lastSync ? '读取于 ' + lastSync : '未获取成功'}</span>
     </div>
     {items.length>0&&<nav aria-label="生产阶段快速筛选" className="flex min-w-0 flex-wrap items-stretch gap-px border-b border-[var(--border-subtle)] bg-[var(--border-subtle)]">
       {[{value:'ALL',label:'已载入',count:items.length},...stageChoices.map(value=>({value,label:stageLabel(value),count:items.filter(item=>item.production_stage===value).length}))].map(choice=><button key={choice.value} type="button" aria-pressed={stageFilter===choice.value} onClick={()=>{setStageFilter(choice.value);setPage(1);}} className={`flex min-h-12 flex-1 items-center justify-center gap-2 bg-[var(--bg-surface)] px-3 py-2 text-[12px] hover:bg-[var(--bg-hover)] ${stageFilter===choice.value?'shadow-[inset_0_-2px_0_var(--info)] text-[var(--text-primary)]':'text-[var(--text-secondary)]'}`}><span className="truncate">{choice.label}</span><strong className="tabular-nums text-[14px]">{choice.count}</strong></button>)}
     </nav>}
     {items.some(item => item.state_source === 'local_workspace_episode_state_file') && <p role="status" className="os-source-warning mx-4 my-2 px-3 py-1.5 text-[12px]">本机真实作品状态文件：只读磁盘记录，不是实时调度、Worker 心跳或 MySQL 权威状态。</p>}
+    {items.some(item => item.state_source === 'local_episode_directory_unverified') && <p role="status" className="os-source-warning mx-4 my-2 px-3 py-1.5 text-[12px]">部分新作品只有目录证据：可发现作品，但 MySQL 权威阶段尚未取得，只显示 UNKNOWN，不能用来判断生产已停或已完成。</p>}
+    {items.some(item => item.state_source === 'mysql_episode_state_read_only') && <p role="status" className="mx-4 my-2 text-[12px] text-[var(--text-secondary)]">MySQL 专用 SELECT-only 账号提供权威阶段；当前节点来自只读日志，Writer 来自心跳快照，不等同于 Provider 活动证明。</p>}
     {items.some(item => item.state_source === 'isolated-test') && <p role="status" className="px-4 py-2 text-[var(--warning)] font-medium">本机隔离测试数据：仅用于验证 HTTP 接口与界面，不代表任何正式作品阶段。</p>}
     {dataState === 'loading' ? <p role="status" className="px-4 py-5 text-[var(--text-secondary)]">正在读取平台阶段…</p>
     : dataState === 'offline' ? <p role="alert" className="px-4 py-5 text-[var(--warning)]">无法连接 Platform API；本区不展示历史数据冒充在线状态。</p>
@@ -111,7 +113,7 @@ export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMor
           {title:'作品',key:'title',width:280,render:(_,item)=><div className="min-w-0"><span title={item.title||item.episode_ref||item.episode_id} className="block max-w-[560px] truncate text-[13px] font-semibold text-[var(--text-primary)]">{item.title||item.episode_ref||item.episode_id||'未知作品'}</span><span className="block max-w-[560px] truncate font-mono text-[10px] text-[var(--text-tertiary)]">{item.episode_ref||item.episode_id||'未提供作品标识'}</span></div>},
           {title:'生产阶段',dataIndex:'production_stage',key:'stage',width:140,render:(value:string)=><span className="inline-flex items-center gap-2 text-[12px] text-[var(--text-secondary)]"><span className="h-1.5 w-1.5 rounded-full bg-[var(--text-tertiary)]"/>{stageLabel(value||'NO_STATE')}</span>},
           {title:'Driver持锁报告',key:'writer',width:160,responsive:['lg'],render:(_,item)=><span className="text-[11px] text-[var(--text-secondary)]">{item.writer_owner_status==='FRESH_PRODUCER_LOCK_CLAIM'?'持锁心跳新鲜（自报）':'未核验'}</span>},
-          {title:'数据来源',dataIndex:'state_source',key:'source',width:190,responsive:['lg'],render:(value:string)=><span title={value||'未提供'} className="text-[12px] text-[var(--text-tertiary)]">{value==='local_workspace_episode_state_file'?'本机文件 · 只读':value==='isolated-test'?'隔离测试':value||'未提供'}</span>},
+          {title:'数据来源',dataIndex:'state_source',key:'source',width:190,responsive:['lg'],render:(value:string)=><span title={value||'未提供'} className="text-[12px] text-[var(--text-tertiary)]">{value==='mysql_episode_state_read_only'?'MySQL 阶段 · 只读':value==='local_episode_directory_unverified'?'目录 · 待核验':value==='local_workspace_episode_state_file'?'本机文件 · 只读':value==='isolated-test'?'隔离测试':value||'未提供'}</span>},
           {title:'更新时间',key:'updated',width:144,responsive:['lg'],render:(_,item)=><span className="tabular-nums text-[11px] text-[var(--text-tertiary)]">{item.updated_at||item.observed_at?String(item.updated_at||item.observed_at).replace('T',' ').slice(0,16):'未知'}</span>},
           {title:'',key:'action',width:88,fixed:'right',align:'right',render:(_,item)=><Button type="link" aria-label={'查看权威阶段：'+(item.title||item.episode_ref||item.episode_id)} size="small" onClick={event=>{event.stopPropagation();setSelected(item);}}>详情</Button>}
         ]}
@@ -130,11 +132,13 @@ export const RuntimeAuthorityPanel: React.FC<Props> = ({ items, coverage, hasMor
       <dl className="space-y-0">
         {[
           ['生产阶段', stageLabel(currentSelected.production_stage || 'NO_STATE')],
-          ['数据来源', currentSelected.state_source === 'local_workspace_episode_state_file' ? '本机状态文件 · 只读' : text(currentSelected.state_source)],
+          ['数据来源', currentSelected.state_source === 'mysql_episode_state_read_only' ? 'MySQL 阶段权威 · SELECT-only' : currentSelected.state_source === 'local_workspace_episode_state_file' ? '本机状态文件 · 只读' : text(currentSelected.state_source)],
           ['证据原始更新时间', text(currentSelected.updated_at || currentSelected.observed_at)],
           ...(detailIsCurrent ? [
-            ['执行状态', text(visibleDetail?.execution_status)],
-            ['当前动作', text(visibleDetail?.current_action || visibleDetail?.next_step)],
+            ['执行记录状态（不等于在线）', text(visibleDetail?.execution_status)],
+            ['最近记录节点', text(visibleDetail?.current_action || visibleDetail?.next_step)],
+            ['节点证据时间', text(visibleDetail?.last_event_at)],
+            ['有 Attempt 的帧数（非成功张数）', text(visibleDetail?.image_attempted_frames_observed)],
             ['阻塞原因', text(visibleDetail?.blocking_reason)],
             ['需要人工', text(visibleDetail?.needs_user)],
             ['心跳健康', text(visibleDetail?.heartbeat?.health)],
