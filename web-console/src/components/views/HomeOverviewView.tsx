@@ -8,6 +8,8 @@ import { reconcileRuntimeCatalog } from '../../api/runtimeCatalogReconciliation'
 import { useLocalApprovedMedia } from '../../api/localApprovedMedia';
 import { CanonicalRuntimeDirectory } from '../catalog/CanonicalRuntimeDirectory';
 import { LiveProductionBoard } from './LiveProductionBoard';
+import {ManagedWorksPanel} from './ManagedWorksPanel';
+import type {DraftProfile} from '../../api/localWorkCrud';
 
 interface Props {
   episodes: Episode[];
@@ -15,6 +17,9 @@ interface Props {
   onSelectEpisode: (episode: Episode) => void;
   onNavigate: (tab: NavigationTab) => void;
   onOpenRuntimeEpisode: (episodeRef:string)=>void;
+  onCreateDraft:(profile:DraftProfile)=>void;
+  onUpdateDraft:(id:string,profile:DraftProfile)=>void;
+  onDeleteDraft:(id:string)=>void;
 }
 
 const STAGES: Record<string, string> = {
@@ -35,7 +40,7 @@ const readableDate = (raw?: string) => {
   return value ? new Date(value).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) : '未知';
 };
 
-export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelectEpisode, onNavigate, onOpenRuntimeEpisode }) => {
+export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelectEpisode, onNavigate, onOpenRuntimeEpisode, onCreateDraft, onUpdateDraft, onDeleteDraft }) => {
   const { findEpisode } = useLocalApprovedMedia();
   // No generated placeholder image can pass this contract: the image is from the approved-only media catalog.
   const approvedFrames = (episode: Episode) => findEpisode(episode.title, episode.code)?.frames ?? [];
@@ -138,9 +143,11 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
 
     <LiveProductionBoard episodes={episodes} onOpenEpisode={onOpenRuntimeEpisode}/>
 
+    <ManagedWorksPanel episodes={episodes} onCreateDraft={onCreateDraft} onUpdateDraft={onUpdateDraft} onDeleteDraft={onDeleteDraft} onOpenRuntimeEpisode={onOpenRuntimeEpisode} onSelectDraft={onSelectEpisode}/>
+
     <details aria-label="工作台完整管理与数据核对" className="group border-t border-[var(--border-subtle)] pt-2">
       <summary className="flex cursor-pointer items-center justify-between gap-3 py-2 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
-        <span>作品管理与数据核对 <span className="ml-2 text-[11px] text-[var(--text-tertiary)]">详细目录、筛选、来源与阶段证据</span></span>
+        <span>历史资料与数据核对 <span className="ml-2 text-[11px] text-[var(--text-tertiary)]">详细目录、筛选、来源与阶段证据</span></span>
         <span className="text-[var(--info)]">展开</span>
       </summary>
       <div className="space-y-4 pt-3">
@@ -185,7 +192,7 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
     </section>}
 
     <section aria-label="工作台继续制作主列表" className="min-w-0 space-y-3">
-      <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="os-section-heading">作品管理</h2><p className="mt-1 text-[11px] text-[var(--text-tertiary)]">检索、筛选、进入已有制作流程</p></div><span className="text-[11px] text-[var(--text-tertiary)]">匹配 {filtered.length} / {episodes.length} 部</span></div>
+      <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="os-section-heading">历史快照作品</h2><p className="mt-1 text-[11px] text-[var(--text-tertiary)]">历史素材与草稿对照，不代表 MySQL 权威目录</p></div><span className="text-[11px] text-[var(--text-tertiary)]">匹配 {filtered.length} / {episodes.length} 部</span></div>
       <div className="os-console-filterbar flex min-w-0 flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] pb-2">
         <Segmented aria-label="首页作品范围" size="small" value={scope} onChange={value=>{setScope(value as typeof scope);setStoryPage(1);}} options={[{label:'全部',value:'all'},{label:'未发布',value:'unfinished'},{label:'有批准图片',value:'approved'}]}/>
         <Input.Search aria-label="搜索作品" value={query} onChange={event=>{setQuery(event.target.value);setStoryPage(1);}} placeholder="搜索名称 / 编号 / 类型" allowClear className="!w-[260px] max-w-full"/>

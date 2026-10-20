@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import {isManagedDraft, validateDraftProfile, editLocalDraft, removeLocalDraft} from '../src/api/localWorkCrud.ts';
+const sample={id:'ep-home-test123',title:'旧标题',code:'LOCAL-test',synopsis:'旧简介',genre:'未分类',updatedAt:'before'};
+const official={...sample,id:'ep-09-04',title:'正式作品'};
+const rows=[sample,official];
+assert.equal(isManagedDraft(sample),true);
+assert.equal(isManagedDraft(official),false);
+const edited=editLocalDraft(rows,'ep-home-test123',{title:' 新故事 ',synopsis:' 简介 ',genre:' 悬疑 '},'after');
+assert.equal(edited[0].title,'新故事');assert.equal(edited[0].synopsis,'简介');assert.equal(edited[0].genre,'悬疑');
+assert.equal(edited[0].updatedAt,'after');assert.equal(edited[1],official);
+assert.equal(rows[0].title,'旧标题');
+assert.deepEqual(removeLocalDraft(rows,'ep-home-test123'),[official]);
+assert.throws(()=>editLocalDraft(rows,'ep-09-04',{title:'危险',synopsis:'',genre:'剧情'},'x'),/仅允许修改/);
+assert.throws(()=>removeLocalDraft(rows,'ep-09-04'),/仅允许删除/);
+assert.throws(()=>removeLocalDraft(rows,'LOCAL_anything'),/仅允许删除/);
+assert.throws(()=>validateDraftProfile({title:'  ',synopsis:'',genre:'剧情'}),/作品名称/);
+assert.throws(()=>validateDraftProfile({title:'正常',synopsis:'',genre:'  '}),/类型/);
+console.log('PASS local draft create/edit/delete validation and formal episode fence (10 assertions)');

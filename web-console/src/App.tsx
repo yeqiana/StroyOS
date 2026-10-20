@@ -23,6 +23,7 @@ import { REAL_EPISODES } from './data/storyosEpisodeSnapshots';
 import { isHistoricalEpisodeIndex, loadHistoricalEpisodeDetail } from './data/storyosEpisodeLoader';
 import { platformApi } from './api/platformApi';
 import { detachLocalDraftProject } from './api/localDraftProject';
+import {isManagedDraft, validateDraftProfile, editLocalDraft, removeLocalDraft, type DraftProfile} from './api/localWorkCrud';
 import {reviewDraftRestore} from './api/localDraftBackup';
 import { Episode, NavigationTab, ProductionStage, ThemeMode, ProjectItem } from './types';
 import {loadFontPreference,saveFontPreference,type FontPreference,type PreferencePersistence} from './utils/fontPreference';
@@ -295,6 +296,33 @@ export default function App() {
     saveRecentStories(nextRecent);
   };
 
+  // Browsable local drafts have CRUD. Official MySQL Episodes remain writer-owned.
+  const handleCreateManagedDraft=(profile:DraftProfile)=>{
+    const validated=validateDraftProfile(profile);
+    const id='ep-home-'+crypto.randomUUID().replaceAll('-','');
+    const entry={...buildNewEpisode(id,validated.title,undefined,validated.synopsis),
+      synopsis:validated.synopsis,genre:validated.genre};
+    setEpisodes(prev=>[entry,...prev]);
+    saveRecentStories([id,...recentStoryIds.filter(x=>x!==id)]);
+    showToast('本机草稿已创建；尚未注册正式生产作品');
+  };
+  const handleUpdateManagedDraft=(id:string,profile:DraftProfile)=>{
+    if(!episodes.some(ep=>ep.id===id && isManagedDraft(ep)))throw Error('正式生产作品不可在草稿界面修改');
+    const checked=validateDraftProfile(profile);
+    const now=new Date().toISOString();
+    setEpisodes(prev=>editLocalDraft(prev,id,checked,now));
+    setActiveEpisode(prev=>prev.id===id?{...prev,...checked,updatedAt:now}:prev);
+    showToast('本机草稿资料已更新');
+  };
+  const handleDeleteManagedDraft=(id:string)=>{
+    if(!episodes.some(ep=>ep.id===id && isManagedDraft(ep)))throw Error('正式生产作品不可在草稿界面删除');
+    setEpisodes(prev=>removeLocalDraft(prev,id));
+    saveRecentStories(recentStoryIds.filter(x=>x!==id));
+    saveProjects(projects.map(p=>({...p,episodeIds:p.episodeIds.filter(x=>x!==id)})));
+    setActiveEpisode(prev=>prev.id===id?REAL_EPISODES[0]:prev);
+    showToast('已删除本机草稿；正式作品及生产数据未改动');
+  };
+
   const [fontState,setFontState] = useState(loadFontPreference);
   useEffect(()=>{document.documentElement.dataset.storyosFont=fontState.value;},[fontState.value]);
   const handleFontPreferenceChange=(value:FontPreference)=>{
@@ -470,7 +498,7 @@ export default function App() {
           )}
 
           <Suspense fallback={<div role="status" className="py-10 text-center text-[13px] text-[var(--text-secondary)]">正在载入工作区…</div>}>
-          {currentTab === 'overview' && <AntdSurface><HomeOverviewView episodes={episodes} projects={projects} onSelectEpisode={(ep) => { setActiveEpisode(ep); setCurrentTab('workbench'); }} onNavigate={setCurrentTab} onOpenRuntimeEpisode={openRuntimeEpisode} /></AntdSurface>}
+          {currentTab === 'overview' && <AntdSurface><HomeOverviewView episodes={episodes} projects={projects} onCreateDraft={handleCreateManagedDraft} onUpdateDraft={handleUpdateManagedDraft} onDeleteDraft={handleDeleteManagedDraft} onSelectEpisode={(ep) => { setActiveEpisode(ep); setCurrentTab('workbench'); }} onNavigate={setCurrentTab} onOpenRuntimeEpisode={openRuntimeEpisode} /></AntdSurface>}
 
           {/* 生产监控台主控页 (StoryOS 生产监控台 V1.0 - Dense Operations Console) */}
           {currentTab === 'production_monitor' && (
