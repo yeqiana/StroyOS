@@ -7,6 +7,7 @@ import { platformApi, type RuntimeStatusSummary, stageLabel } from '../../api/pl
 import { reconcileRuntimeCatalog } from '../../api/runtimeCatalogReconciliation';
 import { useLocalApprovedMedia } from '../../api/localApprovedMedia';
 import { CanonicalRuntimeDirectory } from '../catalog/CanonicalRuntimeDirectory';
+import { LiveProductionBoard } from './LiveProductionBoard';
 
 interface Props {
   episodes: Episode[];
@@ -97,8 +98,10 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
 
     <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-3">
       <div><h1 className="os-page-heading">工作台</h1><p className="mt-1 text-[12px] text-[var(--text-secondary)]">从真实作品继续创作 · 分镜、批准素材与生产阶段分开记录</p></div>
-      <span className="text-[11px] text-[var(--text-tertiary)]">本机工作区只读证据 · 非在线执行状态</span>
+      <span className="text-[11px] text-[var(--text-tertiary)]">MySQL 阶段与只读执行证据 · 在线状态需核验</span>
     </header>
+
+    <LiveProductionBoard onOpenEpisode={onOpenRuntimeEpisode}/>
 
     <section aria-label="创作快捷入口" className="space-y-3">
       <div><h2 className="text-[22px] font-semibold leading-8 tracking-tight">今天想创作什么？</h2><p className="mt-1 text-[12px] text-[var(--text-secondary)]">从已有作品接着做，或去素材库查看批准图片；正式生图仍使用受控流程。</p></div>
