@@ -110,7 +110,7 @@ def _payload_reference_evidence(ep: Path, root: Path, refs: list[Path],
                 raise ValueError("IMAGE_PAYLOAD_REFERENCE_DECLARED_PATH_MISMATCH")
             kind = str(declared.get("kind") or "")
             role = str(declared.get("role") or "")
-            if kind not in {"identity", "prop", "location", "capture_style"} or not role.strip():
+            if kind not in {"identity", "prop", "location", "capture_style"} or (kind == "identity" and not role.strip()):
                 raise ValueError("IMAGE_PAYLOAD_REFERENCE_ROLE_KIND_INVALID")
             expected_sha = str(declared.get("sha256") or "").lower()
             if expected_sha and expected_sha != digest:
