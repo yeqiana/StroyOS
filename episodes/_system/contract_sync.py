@@ -487,7 +487,7 @@ def collect_errors(root: Path | None = None) -> list[str]:
             "PRODUCTION_INCREMENTAL_REQUIRED",
         ],
         "incremental_frame_review.py": [
-            "PATCH_LIMIT_RATIO = 0.25",
+            "action = \"FULL\" if context_change or first_review else \"PATCH\"",
             "INCREMENTAL_CONTEXT_SET",
             "caption_state",
         ],

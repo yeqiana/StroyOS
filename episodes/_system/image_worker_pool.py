@@ -87,6 +87,10 @@ def generation_attempt_context(ep, item, payload_policy):
 def _payload_reference_evidence(ep: Path, root: Path, refs: list[Path],
                                 declarations: list[dict] | None = None) -> list[dict]:
     rows = []
+    if len(refs) > 2:
+        raise ValueError("IMAGE_PAYLOAD_REFERENCE_BUDGET_EXCEEDED")
+    if len({str(path.resolve()) for path in refs}) != len(refs):
+        raise ValueError("IMAGE_PAYLOAD_REFERENCE_DUPLICATE_SOURCE")
     if declarations is not None and len(declarations) != len(refs):
         raise ValueError("IMAGE_PAYLOAD_REFERENCE_DECLARATION_COUNT_MISMATCH")
     for index, path in enumerate(refs):
@@ -104,6 +108,10 @@ def _payload_reference_evidence(ep: Path, root: Path, refs: list[Path],
                 raise ValueError("IMAGE_PAYLOAD_REFERENCE_DECLARATION_INVALID")
             if str(declared.get("path") or "") != relative:
                 raise ValueError("IMAGE_PAYLOAD_REFERENCE_DECLARED_PATH_MISMATCH")
+            kind = str(declared.get("kind") or "")
+            role = str(declared.get("role") or "")
+            if kind not in {"identity", "prop", "location", "capture_style"} or (kind == "identity" and not role.strip()):
+                raise ValueError("IMAGE_PAYLOAD_REFERENCE_ROLE_KIND_INVALID")
             expected_sha = str(declared.get("sha256") or "").lower()
             if expected_sha and expected_sha != digest:
                 raise ValueError("IMAGE_PAYLOAD_REFERENCE_SOURCE_SHA_DRIFT")

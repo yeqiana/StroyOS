@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse, datetime as dt, hashlib, json
 from pathlib import Path
 import frame_contract
+import frame_capture_feasibility
 import image_model_policy
 import story_json
 import runtime_workspace
@@ -20,6 +21,7 @@ def compile_frame(ep,frame,prompt_file,write=True):
     if not scene:
         raise ValueError(f"frame {int(frame):02d} prompt empty")
     contract=frame_contract.compile_frame(ep,int(frame),write_cache=write)
+    frame_capture_feasibility.require_feasible(contract)
     rel=REL/f"{int(frame):02d}.json"
     previous=prompt_package_persistence.load_latest(ep,frame) or {}
     scene_sha=h(scene.encode("utf-8"))

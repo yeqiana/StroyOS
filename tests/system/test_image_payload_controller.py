@@ -320,3 +320,31 @@ def test_controller_receipt_reused_for_same_inputs_and_reexecuted_after_input_dr
     assert first["controller_call_id"] == reused["controller_call_id"]
     assert changed["controller_call_id"] != first["controller_call_id"]
     assert len(calls) == 2
+
+
+def test_legacy_success_receipt_rebinds_frozen_hard_context_without_another_model_call(tmp_path):
+    import image_payload_hard_constraints as hard
+    calls = []
+    frame_input = {
+        "source_scene_prompt": "P01在门口签字",
+        "frame_prompt_contract": (
+            "RESOLVED FRAME CONTRACT | frame=01 | sha256=" + "b"*64 +
+            "\n[CHARACTER / POV CONTRACT]\nP01为第一人称摄影者" +
+            "\n[SCENE-AWARE WARDROBE]\nP01白色短袖"
+        ),
+        "visual_contract": "profile=other",
+    }
+    with _policy_patches()[0] as _, _policy_patches()[1] as _, \
+         patch.object(scoped_codex_worker, "execute_model_call",
+                      side_effect=_fake_executor(calls)), \
+         patch.object(hard, "inject", side_effect=lambda scene, *a, **kw: scene):
+        old = _run(tmp_path, controller_input=frame_input)
+    with _policy_patches()[0] as _, _policy_patches()[1] as _, \
+         patch.object(scoped_codex_worker, "execute_model_call",
+                      side_effect=AssertionError("previous text Controller receipt must be reused")):
+        new = _run(tmp_path, controller_input=frame_input)
+    assert len(calls) == 1
+    assert new["reused"] is True
+    assert new["legacy_payload_rebound"] is True
+    assert old["request_fingerprint"] != new["request_fingerprint"]
+    assert "P01白色短袖" in new["request"]["scene_prompt"]
