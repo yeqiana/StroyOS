@@ -126,3 +126,64 @@ def test_live_runner_has_running_precedence_when_no_blocking_action_exists():
         assert result["execution_status"] == "RUNNING"
         assert result["heartbeat"]["health"] == "HEALTHY"
         assert result["heartbeat"]["host_loop"] == "RUNNING"
+
+
+def test_old_story_quality_failure_after_a15_pass_requires_manual_restart(monkeypatch):
+    with tempfile.TemporaryDirectory() as td:
+        ep = _episode(td)
+        _write(ep, "meta/episode-state.json", {"current_state": "IDEA_LOCKED"})
+        _write(ep, "meta/runtime-runner-state.json", {"status": "HARD_STOP"})
+        _write(ep, "meta/runtime/next-action.json", {
+            "episode_state": "IDEA_LOCKED",
+            "action": "CREATIVE_STORY",
+            "hard_stop": True,
+            "reason": "STEP_BLOCKED",
+            "auto_recoverable": False,
+        })
+        proof = {
+            "status": "WAITING_EXPLICIT_START",
+            "story_gate_verified": True,
+            "review_attempt": 15,
+            "read_only": True,
+            "production_authorization": False,
+            "image_entitlement_verified": False,
+        }
+        monkeypatch.setattr(
+            runtime_status_snapshot, "_verified_historical_story_resume",
+            lambda episode: proof if episode == ep.resolve() else None,
+        )
+
+        actual = runtime_status_snapshot.snapshot(ep)
+
+        assert actual["production_stage"] == "IDEA_LOCKED"
+        assert actual["execution_status"] == "WAITING_EXPLICIT_START"
+        assert actual["blocking_reason"] is None
+        assert actual["current_action"] is None
+        assert actual["next_step"] == "WAITING_EXPLICIT_START"
+        assert actual["resume_admission"] == proof
+        assert actual["story_review_authority"]["status"] == "PASS_VERIFIED"
+        assert "HISTORICAL_STORY_BLOCK_SUPERSEDED_BY_A15_PASS" in actual["consistency_warnings"]
+        assert not (ep / "meta/runtime-status-snapshot.json").exists()
+
+
+def test_current_story_block_remains_blocked_without_strict_recovery_proof(monkeypatch):
+    with tempfile.TemporaryDirectory() as td:
+        ep = _episode(td)
+        _write(ep, "meta/episode-state.json", {"current_state": "IDEA_LOCKED"})
+        _write(ep, "meta/runtime-runner-state.json", {"status": "HARD_STOP"})
+        _write(ep, "meta/runtime/next-action.json", {
+            "episode_state": "IDEA_LOCKED",
+            "action": "CREATIVE_STORY",
+            "hard_stop": True,
+            "reason": "ACTUAL_STORY_GATE_FAIL",
+        })
+        monkeypatch.setattr(runtime_status_snapshot,
+                            "_verified_historical_story_resume", lambda _: None)
+
+        actual = runtime_status_snapshot.snapshot(ep)
+
+        assert actual["execution_status"] in {"HARD_STOP", "BLOCKED"}
+        assert actual["blocking_reason"] == "ACTUAL_STORY_GATE_FAIL"
+        assert actual["current_action"] == "CREATIVE_STORY"
+        assert actual["story_review_authority"]["status"] == "UNVERIFIED"
+        assert actual["resume_admission"]["production_authorization"] is False

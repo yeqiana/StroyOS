@@ -12,7 +12,8 @@ CODE = re.compile(r"^[A-Za-z][A-Za-z0-9_.:-]{0,63}$")
 
 def latest_node(episode_dir: Path) -> dict:
     result = {"execution_status": "UNKNOWN", "current_action": None,
-              "blocking_reason": None, "last_event_at": None}
+              "blocking_reason": None, "last_event_at": None,
+              "historical_failure_reason": None}
     root = episode_dir.resolve()
     path = root / "meta" / "runtime" / "trace-events.jsonl"
     try:
@@ -42,11 +43,15 @@ def latest_node(episode_dir: Path) -> dict:
                 continue
             status = ("DISPATCH_RECORDED" if kind in ("STEP_STARTED", "WORKER_DISPATCH_COMMITTED")
                       else "RESULT_RECORDED" if kind in ("STEP_FINISHED", "WORKER_RESULT_RECEIVED")
-                      else "BLOCKED_RECORDED" if kind == "STEP_FAILED" else "UNKNOWN")
+                      else "FAILURE_RECORDED" if kind == "STEP_FAILED" else "UNKNOWN")
             result.update(execution_status=status, current_action=step)
-            reason = row.get("failure_class") if status == "BLOCKED_RECORDED" else None
-            result["blocking_reason"] = (reason if isinstance(reason, str) and CODE.fullmatch(reason)
-                                         else "STEP_BLOCKED" if status == "BLOCKED_RECORDED" else None)
+            # A finite trace proves what happened, never that a current Driver
+            # is still blocked. New Story Critic authority can supersede it.
+            reason = row.get("failure_class") if status == "FAILURE_RECORDED" else None
+            result["historical_failure_reason"] = (
+                reason if isinstance(reason, str) and CODE.fullmatch(reason)
+                else "STEP_FAILED" if status == "FAILURE_RECORDED" else None)
+            result["blocking_reason"] = None
             ts = row.get("timestamp")
             result["last_event_at"] = ts if isinstance(ts, str) and len(ts) <= 45 else None
             return result

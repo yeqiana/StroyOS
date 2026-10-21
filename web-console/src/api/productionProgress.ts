@@ -10,7 +10,7 @@ export const PRODUCTION_MILESTONES = [
   '发布准备',
 ] as const;
 
-export type ProductionMonitorState = 'verified_generating' | 'blocked' | 'completed' | 'recorded_activity' | 'unverified';
+export type ProductionMonitorState = 'verified_generating' | 'blocked' | 'completed' | 'recorded_activity' | 'waiting_start' | 'historical_block' | 'unverified';
 
 const completedByStage: Record<string, number> = {
   IDEA_LOCKED: 1,
@@ -54,12 +54,20 @@ export function projectProductionProgress(row: RuntimeStatusSummary, detail?: Ru
   const currentAction = detail?.current_action || detail?.next_step || null;
   const actionIndex = currentStepIndex(currentAction);
   const recordStatus = String(detail?.execution_status || '').toUpperCase();
-  const blocked = /BLOCKED|FAILED|NEEDS_USER/.test(recordStatus) ||
-    (typeof detail?.blocking_reason === 'string' && detail.blocking_reason.length > 0 && !['UNKNOWN','-'].includes(detail.blocking_reason));
+  // A finite STEP_FAILED trace only proves a historical error. It is not
+  // current Driver liveness, and may precede an independently verified PASS.
+  const historicalFailure = ['BLOCKED_RECORDED', 'FAILURE_RECORDED', 'FAILED_RECORDED'].includes(recordStatus);
+  const currentBlocked = ['BLOCKED', 'FAILED', 'NEEDS_USER', 'HARD_STOP', 'CURRENT_BLOCKED'].includes(recordStatus);
+  const resumeVerified = detail?.resume_admission?.status === 'WAITING_EXPLICIT_START' &&
+    detail?.resume_admission?.story_gate_verified === true &&
+    detail?.story_review_authority?.status === 'PASS_VERIFIED';
   const providerVerified = detail?.provider_call_observation?.provider_call_verified === true;
   const completedRun = ['COMPLETED', 'COMPLETE', 'SUCCESS', 'SUCCEEDED'].includes(recordStatus);
-  const state: ProductionMonitorState = blocked ? 'blocked' : providerVerified ? 'verified_generating' :
-    completedRun ? 'completed' : recordStatus && !['UNKNOWN', 'NO_STATE', '-'].includes(recordStatus) ? 'recorded_activity' : 'unverified';
+  const state: ProductionMonitorState =
+    currentBlocked ? 'blocked' : providerVerified ? 'verified_generating' :
+    completedRun ? 'completed' : resumeVerified ? 'waiting_start' :
+    historicalFailure ? 'historical_block' :
+    recordStatus && !['UNKNOWN', 'NO_STATE', '-'].includes(recordStatus) ? 'recorded_activity' : 'unverified';
   const activeIndex = actionIndex !== null && completed !== null ? Math.max(completed, actionIndex) :
     actionIndex ?? (completed === null || completed >= PRODUCTION_MILESTONES.length ? null : completed);
   const accepted = detail?.image_progress?.accepted_frames;
@@ -69,17 +77,21 @@ export function projectProductionProgress(row: RuntimeStatusSummary, detail?: Ru
 
   return {
     state,
-    stateLabel: state === 'blocked' ? '已阻断' : state === 'verified_generating' ? '已核验出图中' :
-      state === 'completed' ? '已记录完成' : state === 'recorded_activity' ? '存在执行记录' : '运行未核验',
+    stateLabel: state === 'blocked' ? '当前阻断' : state === 'verified_generating' ? '已核验出图中' :
+      state === 'completed' ? '已记录完成' : state === 'waiting_start' ? '待手动启动' :
+      state === 'historical_block' ? '历史失败记录' :
+      state === 'recorded_activity' ? '存在执行记录' : '运行未核验',
     evidenceLabel: state === 'verified_generating' ? 'Provider 调用窗口已核验' :
-      state === 'blocked' ? '执行日志记录了阻断' :
+      state === 'blocked' ? '当前运行门禁报告阻断' :
+      state === 'waiting_start' ? '后续正式故事审核已通过，等待明确授权启动 Driver' :
+      state === 'historical_block' ? '历史 STEP_FAILED 不能证明当前仍阻断' :
       state === 'completed' ? '执行结果记录了完成' :
       state === 'recorded_activity' ? '仅有历史节点记录，未证明当前在线' : '尚无可核验在线证据',
     completedSteps: completed,
     stagePercent: completed === null ? null : Math.round(completed / PRODUCTION_MILESTONES.length * 100),
     activeIndex,
     action: currentAction,
-    blockedReason: blocked ? detail?.blocking_reason || recordStatus : null,
+    blockedReason: state === 'blocked' ? detail?.blocking_reason || recordStatus : null,
     acceptedFrames,
     expectedFrames,
     framePercent: expectedFrames !== null && acceptedFrames !== null ? Math.round(Math.min(acceptedFrames, expectedFrames) / expectedFrames * 100) : null,

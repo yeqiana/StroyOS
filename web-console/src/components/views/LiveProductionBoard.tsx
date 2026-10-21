@@ -25,9 +25,11 @@ const timeNumber = (item: RuntimeStatusSummary) => {
 const stateOrder: Record<string, number> = {
   verified_generating: 0,
   blocked: 1,
-  recorded_activity: 2,
-  unverified: 3,
-  completed: 4,
+  waiting_start: 2,
+  historical_block: 3,
+  recorded_activity: 4,
+  unverified: 5,
+  completed: 6,
 };
 
 function ProductionProgressCard({ entry, onOpenEpisode, thumbnailUrl, synopsis, synopsisSource }: {
@@ -62,7 +64,7 @@ function ProductionProgressCard({ entry, onOpenEpisode, thumbnailUrl, synopsis, 
         </div>
         <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">
           {stageLabel(summary.production_stage || 'NO_STATE')} · {summary.state_source === 'mysql_episode_state_read_only' ? 'MySQL 权威阶段' : '本地只读来源'}
-          {progress.action ? ' · 最近节点 '+progress.action : ''}
+          {progress.action ? (progress.state === 'historical_block' || progress.state === 'waiting_start' ? ' · 历史节点 ' : ' · 最近节点 ') + progress.action : ''}
         </p>
         <p className="mt-2 line-clamp-2 text-[12px] leading-[1.65] text-[var(--text-secondary)]" title={synopsis || undefined}>{synopsis || '暂无可核验的剧情简介'}</p>
         <p className="mt-1 text-[10px] text-[var(--text-tertiary)]">{synopsisSource || '简介未收录'}{thumbnailUrl ? ' · 封面为已批准素材' : ''}</p>
