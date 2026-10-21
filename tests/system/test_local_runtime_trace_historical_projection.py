@@ -1,10 +1,17 @@
 """Trace activity is historical evidence, not current Driver/Worker authority."""
 from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
 
-from platform.operations.local_runtime_trace_readonly import latest_node
+ROOT = Path(__file__).resolve().parents[2]
+MODULE = ROOT / "platform/operations/local_runtime_trace_readonly.py"
+spec = importlib.util.spec_from_file_location("storyos_local_trace_under_test", MODULE)
+assert spec is not None and spec.loader is not None
+trace_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(trace_module)
+latest_node = trace_module.latest_node
 
 
 def _trace(ep: Path, rows: list[dict]) -> None:
