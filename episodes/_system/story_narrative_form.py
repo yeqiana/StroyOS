@@ -87,6 +87,33 @@ def failed_locked_review_block(episode: Path) -> str | None:
             "LOCKED_STORY_FAILED_REVIEW_SOURCE_DRIFT_NEEDS_EXPLICIT_REVISION_AUTHORITY")
 
 
+def approved_review_dispatch_block(episode: Path) -> str | None:
+    """Independent hard fence: an existing PASS is never an authoring permit.
+
+    Only the DAG's deterministic source-rebind/state-transition recovery can
+    advance an already approved Story. A broken official PASS must stop too,
+    not silently spawn a new creative-model call.
+    """
+    import story_review
+    episode = Path(episode).resolve()
+    review = story_review.load_review(episode)
+    import story_json
+    gates = story_json.read_json(episode / "meta/story-gates.json", default={})
+    gate_pass = ((gates.get("reviews") or {}).get("story") == "passed"
+                 if isinstance(gates, dict) else False)
+    if not isinstance(review, dict):
+        return ("STORY_GATE_PASS_REVIEW_AUTHORITY_MISSING_NO_MODEL_REPLAY"
+                if gate_pass else None)
+    if (review.get("summary") or {}).get("passed") is not True:
+        return ("STORY_GATE_PASS_REVIEW_CONFLICT_NO_MODEL_REPLAY"
+                if gate_pass else None)
+    if (not story_review.review_required(episode)
+            or story_review.verify(episode)
+            or review.get("issue_codes") != []):
+        return "OFFICIAL_STORY_PASS_AUTHORITY_UNVERIFIED_NO_MODEL_REPLAY"
+    return "OFFICIAL_STORY_ALREADY_PASS_DETERMINISTIC_RESUME_ONLY"
+
+
 def main() -> int:
     # Read-only native-MySQL verification through scripts/storyos_production_env.py.
     import argparse

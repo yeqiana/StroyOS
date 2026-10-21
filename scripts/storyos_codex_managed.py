@@ -219,6 +219,34 @@ def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
                     "status": recovery.get("status") or "STORY_RC4_READ_AUTHORITY_ERROR",
                     "read_only": True, "production_authorization": False,
                 }
+            if not restartable:
+                # A distinct post-PASS exit can be caused solely by the
+                # Character Contract still referencing the PREVIOUS approved
+                # Story bytes. This exception proves that exact newest rc4 and
+                # the current official Story PASS without writing any state.
+                # Never convert a quality/content/transport rc4 into a retry.
+                newer_rc, newer = _probe(
+                    env, "scripts/storyos_character_rc4_readonly.py",
+                    ["--episode", rel]
+                )
+                if (newer_rc == 0
+                        and newer.get("status") ==
+                            "STORY_RC4_APPROVED_CHARACTER_BINDING_RECOVERABLE"
+                        and newer.get("story_gate_verified") is True
+                        and newer.get("driver_record_sha256") ==
+                            exit_remediation.canonical_sha(driver.get("record") or {})):
+                    restartable = True
+                    driver_recovery = {
+                        "status": "STORY_RC4_APPROVED_CHARACTER_BINDING_RECOVERABLE",
+                        "driver_record_sha256": newer["driver_record_sha256"],
+                        "binding_action": "CAS_APPEND_ONLY_WITHIN_EXPLICIT_DRIVER",
+                        "read_only": True, "production_authorization": False,
+                    }
+                else:
+                    driver_recovery = {
+                        "status": newer.get("status") or "CHARACTER_RC4_PROOF_UNVERIFIED",
+                        "read_only": True, "production_authorization": False,
+                    }
         if not restartable:
             blockers.append("EPISODE_DRIVER_OWNER_NOT_IDLE_OR_UNVERIFIED")
         if driver.get("driver_state") == "EXITED" and not restartable:
@@ -442,19 +470,23 @@ def main(argv: list[str] | None = None) -> int:
         if state["status"] != "READY_TO_START":
             print("NATIVE_CODEX_FULL_AUTO_BLOCKED_BY_AUTHORITY", file=sys.stderr)
             return 3
-        if (args.command in {"start", "run"}
-                and (state.get("driver_recovery") or {}).get("status") ==
-                    "HISTORICAL_STORY_RC4_SUPERSEDED_BY_VERIFIED_A15_PASS"):
+        valid_recoveries = {
+            "HISTORICAL_STORY_RC4_SUPERSEDED_BY_VERIFIED_A15_PASS":
+                "scripts/storyos_post_review_rc4_readonly.py",
+            "STORY_RC4_APPROVED_CHARACTER_BINDING_RECOVERABLE":
+                "scripts/storyos_character_rc4_readonly.py",
+        }
+        recovery_status = (state.get("driver_recovery") or {}).get("status")
+        if args.command in {"start", "run"} and recovery_status in valid_recoveries:
             # No separate reservation: the original explicit remediation
             # receipt already exists, and the actual Driver still owns its
             # double-start lock. Reconfirm this proof immediately before the
             # host performs its explicitly acknowledged dispatch.
             recovery_rc, latest = _probe(
-                env, "scripts/storyos_post_review_rc4_readonly.py",
+                env, valid_recoveries[recovery_status],
                 ["--episode", episode.relative_to(ROOT).as_posix()]
             )
-            if (recovery_rc != 0 or latest.get("status") !=
-                    "HISTORICAL_STORY_RC4_SUPERSEDED_BY_VERIFIED_A15_PASS"
+            if (recovery_rc != 0 or latest.get("status") != recovery_status
                     or latest.get("driver_record_sha256") !=
                     state["driver_recovery"]["driver_record_sha256"]):
                 print("HISTORICAL_STORY_RC4_AUTHORITY_CHANGED_BEFORE_START",
