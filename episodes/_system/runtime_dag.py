@@ -488,6 +488,12 @@ def _recover_verified_story_without_model(ep, current_state):
     report = character_contract.approved_story_rebind(ep, write=False)
     status = str(report.get("status") or "")
     if status == "NO_OFFICIAL_STORY_PASS":
+        # A projected PASS without its persisted authoritative review cannot
+        # authorize either reuse or another paid Story authoring dispatch.
+        import story_json
+        gates = story_json.read_json(Path(ep) / "meta/story-gates.json", default={})
+        if isinstance(gates, dict) and (gates.get("reviews") or {}).get("story") == "passed":
+            return 22, "STORY_GATE_PASS_REVIEW_AUTHORITY_MISSING"
         return None, status
     if status not in {"ALREADY_BOUND", "VERIFIED_REBIND_READY"}:
         return 22, "OFFICIAL_STORY_REUSE_BLOCKED:" + status

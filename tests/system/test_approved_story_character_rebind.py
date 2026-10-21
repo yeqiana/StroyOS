@@ -181,6 +181,19 @@ def test_dag_recovery_gate_failure_blocks_without_model(tmp_path,monkeypatch):
 def test_no_story_pass_leaves_initial_authoring_path(tmp_path,monkeypatch):
     ep,c,review=fixture(tmp_path,monkeypatch)
     review["summary"]["passed"]=False
+    c["gate"]=False
     assert cc.approved_story_rebind(ep)["status"]=="NO_OFFICIAL_STORY_PASS"
     assert runtime_dag._recover_verified_story_without_model(ep,"IDEA_LOCKED")[0] is None
+    assert story_narrative_form.approved_review_dispatch_block(ep) is None
+    assert not c["save_calls"]
+
+
+def test_gate_pass_review_missing_cannot_replay_authoring(tmp_path,monkeypatch):
+    ep,c,review=fixture(tmp_path,monkeypatch)
+    review["summary"]["passed"]=False
+    assert cc.approved_story_rebind(ep)["status"]=="NO_OFFICIAL_STORY_PASS"
+    rc,reason=runtime_dag._recover_verified_story_without_model(ep,"IDEA_LOCKED")
+    assert rc==22 and "REVIEW_AUTHORITY_MISSING" in reason
+    assert story_narrative_form.approved_review_dispatch_block(ep)==(
+        "STORY_GATE_PASS_REVIEW_CONFLICT_NO_MODEL_REPLAY")
     assert not c["save_calls"]

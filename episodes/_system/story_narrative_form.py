@@ -97,8 +97,16 @@ def approved_review_dispatch_block(episode: Path) -> str | None:
     import story_review
     episode = Path(episode).resolve()
     review = story_review.load_review(episode)
-    if not isinstance(review, dict) or (review.get("summary") or {}).get("passed") is not True:
-        return None
+    import story_json
+    gates = story_json.read_json(episode / "meta/story-gates.json", default={})
+    gate_pass = ((gates.get("reviews") or {}).get("story") == "passed"
+                 if isinstance(gates, dict) else False)
+    if not isinstance(review, dict):
+        return ("STORY_GATE_PASS_REVIEW_AUTHORITY_MISSING_NO_MODEL_REPLAY"
+                if gate_pass else None)
+    if (review.get("summary") or {}).get("passed") is not True:
+        return ("STORY_GATE_PASS_REVIEW_CONFLICT_NO_MODEL_REPLAY"
+                if gate_pass else None)
     if (not story_review.review_required(episode)
             or story_review.verify(episode)
             or review.get("issue_codes") != []):
