@@ -194,6 +194,7 @@ def run(ep,expected_previous_sha,codex_raw,timeout):
  import story_review as sr
  import codex_critic_runner as runner
  import runtime_provenance
+ import runtime_timeout_policy
  ep=Path(ep).resolve()
  codex=sr.resolve_codex(codex_raw)
  check=plan(ep)
@@ -206,7 +207,7 @@ def run(ep,expected_previous_sha,codex_raw,timeout):
  log=ep/"meta/story-critic-attempt-15.jsonl"
  # From this point onward UNKNOWN, crash, timeout or FAIL are terminal for A14.
  result=runner.launch(prompt+sr.DIRECT_CODEX_EXECUTION_OVERRIDE,codex=codex,
-  root=sr.ROOT,timeout=timeout,output_path=candidate,reasoning_effort="high",
+  root=sr.ROOT,timeout=runtime_timeout_policy.resolve("serial_source_revision_review",timeout),output_path=candidate,reasoning_effort="high",
   sandbox="read-only",log_path=log,codex_home_mode="isolated")
  if result.returncode!=0:raise RuntimeError("A15_MODEL_RESULT_UNKNOWN_NO_REPLAY")
  if not candidate.is_file() or any(token.get(k)!=v for k,v in source_sha(ep).items()):
@@ -239,7 +240,7 @@ def main():
  p.add_argument("--ack-one-shot-source-revision-review",action="store_true",required=True)
  p.add_argument("--expected-previous-review-sha",required=True)
  p.add_argument("--codex")
- p.add_argument("--timeout",type=int,default=1200)
+ p.add_argument("--timeout",type=int,default=None)
  args=ap.parse_args()
  ep=Path(args.episode).resolve()
  if args.command=="plan":

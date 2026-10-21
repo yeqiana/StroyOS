@@ -501,6 +501,8 @@ timeout_policy:
   visual_baseline_critic: 300
   fast_scout: 240
   review_critic: 900
+  serial_episode_review: 1500
+  serial_source_revision_review: 1200
   codex_auth_probe: 30
   image_tool_visibility_probe: 120
   driver_carrier_control: 60

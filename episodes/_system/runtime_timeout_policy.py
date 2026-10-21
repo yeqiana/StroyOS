@@ -30,6 +30,8 @@ DEFAULT_SECONDS: dict[str, int] = {
     "visual_baseline_critic": 300,  # visual lock baseline critic
     "fast_scout": 240,              # fast frame scout
     "review_critic": 900,           # story/visual/caption review critics
+    "serial_episode_review": 1500,  # one-shot episode recheck, historical budget
+    "serial_source_revision_review": 1200,  # A13/A14/A15 source review, historical budget
     "codex_auth_probe": 30,         # read-only `codex login status` through the user bridge
     "image_tool_visibility_probe": 120,  # bounded native tool visibility text-only probe
     "driver_carrier_control": 60,   # register/query the Windows Driver carrier task
