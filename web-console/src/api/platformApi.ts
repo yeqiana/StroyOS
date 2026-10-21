@@ -134,6 +134,19 @@ export interface RuntimeStatusDetail {
   production_stage?: string | null;
   execution_status?: string | null;
   blocking_reason?: string | null;
+  /** Verified A15 story review and historical rc4 supersession, not a dispatch permit. */
+  resume_admission?: {
+    status: 'WAITING_EXPLICIT_START' | 'NOT_VERIFIED' | string;
+    story_gate_verified?: boolean;
+    read_only: true;
+    production_authorization: false;
+    image_entitlement_verified?: false;
+  };
+  story_review_authority?: {
+    status: 'PASS_VERIFIED' | 'UNVERIFIED' | string;
+    attempt?: number | null;
+    read_only: true;
+  };
   current_action?: string | null;
   next_step?: string | null;
   image_progress?: ImageProgress;
