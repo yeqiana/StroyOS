@@ -277,6 +277,35 @@ def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
                                   "PREIMAGE_RC4_ENVELOPE_UNVERIFIED",
                         "read_only": True, "production_authorization": False,
                     }
+            if not restartable:
+                # The old scoped VISUAL_LOCK text worker may have returned 0
+                # without creating a plan, any image, or independent pixel
+                # review. Permit only this exact newest rc4 with matching
+                # checkpoint/trace/Driver proof; do not grant image entitlement.
+                visual_rc4_rc, visual_rc4 = _probe(
+                    env, "scripts/storyos_visual_lock_rc4_readonly.py",
+                    ["--episode", rel]
+                )
+                if (visual_rc4_rc == 0
+                        and visual_rc4.get("status") ==
+                            "VISUAL_LOCK_RC4_MISSING_HOST_PLAN_RECOVERABLE"
+                        and visual_rc4.get("driver_record_sha256") ==
+                            exit_remediation.canonical_sha(driver.get("record") or {})):
+                    restartable = True
+                    driver_recovery = {
+                        "status": "VISUAL_LOCK_RC4_MISSING_HOST_PLAN_RECOVERABLE",
+                        "driver_record_sha256": visual_rc4["driver_record_sha256"],
+                        "recovery_action": "HOST_FOUR_FRAME_PLAN_THEN_REAL_PIXELS",
+                        "read_only": True,
+                        "production_authorization": False,
+                    }
+                else:
+                    driver_recovery = {
+                        "status": visual_rc4.get("status") or
+                                  "VISUAL_LOCK_RC4_UNVERIFIED",
+                        "read_only": True,
+                        "production_authorization": False,
+                    }
         if not restartable:
             blockers.append("EPISODE_DRIVER_OWNER_NOT_IDLE_OR_UNVERIFIED")
         if driver.get("driver_state") == "EXITED" and not restartable:
@@ -507,6 +536,8 @@ def main(argv: list[str] | None = None) -> int:
                 "scripts/storyos_character_rc4_readonly.py",
             "PREIMAGE_RC4_HOST_ENVELOPE_RECOVERABLE":
                 "scripts/storyos_preimage_host_envelope_rc4_readonly.py",
+            "VISUAL_LOCK_RC4_MISSING_HOST_PLAN_RECOVERABLE":
+                "scripts/storyos_visual_lock_rc4_readonly.py",
         }
         recovery_status = (state.get("driver_recovery") or {}).get("status")
         if args.command in {"start", "run"} and recovery_status in valid_recoveries:

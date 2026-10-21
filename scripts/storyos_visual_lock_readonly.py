@@ -17,7 +17,7 @@ EXPECTED_PLAN=((1,"ordinary_baseline"),(16,"worst_capture_condition"),
 EXPECTED_ROLES=tuple(role for _,role in EXPECTED_PLAN)
 
 
-def valid_four_frame_plan(plan:dict|None)->tuple[int,...]:
+def valid_four_frame_plan(plan:dict|None, *, frame_count:int|None=None)->tuple[int,...]:
     if not isinstance(plan,dict) or plan.get("schema_version",1)!=1:
         return ()
     items=plan.get("items")
@@ -28,13 +28,24 @@ def valid_four_frame_plan(plan:dict|None)->tuple[int,...]:
     if tuple(x.get("role") for x in items)!=EXPECTED_ROLES:
         return ()
     frames=tuple(x.get("frame") for x in items)
-    if (any(type(f) is not int or not 1<=f<=20 for f in frames)
-            or frames[0]!=1 or len(set(frames))!=4):
+    # Episodes may contain 25, 48, or more frames; never hardcode 20 or
+    # force baseline frame 01 when the canonical selector legitimately chose
+    # an opening selfie in frame 02. Bound by the authoritative episode count
+    # when it is supplied by the read-only caller.
+    # With no episode count the legacy pure helper retains its original
+    # 20-frame / Frame-01 guard. A real episode always supplies its actual
+    # authoritative frame count, allowing 48 frames and opening Frame 02.
+    ceiling=20 if frame_count is None else frame_count
+    if (type(ceiling) is not int or ceiling<4
+            or any(type(f) is not int or not 1<=f<=ceiling for f in frames)
+            or (frame_count is None and frames[0]!=1)
+            or len(set(frames))!=4):
         return ()
     return frames
 
 
-def classify(*,stage:str,attempt_status:str,reviews:dict,plan:dict|None,calibration:dict|None)->dict:
+def classify(*,stage:str,attempt_status:str,reviews:dict,plan:dict|None,calibration:dict|None,
+             frame_count:int|None=None)->dict:
     """Never infer tool entitlement from a text-only probe or a filename."""
     result={"status":"BLOCKED","read_only":True,"model_calls":0,"sql_writes":0,
             "image_generation_called":False,"image_attempt_reserved":False,
@@ -46,7 +57,7 @@ def classify(*,stage:str,attempt_status:str,reviews:dict,plan:dict|None,calibrat
     if stage not in {"STORYBOARD_LOCKED","IMAGE_LOCKED"}:
         result.update(status="NOT_APPLICABLE",reason="EPISODE_NOT_AT_VISUAL_ADMISSION_STAGE")
         return result
-    frames=valid_four_frame_plan(plan)
+    frames=valid_four_frame_plan(plan,frame_count=frame_count)
     if not frames:
         result["reason"]="OFFICIAL_VISUAL_LOCK_FOUR_FRAME_PLAN_MISSING_OR_DRIFTED"
         return result
@@ -86,10 +97,12 @@ def main(argv:list[str]|None=None)->int:
         gates=story_json.read_json(episode/"meta/story-gates.json")
         plan_path=episode/"meta/visual-lock-plan.json"
         plan=story_json.read_json(plan_path) if plan_path.is_file() else None
+        import frame_contract
         result=classify(
             stage=str(state.get("current_state") or state.get("state") or ""),
             attempt_status=str(history.get("status") or ""),
             reviews=gates.get("reviews") or {},plan=plan,
+            frame_count=frame_contract.frame_count(episode),
             calibration=(gates.get("visual") or {}).get("calibration") or {})
         result.update(episode=episode.relative_to(ROOT).as_posix(),
                       stage_source=source,visual_lock_plan_present=plan_path.is_file(),

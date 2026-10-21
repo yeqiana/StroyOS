@@ -1064,6 +1064,24 @@ def _execute(ep,codex=None,timeout=None,run_id=None,trace_id=None,until=None,tel
             rc,note=_run_targeted_review(
                 ep,kind="story-semantic",attempt=attempt,codex=codex,
                 timeout=timeout,run_id=event_run_id,trace_id=trace_id)
+        elif (s.step_id=="VISUAL_LOCK" and cur=="STORYBOARD_LOCKED"
+              and episode_state_persistence.load_with_source(Path(ep).resolve())[1]=="mysql"
+              and runtime_router.detect()[0]=="CODEX"
+              and runtime_router.image_execution_runtime()[0]=="CODEX"):
+            # A text-model SUCCESS is not Visual Lock image/review authority.
+            # The canonical Host owns deterministic planning, scheduler-issued
+            # image Attempts, baseline review (strict 1+3), and independent
+            # four-pixel review. Every stage remains under existing authorities.
+            try:
+                import visual_lock_host_lane
+                result=visual_lock_host_lane.run(
+                    ep,codex=codex,
+                    timeout=runtime_timeout_policy.seconds("image_lane_run"))
+                rc=0 if result.get("status")=="PASS" else 4
+                note=json.dumps(result,ensure_ascii=True)[-5000:]
+            except Exception as exc:
+                rc=4
+                note="VISUAL_LOCK_HOST_LANE_BLOCKED:"+type(exc).__name__+":"+str(exc)[:1600]
         elif (s.step_id=="VISUAL_LOCK" and incremental_runtime_strategy(
                 incremental_plan,s.step_id,cur)=="VERIFY_VISUAL_EVIDENCE"):
             try:
