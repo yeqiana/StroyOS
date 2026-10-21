@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """One-shot A13 Critic for explicitly authorized new serial episode source bytes.
 
 Never replay A12, edit locked source, invent review PASS, or bypass the Driver.

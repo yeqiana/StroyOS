@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Authorized A14 limited 48-frame source promotion after independently failed A13."""
 from __future__ import annotations
 import argparse,hashlib,json,os,shutil
