@@ -180,10 +180,11 @@ def validate_epoch(ep: Path, provenance: dict) -> bool:
         return False
 
 
-def run(ep: Path, *, previous_sha: str, codex_raw: str | None, timeout: int = 1500) -> int:
+def run(ep: Path, *, previous_sha: str, codex_raw: str | None, timeout: int | None = None) -> int:
     import story_review as sr
     import codex_critic_runner
     import runtime_provenance
+    import runtime_timeout_policy
     ep = Path(ep).resolve()
     # Free route/source verification must precede the irreversible reservation.
     codex = sr.resolve_codex(codex_raw)
@@ -197,12 +198,13 @@ def run(ep: Path, *, previous_sha: str, codex_raw: str | None, timeout: int = 15
         raise RuntimeError("SERIAL_RECHECK_WRONG_RUBRIC")
     if digest(story) != check["story_sha256"] or digest(board) != check["storyboard_sha256"]:
         raise RuntimeError("SERIAL_RECHECK_INPUT_CHANGED_BEFORE_RESERVATION")
+    resolved_timeout = runtime_timeout_policy.resolve("serial_episode_review", timeout)
     token = authorize(ep, previous_sha=previous_sha)
     log = ep / "meta" / "story-critic-attempt-12.jsonl"
     # Nothing after this line may call the model twice or delete the token.
     completed = codex_critic_runner.launch(
         prompt + sr.DIRECT_CODEX_EXECUTION_OVERRIDE, codex=codex,
-        root=sr.ROOT, timeout=timeout, output_path=candidate,
+        root=sr.ROOT, timeout=resolved_timeout, output_path=candidate,
         reasoning_effort="high", sandbox="read-only",
         log_path=log, codex_home_mode="isolated")
     if completed.returncode != 0:
@@ -252,7 +254,7 @@ def main() -> int:
     launch.add_argument("--ack-one-shot-serial-review", action="store_true", required=True)
     launch.add_argument("--expected-previous-review-sha", required=True)
     launch.add_argument("--codex")
-    launch.add_argument("--timeout", type=int, default=1500)
+    launch.add_argument("--timeout", type=int, default=None)
     args = parser.parse_args()
     ep = Path(args.episode).resolve()
     if args.cmd == "plan":

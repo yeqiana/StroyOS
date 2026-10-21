@@ -104,6 +104,8 @@ class RuntimeTimeoutPolicyTests(unittest.TestCase):
             "image_tool_visibility_probe": 120,
             "authority_lock": 30,
             "phase5a_canary_run": 900,
+            "serial_episode_review": 1500,
+            "serial_source_revision_review": 1200,
         }
         for role, seconds in additions.items():
             self.assertEqual(ttp.DEFAULT_SECONDS[role], seconds)

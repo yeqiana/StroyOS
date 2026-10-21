@@ -10,6 +10,7 @@ files independently.
 from __future__ import annotations
 
 import datetime as dt
+import importlib.util
 import json
 from pathlib import Path
 from typing import Any
@@ -157,6 +158,37 @@ def _dag_summary(dag: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _verified_historical_story_resume(episode: Path) -> dict[str, Any] | None:
+    """Never infer a current block from a prior rc4 once a later official A15
+    PASS is proven. No dispatch or paid permissions are granted here.
+    The proof is episode-specific, SHA-bound, and checks the canonical Driver.
+    """
+    try:
+        script = Path(__file__).resolve().parents[2] / "scripts/storyos_post_review_rc4_readonly.py"
+        spec = importlib.util.spec_from_file_location("storyos_monitor_rc4_proof", script)
+        if not spec or not spec.loader:
+            return None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        report = module.inspect(episode)
+        if (report.get("status") !=
+                "HISTORICAL_STORY_RC4_SUPERSEDED_BY_VERIFIED_A15_PASS"
+                or report.get("story_gate_verified") is not True
+                or report.get("verified_review_attempt") != 15
+                or report.get("production_authorization") is not False):
+            return None
+        return {
+            "status": "WAITING_EXPLICIT_START",
+            "story_gate_verified": True,
+            "review_attempt": 15,
+            "read_only": True,
+            "production_authorization": False,
+            "image_entitlement_verified": False,
+        }
+    except Exception:
+        return None
+
+
 def snapshot(episode: Path) -> dict[str, Any]:
     """Build one stable Console/Platform read model without mutating the Episode."""
     ep = Path(episode).resolve()
@@ -174,6 +206,17 @@ def snapshot(episode: Path) -> dict[str, Any]:
     image_progress = _image_progress(frames, queue)
     review_progress = _review_progress(admissions, image_progress)
     next_action, consistency_warnings = _effective_next_action(next_action_raw, production_stage, frames)
+    # A historical CREATIVE_STORY failure can remain in Redis NEXT_ACTION after
+    # its newer Story Critic PASS. Suppress only when the independent A15 rc4
+    # authority has verified that exact episode/driver event and the formal gate.
+    post_review_resume = None
+    if (production_stage == "IDEA_LOCKED"
+            and next_action_raw.get("action") == "CREATIVE_STORY"
+            and bool(next_action_raw.get("hard_stop"))):
+        post_review_resume = _verified_historical_story_resume(ep)
+        if post_review_resume:
+            next_action = {}
+            consistency_warnings.append("HISTORICAL_STORY_BLOCK_SUPERSEDED_BY_A15_PASS")
 
     try:
         health = runner_health_monitor.check(ep)
@@ -195,6 +238,8 @@ def snapshot(episode: Path) -> dict[str, Any]:
         execution_status = "NEEDS_USER"
     elif str(health.get("status") or "") == "HEALTHY":
         execution_status = "RUNNING"
+    elif post_review_resume:
+        execution_status = "WAITING_EXPLICIT_START"
     elif action_name and auto_recoverable:
         execution_status = "READY"
     elif runner_status in {"HOST_WAIT", "CAPABILITY_WAIT", "HARD_STOP", "YIELDED"}:
@@ -212,6 +257,8 @@ def snapshot(episode: Path) -> dict[str, Any]:
 
     dag_summary = _dag_summary(dag)
     next_step = action_name or dag_summary.get("current_step")
+    if execution_status == "WAITING_EXPLICIT_START":
+        next_step = "WAITING_EXPLICIT_START"
     if not next_step and production_stage == "PUBLISH_READY":
         next_step = "COMPLETE"
 
@@ -290,6 +337,16 @@ def snapshot(episode: Path) -> dict[str, Any]:
         "execution_status": execution_status,
         "blocking_reason": blocking_reason,
         "current_action": action_name,
+        "resume_admission": post_review_resume or {
+            "status": "NOT_VERIFIED",
+            "read_only": True,
+            "production_authorization": False,
+        },
+        "story_review_authority": {
+            "status": "PASS_VERIFIED" if post_review_resume else "UNVERIFIED",
+            "attempt": 15 if post_review_resume else None,
+            "read_only": True,
+        },
         "image_progress": image_progress,
         "review_progress": review_progress,
         "auto_recoverable": auto_recoverable,
