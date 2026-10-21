@@ -32,10 +32,13 @@ def valid_four_frame_plan(plan:dict|None, *, frame_count:int|None=None)->tuple[i
     # force baseline frame 01 when the canonical selector legitimately chose
     # an opening selfie in frame 02. Bound by the authoritative episode count
     # when it is supplied by the read-only caller.
-    if (frame_count is not None and (type(frame_count) is not int or frame_count<4)
-            or any(type(f) is not int or f<1
-                   or (frame_count is not None and f>frame_count)
-                   for f in frames)
+    # With no episode count the legacy pure helper retains its original
+    # 20-frame / Frame-01 guard. A real episode always supplies its actual
+    # authoritative frame count, allowing 48 frames and opening Frame 02.
+    ceiling=20 if frame_count is None else frame_count
+    if (type(ceiling) is not int or ceiling<4
+            or any(type(f) is not int or not 1<=f<=ceiling for f in frames)
+            or (frame_count is None and frames[0]!=1)
             or len(set(frames))!=4):
         return ()
     return frames

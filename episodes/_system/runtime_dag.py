@@ -1065,6 +1065,7 @@ def _execute(ep,codex=None,timeout=None,run_id=None,trace_id=None,until=None,tel
                 ep,kind="story-semantic",attempt=attempt,codex=codex,
                 timeout=timeout,run_id=event_run_id,trace_id=trace_id)
         elif (s.step_id=="VISUAL_LOCK" and cur=="STORYBOARD_LOCKED"
+              and episode_state_persistence.load_with_source(Path(ep).resolve())[1]=="mysql"
               and runtime_router.detect()[0]=="CODEX"
               and runtime_router.image_execution_runtime()[0]=="CODEX"):
             # A text-model SUCCESS is not Visual Lock image/review authority.

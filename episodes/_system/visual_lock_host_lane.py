@@ -139,7 +139,7 @@ def _run_native_image_scheduler(ep: Path, *, workers: int, timeout: int,
                           encoding="utf-8",errors="replace").returncode
 
 
-def run(ep: Path, *, codex: str|None=None, timeout: int=3600) -> dict:
+def run(ep: Path, *, codex: str|None=None, timeout: int|None=None) -> dict:
     """Continue 1 baseline + 3 reviews, never skipping a bounded source gate."""
     import image_scheduler
     import visual_lock_baseline_gate
@@ -147,7 +147,10 @@ def run(ep: Path, *, codex: str|None=None, timeout: int=3600) -> dict:
     import vision_review_executor
     import machine_action_executor
     import episode_state_persistence
+    import runtime_timeout_policy
 
+    if timeout is None:
+        timeout=runtime_timeout_policy.seconds("image_lane_run")
     ep=Path(ep).resolve()
     if (episode_state_persistence.load(ep) or {}).get("current_state")!="STORYBOARD_LOCKED":
         raise VisualLockHostBlocked("VISUAL_LOCK_STAGE_NOT_STORYBOARD_LOCKED")
