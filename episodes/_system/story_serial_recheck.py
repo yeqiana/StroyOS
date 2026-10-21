@@ -198,12 +198,13 @@ def run(ep: Path, *, previous_sha: str, codex_raw: str | None, timeout: int | No
         raise RuntimeError("SERIAL_RECHECK_WRONG_RUBRIC")
     if digest(story) != check["story_sha256"] or digest(board) != check["storyboard_sha256"]:
         raise RuntimeError("SERIAL_RECHECK_INPUT_CHANGED_BEFORE_RESERVATION")
+    resolved_timeout = runtime_timeout_policy.resolve("serial_episode_review", timeout)
     token = authorize(ep, previous_sha=previous_sha)
     log = ep / "meta" / "story-critic-attempt-12.jsonl"
     # Nothing after this line may call the model twice or delete the token.
     completed = codex_critic_runner.launch(
         prompt + sr.DIRECT_CODEX_EXECUTION_OVERRIDE, codex=codex,
-        root=sr.ROOT, timeout=runtime_timeout_policy.resolve("serial_episode_review", timeout), output_path=candidate,
+        root=sr.ROOT, timeout=resolved_timeout, output_path=candidate,
         reasoning_effort="high", sandbox="read-only",
         log_path=log, codex_home_mode="isolated")
     if completed.returncode != 0:

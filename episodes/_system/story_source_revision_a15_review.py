@@ -203,11 +203,12 @@ def run(ep,expected_previous_sha,codex_raw,timeout):
  candidate=ep/CANDIDATE_REL
  prompt=sr.critic_prompt(ep,story,board,candidate,ATTEMPT)
  if "SERIAL EPISODE HARD RULES" not in prompt:raise RuntimeError("A15_WRONG_STORY_RUBRIC")
+ resolved_timeout=runtime_timeout_policy.resolve("serial_source_revision_review",timeout)
  token=authorize(ep,expected_previous_sha)
  log=ep/"meta/story-critic-attempt-15.jsonl"
  # From this point onward UNKNOWN, crash, timeout or FAIL are terminal for A14.
  result=runner.launch(prompt+sr.DIRECT_CODEX_EXECUTION_OVERRIDE,codex=codex,
-  root=sr.ROOT,timeout=runtime_timeout_policy.resolve("serial_source_revision_review",timeout),output_path=candidate,reasoning_effort="high",
+  root=sr.ROOT,timeout=resolved_timeout,output_path=candidate,reasoning_effort="high",
   sandbox="read-only",log_path=log,codex_home_mode="isolated")
  if result.returncode!=0:raise RuntimeError("A15_MODEL_RESULT_UNKNOWN_NO_REPLAY")
  if not candidate.is_file() or any(token.get(k)!=v for k,v in source_sha(ep).items()):
