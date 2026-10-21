@@ -546,6 +546,23 @@ def prompt(ep,step):
     # writer the actual Host-frozen nested values, not a vague instruction to
     # reconstruct them by searching the repository; the independent semantic
     # comparator still verifies every frozen leaf.
+    preimage_envelope_block = ""
+    if step in {"PREIMAGE_CHARACTER_FINALIZE", "PREIMAGE_ENVIRONMENT",
+                "PREIMAGE_WORLD", "PREIMAGE_VISUAL_NARRATIVE"}:
+        preimage_envelope_block = (
+            "<PREIMAGE_CANDIDATE_DELIVERY_CONTRACT>\n"
+            "Write one JSON Candidate ONLY to the capsule's candidate_output. "
+            "Supply the exact declared schema_version=1, task_id, task_type, "
+            "snapshot_id, node_id and payload. The payload must contain "
+            "exactly the declared authority_scope keys and complete "
+            "task-specific semantics, without changing another task's scope. "
+            "The Host, NOT the model, binds generated_at, status=COMPLETED, "
+            "authority_scope and source_authority_sha256 only after an "
+            "independently verified native completed turn. Never invent or "
+            "shorten a source SHA; omit those Host-owned metadata fields. "
+            "No extra shared authority writes.\n"
+            "</PREIMAGE_CANDIDATE_DELIVERY_CONTRACT>"
+        )
     frozen_character_block=""
     if step=="PREIMAGE_CHARACTER_FINALIZE":
         import preimage_authority_snapshot
@@ -591,6 +608,8 @@ Read the embedded FAST_RUNTIME_INDEX first. Do NOT recursively scan the reposito
 <EXECUTION_CAPSULE>
 {json.dumps(capsule,ensure_ascii=False,indent=2)}
 </EXECUTION_CAPSULE>
+
+{preimage_envelope_block}
 
 {frozen_character_block}
 
