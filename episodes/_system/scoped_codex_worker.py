@@ -691,6 +691,12 @@ def _deadline_epoch(record):
 
 def run_step(ep,step,codex_raw=None,timeout=None,attach_poll_seconds=None,run_id=None,trace_id=None):
     if step not in STEP_DIRECTIVES: raise ValueError(f"unknown scoped step: {step}")
+    if (step=="VISUAL_LOCK" and runtime_router.detect()[0]=="CODEX"
+            and runtime_router.image_execution_runtime()[0]=="CODEX"):
+        # Defense in depth: in native production this is a real-pixel Host
+        # lane, never a generic text-worker instruction acknowledgement.
+        # No reservation, model call, or review status is created here.
+        return 22,"VISUAL_LOCK_NATIVE_HOST_PIXEL_LANE_REQUIRED"
     if step=="CREATIVE_STORY":
         import story_narrative_form
         block=(story_narrative_form.approved_review_dispatch_block(ep)
