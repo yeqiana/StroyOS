@@ -363,6 +363,134 @@ def validate(ep,require_locked=False,*,candidate=None):
             errors.append("final Story review source unverifiable")
     return errors
 
+def approved_story_rebind(ep, *, write=False):
+    """Synchronize a locked Character Contract to an independently approved Story.
+
+    Read-only unless called with write=True by the canonical authorized Driver.
+    A verified PASS is not permission to change the cast/roles, rewrite the Story,
+    or skip the canonical Episode State transition. In MySQL this appends a
+    new immutable Character Contract version with compare-and-swap.
+    """
+    from copy import deepcopy
+    import episode_state_persistence
+    import story_review
+
+    ep = Path(ep).resolve()
+
+    def result(status, **extra):
+        return {"status": status, "read_only": not write,
+                "model_calls": 0, "image_calls": 0, **extra}
+
+    review = story_review.load_review(ep)
+    if not isinstance(review, dict) or (review.get("summary") or {}).get("passed") is not True:
+        return result("NO_OFFICIAL_STORY_PASS")
+    # Fail closed even if the review payload says PASS: the entire authoritative
+    # critic proof, current Story/Storyboard/Subtitles and rubric must verify.
+    if not story_review.review_required(ep):
+        return result("STORY_REVIEW_NOT_REQUIRED_CANNOT_AUTOBIND")
+    stage = (episode_state_persistence.load(ep) or {}).get("current_state")
+    if stage not in {"IDEA_LOCKED", "STORYBOARD_LOCKED"}:
+        return result("APPROVED_STORY_REBIND_STAGE_UNSAFE", stage=stage)
+    gate = story_json.read_json(ep / "meta/story-gates.json", default=None)
+    if (not isinstance(gate, dict)
+            or (gate.get("reviews") or {}).get("story") != "passed"
+            or (gate.get("story") or {}).get("task_closed") is not True):
+        return result("OFFICIAL_STORY_GATE_NOT_CLOSED")
+    errors = story_review.verify(ep)
+    if errors or review.get("issue_codes") != []:
+        return result("OFFICIAL_STORY_PASS_UNVERIFIED", errors=[str(x) for x in errors[:5]])
+    provenance = review.get("critic_provenance") or {}
+    if (not isinstance(provenance.get("attempt"), int)
+            or isinstance(provenance.get("attempt"), bool)
+            or provenance["attempt"] < 1):
+        return result("OFFICIAL_STORY_REVIEW_ATTEMPT_UNVERIFIED")
+    review_sha = story_review.review_authority_sha256(ep)
+    if not isinstance(review_sha, str) or len(review_sha) != 64:
+        return result("OFFICIAL_STORY_REVIEW_SHA_MISSING")
+
+    current = load(ep)
+    if not isinstance(current, dict) or current.get("status") != "LOCKED":
+        return result("FROZEN_CHARACTER_CONTRACT_MISSING")
+    existing = current.get("final_story_review") or {}
+    path = Path(str(existing.get("story_path") or ""))
+    if path.is_absolute() or ".." in path.parts or path.as_posix() != "docs/story.md":
+        return result("FROZEN_STORY_SOURCE_PATH_UNVERIFIED")
+    story = ep / path
+    if not story.is_file():
+        return result("OFFICIAL_STORY_SOURCE_MISSING")
+    latest_sha = hashlib.sha256(story.read_bytes()).hexdigest()
+    if review.get("story_sha256") != latest_sha:
+        return result("OFFICIAL_STORY_SOURCE_CHANGED")
+    old_sha = existing.get("story_sha256")
+    if old_sha == latest_sha:
+        bad = validate(ep, require_locked=True, candidate=current)
+        return result("ALREADY_BOUND" if not bad else "EXISTING_CHARACTER_CONTRACT_INVALID",
+                      errors=[str(x) for x in bad[:5]])
+    if not isinstance(old_sha, str) or len(old_sha) != 64:
+        return result("PREVIOUS_CHARACTER_STORY_SHA_UNVERIFIED")
+    # Only this one source-SHA mismatch is eligible for deterministic repair.
+    # Any world/cast/no-anomaly/role problem remains a human review blocker.
+    problems = validate(ep, require_locked=True, candidate=current)
+    if problems != ["final Story review source SHA drift"]:
+        return result("CHARACTER_SEMANTIC_OR_IDENTITY_DRIFT",
+                      errors=[str(x) for x in problems[:5]])
+    text = story.read_text(encoding="utf-8-sig")
+    members = ((current.get("cast") or {}).get("members") or [])
+    names = [str(x.get("name") or "").strip() for x in members if isinstance(x, dict)]
+    if not names or len(names) != len(members) or len(set(names)) != len(names):
+        return result("FROZEN_CAST_IDENTITY_UNVERIFIED")
+    if any(name not in text for name in names):
+        return result("FROZEN_CAST_MEMBER_MISSING_IN_NEW_STORY")
+    expected = authority_sha256(ep)
+    if not isinstance(expected, str) or len(expected) != 64:
+        return result("CHARACTER_CONTRACT_CAS_SHA_MISSING")
+
+    candidate = deepcopy(current)
+    bind = {
+        "scope": "VERIFIED_OFFICIAL_STORY_PASS_REBIND",
+        "previous_story_sha256": old_sha,
+        "story_sha256": latest_sha,
+        "official_review_sha256": review_sha,
+        "review_attempt": provenance["attempt"],
+        "review_scope": provenance.get("review_scope") or "OFFICIAL_STORY_REVIEW",
+        "previous_character_sha256": expected,
+    }
+    candidate["final_story_review"] = {
+        **existing,
+        "source": "verified_official_story_pass_rebind",
+        "story_sha256": latest_sha,
+        "previous_story_sha256": old_sha,
+        "official_review_sha256": review_sha,
+    }
+    # Preserve all earlier source_revision authority fields. The SQL repository
+    # separately retains the entire old payload as a previous version.
+    candidate["approved_story_rebindings"] = [
+        *(candidate.get("approved_story_rebindings") or []), bind,
+    ]
+    candidate_errors = validate(ep, require_locked=True, candidate=candidate)
+    if candidate_errors:
+        return result("REBOUND_CHARACTER_CONTRACT_INVALID",
+                      errors=[str(x) for x in candidate_errors[:5]])
+    if not write:
+        return result("VERIFIED_REBIND_READY", bind=bind)
+
+    # Recheck everything that can change between validation and CAS. The
+    # MySQL version repository owns the final atomic compare-and-swap.
+    if ((episode_state_persistence.load(ep) or {}).get("current_state") != stage
+            or hashlib.sha256(story.read_bytes()).hexdigest() != latest_sha
+            or story_review.review_authority_sha256(ep) != review_sha
+            or story_review.verify(ep)
+            or (story_json.read_json(ep / "meta/story-gates.json", default={}).get("reviews") or {}).get("story") != "passed"
+            or authority_sha256(ep) != expected):
+        return result("APPROVED_STORY_AUTHORITY_CHANGED_BEFORE_CAS")
+    try:
+        save(ep, candidate, expected_sha256=expected)
+    except Exception as exc:
+        return result("CHARACTER_VERSION_CAS_FAILED", reason=type(exc).__name__)
+    return result("REBOUND_VERIFIED", bind=bind,
+                  new_contract_sha256=authority_sha256(ep))
+
+
 def reviewed_story_lock(ep, review_file):
     """Review/lock an existing Character Contract against a persisted final Story.
 

@@ -476,6 +476,35 @@ def incremental_runtime_strategy(incremental_plan, step_id, current_state):
     return "RUN_WORKER"
 
 
+def _recover_verified_story_without_model(ep, current_state):
+    """Reconcile formal Story PASS only inside the authorized canonical Driver.
+
+    0: official PASS was reused and canonical stage advanced.
+    None: no official PASS yet; normal authoring may proceed.
+    22: fail closed, NEVER dispatch another authoring model.
+    """
+    if current_state != "IDEA_LOCKED":
+        return None, "NO_IDEA_LOCKED_RECOVERY_REQUIRED"
+    report = character_contract.approved_story_rebind(ep, write=False)
+    status = str(report.get("status") or "")
+    if status == "NO_OFFICIAL_STORY_PASS":
+        return None, status
+    if status not in {"ALREADY_BOUND", "VERIFIED_REBIND_READY"}:
+        return 22, "OFFICIAL_STORY_REUSE_BLOCKED:" + status
+    if status == "VERIFIED_REBIND_READY":
+        updated = character_contract.approved_story_rebind(ep, write=True)
+        if updated.get("status") not in {"REBOUND_VERIFIED", "ALREADY_BOUND"}:
+            return 22, "APPROVED_CHARACTER_BINDING_FAILED:" + str(updated.get("status"))
+    # Only the existing Episode State transition is allowed to advance stage.
+    # It verifies all three gates and persists MySQL state atomically.
+    cp = run([sys.executable, SYSTEM / "episode_state.py", "transition",
+              ep, "STORYBOARD_LOCKED", "--note",
+              "verified official Story PASS; Character Contract CAS reconciled"])
+    if cp.returncode != 0 or not stage_at_least(state(ep), "STORYBOARD_LOCKED"):
+        return 22, "VERIFIED_STORY_STAGE_GATE_BLOCKED:" + str(cp.stdout)[-1000:]
+    return 0, "VERIFIED_OFFICIAL_STORY_REUSED_NO_AUTHORING_MODEL"
+
+
 def _plan_evidence_state(incremental_plan, key):
     if not isinstance(incremental_plan, dict):
         return ""
@@ -905,6 +934,18 @@ def _execute(ep,codex=None,timeout=None,run_id=None,trace_id=None,until=None,tel
         node_started=runtime_node_execution.now()
         node_t0=time.monotonic()
         cur=state(ep)
+        if s.step_id == "CREATIVE_STORY" and cur == "IDEA_LOCKED":
+            approval_rc, approval_note = _recover_verified_story_without_model(ep, cur)
+            if approval_rc == 22:
+                runtime_observability.safe_record_runtime_event(
+                    ep, "STEP_FAILED", run_id=event_run_id, trace_id=trace_id,
+                    step=s.step_id, status="BLOCKED", failure_class="22",
+                    reason=approval_note, source="runtime_dag")
+                background.shutdown(wait=False, cancel_futures=True)
+                print("OFFICIAL_STORY_RECOVERY_BLOCKED", approval_note)
+                return 22
+            if approval_rc == 0:
+                cur = state(ep)
         if s.step_id=="CREATIVE_STORY" and not stage_at_least(cur,"STORYBOARD_LOCKED"):
             directing_quality.before_step(ep,s.step_id)
             preparation_started=proto.now()
@@ -945,6 +986,10 @@ def _execute(ep,codex=None,timeout=None,run_id=None,trace_id=None,until=None,tel
                 continue
         if s.target_state and stage_at_least(cur,s.target_state):
             ok,msg=validate_target(ep,s.target_state)
+            if s.step_id == "CREATIVE_STORY" and not ok:
+                background.shutdown(wait=False,cancel_futures=True)
+                print("VERIFIED_STORY_STAGE_INVALID_NO_MODEL_REPLAY", msg)
+                return 22
             if ok:
                 out_hash=_evidence_input_hash(ep,["meta/episode-state.json",*s.evidence_paths])
                 reused_elapsed=time.monotonic()-node_t0
