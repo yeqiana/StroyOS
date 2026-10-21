@@ -88,6 +88,61 @@ def execute_local(ep: Path, executor, *, max_workers: int = 4) -> dict:
 
     source=preimage_authority_snapshot.build(ep,write=True,kind="PREIMAGE_INPUT_SNAPSHOT")
     rows=tasks.plan_tasks(ep,source,resume=True)
+    # Recover a model-authored Candidate only with its original successful
+    # receipt, scoped JSONL completed turn, precise file_change and immutable
+    # task/snapshot. The Host seals missing envelope metadata; no Codex call
+    # is allowed merely to reproduce those deterministic fields. This path
+    # runs ONLY after the user explicitly starts the canonical Driver.
+    import preimage_host_receipt_recovery as host_recovery
+    recovered = []
+    prior_state = tasks.story_json.read_json(ep / tasks.STATE_REL, default={}) or {}
+    for task in rows:
+        if task.get("status") == "REUSED":
+            continue
+        row = (prior_state.get("tasks") or {}).get(task.get("task_type")) or {}
+        # Genuine TIMEOUT candidates have their own stricter recovery proof.
+        # Never reclassify timeout as a successful model execution.
+        if (row.get("status") != "FAILED"
+                or row.get("reason") == "worker rc=124"):
+            continue
+        previous = tasks.read_candidate(ep, task)
+        if not isinstance(previous, dict):
+            continue
+        if not any(k not in previous for k in (
+                "source_authority_sha256", "generated_at", "status", "authority_scope")):
+            continue
+        # Never reinterpret an unrelated failed task or another task's file.
+        if (previous.get("task_id") != task["task_id"]
+                or previous.get("task_type") != task["task_type"]
+                or previous.get("snapshot_id") != task["snapshot_id"]):
+            return {"status": "FAILED", "recovery": "REFUSED",
+                    "reason": "existing PREIMAGE Candidate identity drift; no model redispatch"}
+        proof = host_recovery.inspect(ep, task)
+        if proof.get("status") != "ELIGIBLE":
+            return {"status": "FAILED", "recovery": "REFUSED",
+                    "reason": "existing model Candidate Host envelope recovery unverified: "
+                              + str(proof.get("reason")), "production_observed": False}
+        result = host_recovery.seal_verified(ep, task, proof)
+        if result.get("status") != "PASS":
+            return {"status": "FAILED", "recovery": "REFUSED",
+                    "reason": "Host sealing refused: " + "; ".join(
+                        str(x) for x in result.get("errors", [])[:4]),
+                    "production_observed": False}
+        tasks.update_task_state(ep, task, "REUSED",
+            reason="original verified model Candidate sealed by Host; no new model call")
+        task["status"] = "REUSED"
+        recovered.append({
+            "task_type": task["task_type"], "task_id": task["task_id"],
+            "old_candidate_sha256": proof["candidate_sha256"],
+            "original_success_receipt_call_id": proof["receipt_call_id"],
+            "sealed_candidate_sha256": result["sealed"]["sealed_candidate_sha256"],
+            "new_model_calls": 0,
+        })
+    if recovered:
+        atomic.atomic_write_json(ep / "meta/runtime/preimage-host-candidate-recovery.json",
+            {"schema_version": 1, "status": "SEALED_AND_REUSED",
+             "snapshot_id": source["snapshot_id"],
+             "models_not_reinvoked": True, "tasks": recovered})
     # Retry only if the original model failed before producing a valid,
     # SHA-bound candidate. A bounded model can write the complete artifact and
     # then hang waiting for its transport to exit; audited recovery must preserve

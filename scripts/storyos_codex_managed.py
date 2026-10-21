@@ -247,6 +247,36 @@ def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
                         "status": newer.get("status") or "CHARACTER_RC4_PROOF_UNVERIFIED",
                         "read_only": True, "production_authorization": False,
                     }
+            if not restartable:
+                # Latest post-story rc4 may be a Host envelope-only rejection
+                # of a separately proven PREIMAGE Candidate. No generic
+                # "rc4 means retry" rule: exact Driver/trace/checkpoint,
+                # successful native file_change, source snapshot and other
+                # completed workers are all rechecked read-only.
+                envelope_rc, envelope = _probe(
+                    env, "scripts/storyos_preimage_host_envelope_rc4_readonly.py",
+                    ["--episode", rel]
+                )
+                if (envelope_rc == 0
+                        and envelope.get("status") ==
+                            "PREIMAGE_RC4_HOST_ENVELOPE_RECOVERABLE"
+                        and envelope.get("driver_record_sha256") ==
+                            exit_remediation.canonical_sha(driver.get("record") or {})):
+                    restartable = True
+                    driver_recovery = {
+                        "status": "PREIMAGE_RC4_HOST_ENVELOPE_RECOVERABLE",
+                        "driver_record_sha256": envelope["driver_record_sha256"],
+                        "candidate_sha256": envelope["candidate_sha256"],
+                        "recovery_action": "HOST_SEAL_WITHOUT_NEW_MODEL",
+                        "read_only": True,
+                        "production_authorization": False,
+                    }
+                else:
+                    driver_recovery = {
+                        "status": envelope.get("status") or
+                                  "PREIMAGE_RC4_ENVELOPE_UNVERIFIED",
+                        "read_only": True, "production_authorization": False,
+                    }
         if not restartable:
             blockers.append("EPISODE_DRIVER_OWNER_NOT_IDLE_OR_UNVERIFIED")
         if driver.get("driver_state") == "EXITED" and not restartable:
@@ -475,6 +505,8 @@ def main(argv: list[str] | None = None) -> int:
                 "scripts/storyos_post_review_rc4_readonly.py",
             "STORY_RC4_APPROVED_CHARACTER_BINDING_RECOVERABLE":
                 "scripts/storyos_character_rc4_readonly.py",
+            "PREIMAGE_RC4_HOST_ENVELOPE_RECOVERABLE":
+                "scripts/storyos_preimage_host_envelope_rc4_readonly.py",
         }
         recovery_status = (state.get("driver_recovery") or {}).get("status")
         if args.command in {"start", "run"} and recovery_status in valid_recoveries:
@@ -488,7 +520,10 @@ def main(argv: list[str] | None = None) -> int:
             )
             if (recovery_rc != 0 or latest.get("status") != recovery_status
                     or latest.get("driver_record_sha256") !=
-                    state["driver_recovery"]["driver_record_sha256"]):
+                    state["driver_recovery"]["driver_record_sha256"]
+                    or (recovery_status == "PREIMAGE_RC4_HOST_ENVELOPE_RECOVERABLE"
+                        and latest.get("candidate_sha256") !=
+                            state["driver_recovery"].get("candidate_sha256"))):
                 print("HISTORICAL_STORY_RC4_AUTHORITY_CHANGED_BEFORE_START",
                       file=sys.stderr)
                 return 3

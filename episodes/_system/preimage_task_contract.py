@@ -449,8 +449,10 @@ def plan_tasks(ep: Path, snapshot: dict, *, resume: bool = False) -> list[dict]:
 
 
 
-def seal_scoped_native_candidate(ep: Path, task: dict, model_log: str | Path, *, log_start_offset: int = 0) -> dict:
-    """Bind the *Host's* source-authority digest to a completed native model payload.
+def seal_scoped_native_candidate(ep: Path, task: dict, model_log: str | Path, *,
+                                 log_start_offset: int = 0, log_end_offset: int | None = None,
+                                 expected_candidate_sha256: str | None = None) -> dict:
+    """Bind all *Host-owned* Candidate metadata to verified model-authored payload.
 
     A scoped model is allowed to author only task-owned payload. It must not be
     entrusted to transcribe 64-character input hashes into the final Candidate.
@@ -467,14 +469,16 @@ def seal_scoped_native_candidate(ep: Path, task: dict, model_log: str | Path, *,
     expected_log = (ep / "meta/scoped-workers").resolve()
     if not log.is_file() or not log.is_relative_to(expected_log):
         return {"status": "REFUSED", "errors": ["native model log outside declared scoped-worker evidence"]}
-    if type(log_start_offset) is not int or not 0 <= log_start_offset <= log.stat().st_size:
-        return {"status": "REFUSED", "errors": ["native model log offset is not within the file"]}
+    end = log.stat().st_size if log_end_offset is None else log_end_offset
+    if (type(log_start_offset) is not int or type(end) is not int
+            or not 0 <= log_start_offset < end <= log.stat().st_size):
+        return {"status": "REFUSED", "errors": ["native model log slice is not within the file"]}
     # The scoped worker uses append-only JSONL across retries. Only this
     # dispatch's new bytes may prove its completion; old successful turns
     # must never stand in for the latest invocation.
     with log.open("rb") as reader:
         reader.seek(log_start_offset)
-        current_log_bytes = reader.read()
+        current_log_bytes = reader.read(end - log_start_offset)
     events = []
     for line in current_log_bytes.decode("utf-8", "replace").splitlines():
         try:
@@ -491,22 +495,36 @@ def seal_scoped_native_candidate(ep: Path, task: dict, model_log: str | Path, *,
     if not p.is_file():
         return {"status": "REFUSED", "errors": ["scoped model did not write a Candidate"]}
     original = p.read_bytes()
-    before = sha(p)
+    before = hashlib.sha256(original).hexdigest()
+    if expected_candidate_sha256 is not None and expected_candidate_sha256 != before:
+        return {"status": "REFUSED", "errors": ["candidate SHA changed after recovery proof"]}
     model_candidate = story_json.read_json(p, default=None)
     if not isinstance(model_candidate, dict):
         return {"status": "REFUSED", "errors": ["model Candidate is not a JSON object"]}
-    # These structural identities must already be correct. Only the
-    # source-authority SHA is Host-owned; an invented task/snapshot/scope
-    # can never be reinterpreted as the current worker.
+    # The model must still bind the correct immutable task/snapshot and own
+    # only the declared semantic payload. Host-owned metadata can be omitted,
+    # but if the model supplied identity/scope/status it must not conflict.
     if (model_candidate.get("task_id") != task["task_id"]
             or model_candidate.get("task_type") != task["task_type"]
             or model_candidate.get("snapshot_id") != task["snapshot_id"]
-            or set(model_candidate.get("authority_scope") or []) != set(task["authority_scope"])):
-        return {"status": "REFUSED", "errors": ["model Candidate task, snapshot, or scope identity mismatch"]}
+            or model_candidate.get("schema_version", 1) != 1
+            or ("node_id" in model_candidate
+                and model_candidate["node_id"] != task.get("node_id"))
+            or ("authority_scope" in model_candidate
+                and (not isinstance(model_candidate["authority_scope"], list)
+                     or set(model_candidate["authority_scope"]) != set(task["authority_scope"])))
+            or model_candidate.get("status", "COMPLETED") != "COMPLETED"):
+        return {"status": "REFUSED", "errors": ["model Candidate task, snapshot, or supplied host metadata mismatch"]}
     sealed = copy.deepcopy(model_candidate)
+    sealed.setdefault("schema_version", 1)
+    sealed["authority_scope"] = list(task["authority_scope"])
     sealed["source_authority_sha256"] = copy.deepcopy(
         task["input_contract"]["source_authority_sha256"]
     )
+    # generated_at is the Host's confirmed sealing time, not fabricated
+    # retrospective model timing. The real turn/receipt keeps its own clock.
+    sealed["generated_at"] = now()
+    sealed["status"] = "COMPLETED"
     errors = verify_candidate(sealed, task)
     if errors:
         return {"status": "REFUSED", "errors": errors}
@@ -545,6 +563,9 @@ def seal_scoped_native_candidate(ep: Path, task: dict, model_log: str | Path, *,
         "original_candidate_path": recovery.relative_to(ep).as_posix(),
         "native_model_log_sha256": hashlib.sha256(current_log_bytes).hexdigest(),
         "native_model_log_start_offset": log_start_offset,
+        "native_model_log_end_offset": end,
+        "host_sealed_at": sealed["generated_at"],
+        "host_bound_fields": ["generated_at", "status", "authority_scope", "source_authority_sha256"],
         "source_authority_digest_origin": "trusted_preimage_input_snapshot",
         "model_turn_completed": True,
         "authoritative_payload_unchanged": sealed.get("payload") == model_candidate.get("payload"),
