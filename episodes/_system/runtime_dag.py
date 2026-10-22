@@ -1117,6 +1117,18 @@ def _execute(ep,codex=None,timeout=None,run_id=None,trace_id=None,until=None,tel
                 # transport hints + SHA-bound packages without 3600s of redundant
                 # model rewriting, then keep the official DAG postcondition path.
                 try:
+                    # A committed PREIMAGE snapshot fences only PREIMAGE-owned
+                    # scopes; Visual Lock's derived continuity/calibration
+                    # projection may require the cached 48-frame index to be
+                    # canonically rebuilt before deterministic prompt audit.
+                    if (cur=="STORYBOARD_LOCKED"
+                            and episode_state_persistence.load_with_source(
+                                Path(ep).resolve())[1]=="mysql"
+                            and runtime_router.detect()[0]=="CODEX"
+                            and runtime_router.image_execution_runtime()[0]=="CODEX"
+                            and (Path(ep)/"meta/visual-lock-plan.json").is_file()):
+                        import visual_lock_contract_bridge
+                        visual_lock_contract_bridge.reconcile(ep)
                     output=locked_story_prompt_authoring.run(ep)
                     note=json.dumps({
                         "execution":"LOCKED_STORY_DETERMINISTIC_PROMPTS",

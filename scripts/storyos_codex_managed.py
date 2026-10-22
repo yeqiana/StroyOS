@@ -306,6 +306,36 @@ def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
                         "read_only": True,
                         "production_authorization": False,
                     }
+            if not restartable:
+                # Latest rc4 can be only a derived Frame Contract index stale
+                # at deterministic PROMPT_AUTHORING. Read-only proof checks
+                # exact Driver/last checkpoint/trace and every old->new SHA
+                # before allowing explicit manual start. This is not a paid
+                # image capability attestation or a generic rc4 retry.
+                prompt_rc, prompt_proof = _probe(
+                    env, "scripts/storyos_prompt_contract_rc4_readonly.py",
+                    ["--episode", rel]
+                )
+                if (prompt_rc == 0
+                        and prompt_proof.get("status") ==
+                        "PROMPT_RC4_PREIMAGE_VISUAL_INDEX_REBIND_RECOVERABLE"
+                        and prompt_proof.get("driver_record_sha256") ==
+                        exit_remediation.canonical_sha(driver.get("record") or {})):
+                    restartable = True
+                    driver_recovery = {
+                        "status": "PROMPT_RC4_PREIMAGE_VISUAL_INDEX_REBIND_RECOVERABLE",
+                        "driver_record_sha256": prompt_proof["driver_record_sha256"],
+                        "recovery_action": "REBUILD_EQUIVALENT_48_CONTRACTS_IN_EXPLICIT_DRIVER",
+                        "read_only": True,
+                        "production_authorization": False,
+                    }
+                else:
+                    driver_recovery = {
+                        "status": prompt_proof.get("status") or
+                                  "PROMPT_CONTRACT_RC4_UNVERIFIED",
+                        "read_only": True,
+                        "production_authorization": False,
+                    }
         if not restartable:
             blockers.append("EPISODE_DRIVER_OWNER_NOT_IDLE_OR_UNVERIFIED")
         if driver.get("driver_state") == "EXITED" and not restartable:
@@ -538,6 +568,8 @@ def main(argv: list[str] | None = None) -> int:
                 "scripts/storyos_preimage_host_envelope_rc4_readonly.py",
             "VISUAL_LOCK_RC4_MISSING_HOST_PLAN_RECOVERABLE":
                 "scripts/storyos_visual_lock_rc4_readonly.py",
+            "PROMPT_RC4_PREIMAGE_VISUAL_INDEX_REBIND_RECOVERABLE":
+                "scripts/storyos_prompt_contract_rc4_readonly.py",
         }
         recovery_status = (state.get("driver_recovery") or {}).get("status")
         if args.command in {"start", "run"} and recovery_status in valid_recoveries:

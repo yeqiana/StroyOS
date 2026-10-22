@@ -596,8 +596,10 @@ def compile_all(ep: Path) -> dict:
             ca_errors = character_appearance_anchor.verify(ep)
             if ca_errors:
                 raise ValueError("V2.2.1 Character Appearance Anchor must PASS before Frame Contract compile: " + "; ".join(ca_errors[:12]))
-    # The split PREIMAGE protocol has a distinct committed snapshot.  Derived
-    # frame work must never start while Candidate authority is still pending.
+    # PREIMAGE committed authority freezes task-owned scopes, not downstream
+    # Visual Lock calibration/continuity projections. A full-file drift is
+    # expected there. Still recompile every frame from current locked inputs;
+    # any drift in PREIMAGE-owned authority must fail before cache/index writes.
     task_state = story_json.read_json(ep / "meta/runtime/preimage-task-state.json", default={}) or {}
     if task_state:
         import preimage_protocol
@@ -605,7 +607,7 @@ def compile_all(ep: Path) -> dict:
         if not preimage_protocol.barrier_ready(ep) or not committed_path.is_file():
             raise ValueError("PREIMAGE_AUTHORITY_READY required before Frame Contract compile")
         snapshot = story_json.read_json(committed_path, default={}) or {}
-        if not snapshot or preimage_authority_snapshot.stale(ep, snapshot):
+        if not snapshot or preimage_authority_snapshot.stale_owned(ep, snapshot):
             raise ValueError("STALE PREIMAGE_COMMITTED_SNAPSHOT before Frame Contract compile")
     else:
         snapshot=preimage_authority_snapshot.build(ep,write=True)
@@ -616,7 +618,7 @@ def compile_all(ep: Path) -> dict:
         started=runtime_node_execution.now()
         try:
             row=compile_frame(ep,n,write_cache=True)
-            stale=preimage_authority_snapshot.stale(ep,snapshot)
+            stale=preimage_authority_snapshot.stale_owned(ep,snapshot)
             runtime_node_execution.record(ep,node_id="frame_contract_compile",task_id=f"frame-{n:02d}",snapshot_id=snapshot["snapshot_id"],worker_id=f"frame-{n:02d}",start_time=started,end_time=runtime_node_execution.now(),status="STALE" if stale else "PASS",stale=stale,output_sha=row["contract_sha256"],evidence=[(CACHE_ROOT/f"{n:02d}.json").as_posix()])
             if stale: raise ValueError("STALE authority snapshot")
             return row
@@ -634,7 +636,7 @@ def compile_all(ep: Path) -> dict:
             try: compiled[n]=one(n)
             except Exception as exc: failures.append(f"frame {n:02d}: {exc}")
     if failures: raise ValueError("Frame Contract compile failures: "+"; ".join(failures))
-    if preimage_authority_snapshot.stale(ep,snapshot): raise ValueError("STALE authority snapshot before frame index commit")
+    if preimage_authority_snapshot.stale_owned(ep,snapshot): raise ValueError("STALE authority snapshot before frame index commit")
     rows = []
     for n in range(1,total + 1):
         row=compiled[n]

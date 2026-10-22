@@ -374,8 +374,26 @@ def import_visual_lock(ep:Path,prompt_dir:Path)->dict:
             if (str(package.get("package_sha256") or "").lower()!=str(binding.get("prompt_sha256") or "").lower()
                     or str(package.get("frame_contract_sha256") or "").lower()!=str(binding.get("frame_contract_sha256") or "").lower()):
                 raise ValueError(f"Revision Prompt/Frame Contract SHA mismatch at frame {frame:02d}")
-        policy=image_model_policy.for_episode(ep)
-        item=add_item(ep,frame=frame,kind="original",prompt_file=prompt,scope="visual_lock",references=contract_references(ep,frame,scope="visual_lock"),capture_id=f"visual-lock-{frame:02d}",model=policy["model"],quality=policy["quality"],strict_model=bool(policy.get("strict_model")),depends_on=[int(x) for x in row.get("depends_on") or []],replace=False,production_revision_id=revision_id)
+        # A predispatch capability block is still the single authoritative
+        # original request. Never enqueue a second paid image Attempt simply
+        # because add_item's normal active set excludes "blocked" rows.
+        blocked_existing=[x for x in (load_queue(ep).get("items") or [])
+                          if x.get("scope")=="visual_lock"
+                          and x.get("kind")=="original"
+                          and int(x.get("frame") or 0)==frame
+                          and str(x.get("production_revision_id") or "")==str(revision_id or "")
+                          and x.get("status") in {"blocked","external_blocked","interrupted_unknown"}]
+        if blocked_existing:
+            if len(blocked_existing)!=1:
+                raise ValueError(f"duplicate blocked Visual Lock originals frame {frame:02d}")
+            item=blocked_existing[0]
+            current_sha=frame_contract.compile_frame(ep,frame,write_cache=False)["contract_sha256"]
+            if (str((item.get("frame_contract") or {}).get("contract_sha256") or "")!=current_sha
+                    or str((item.get("prompt_package") or {}).get("frame_contract_sha256") or "")!=current_sha):
+                raise ValueError(f"blocked Visual Lock request contract stale frame {frame:02d}")
+        else:
+            policy=image_model_policy.for_episode(ep)
+            item=add_item(ep,frame=frame,kind="original",prompt_file=prompt,scope="visual_lock",references=contract_references(ep,frame,scope="visual_lock"),capture_id=f"visual-lock-{frame:02d}",model=policy["model"],quality=policy["quality"],strict_model=bool(policy.get("strict_model")),depends_on=[int(x) for x in row.get("depends_on") or []],replace=False,production_revision_id=revision_id)
         if revision_id and str((item.get("prompt_package") or {}).get("package_sha256") or "").lower()!=str(binding.get("prompt_sha256") or "").lower():
             raise ValueError(f"queued Visual Lock Prompt SHA mismatch at frame {frame:02d}")
         added.append(item)

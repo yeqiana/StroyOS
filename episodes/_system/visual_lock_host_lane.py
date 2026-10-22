@@ -154,6 +154,11 @@ def run(ep: Path, *, codex: str|None=None, timeout: int|None=None) -> dict:
     ep=Path(ep).resolve()
     if (episode_state_persistence.load(ep) or {}).get("current_state")!="STORYBOARD_LOCKED":
         raise VisualLockHostBlocked("VISUAL_LOCK_STAGE_NOT_STORYBOARD_LOCKED")
+    import visual_lock_contract_bridge
+    # Deterministic PREIMAGE->Visual Lock contract rebind must precede
+    # choose_plan() (it verifies the derived index) and any image scheduler.
+    # Non-owned visual-gate projection drift may not invalidate PREIMAGE.
+    visual_lock_contract_bridge.reconcile(ep)
     plan=ensure_plan(ep)
     images=ep/"prompts/production"
     for frame in plan["frames"]:
