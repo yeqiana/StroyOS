@@ -8,10 +8,27 @@ generation, Attempt reservation and pixel/review authority afterwards.
 """
 from __future__ import annotations
 
-import argparse
-import json
+import platform as _stdlib_platform
+import sys
 from pathlib import Path
 
+# StoryOS has a top-level "platform" package that collides with the Python
+# standard library. Preserve the stdlib module's functions (uuid needs
+# platform.system) and expose only this trusted repository subpackage path.
+# This is limited to this operator entrypoint's process.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_repository_platform = str(PROJECT_ROOT / "platform")
+if not hasattr(_stdlib_platform, "__path__"):
+    _stdlib_platform.__path__ = [_repository_platform]
+elif _repository_platform not in _stdlib_platform.__path__:
+    _stdlib_platform.__path__.append(_repository_platform)
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+import argparse
+import json
+import codex_user_runner
+import episode_state_persistence
 import generation_attempt_authority as attempts
 import image_payload_transport
 import image_scheduler

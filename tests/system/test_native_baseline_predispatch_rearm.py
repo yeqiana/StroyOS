@@ -107,3 +107,15 @@ def test_drift_during_session_probe_denied(ctx, monkeypatch):
     result = rearm.rearm_one(ctx["episode"], acknowledged=True)
     assert result["reason"] == "AUTHORITIES_DRIFTED"
     assert not ctx["writes"]
+
+
+def test_standalone_cli_import_bootstrap():
+    """Fail if a fresh CLI process imports stdlib platform before StoryOS."""
+    import subprocess
+    proc = subprocess.run(
+        [sys.executable, str(SYSTEM / "production_native_baseline_predispatch_rearm.py"),
+         "--help"],
+        cwd=SYSTEM.parents[1], capture_output=True, text=True, timeout=30,
+        encoding="utf-8", errors="replace")
+    assert proc.returncode == 0, proc.stderr
+    assert "--ack-real-production" in proc.stdout
