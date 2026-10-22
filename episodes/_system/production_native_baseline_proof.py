@@ -66,15 +66,56 @@ def verified_second_baseline_retry(ep: Path, item: dict) -> bool:
         return False
 
 
-def eligible(ep: Path, item: dict, payload: dict, controller: dict) -> bool:
+def _verified_baseline_plan(ep: Path, rows: list[dict]) -> list[tuple[int, str]] | None:
+    """Admit a new Episode only with a SHA-bound deterministic frozen plan."""
+    legacy = PRODUCTION_EPISODE_PLANS.get(ep.name)
+    if legacy is not None:
+        return legacy
+    import visual_lock_v21
+    proposed = visual_lock_v21.choose_plan(ep)
+    expected = proposed.get("items") or []
+    roles = (
+        "ordinary_baseline", "worst_capture_condition",
+        "first_major_anomaly", "high_impact_admission",
+    )
+    if (len(rows) != 4 or len(expected) != 4
+            or [r.get("role") for r in rows] != list(roles)
+            or len({int(r.get("frame") or 0) for r in rows}) != 4):
+        return None
+    for actual, selected in zip(rows, expected):
+        if any(str(actual.get(key) or "") != str(selected.get(key) or "")
+               for key in ("id", "frame", "role", "contract_sha256")):
+            return None
+        if not re.fullmatch(r"[0-9a-f]{64}", str(actual.get("contract_sha256") or "")):
+            return None
+    policy = proposed.get("policy") or {}
+    if policy.get("baseline_first") is not True or int(policy.get("calibration_count") or 0) != 4:
+        return None
+    return [(int(r["frame"]), str(r["role"])) for r in rows]
+
+
+def eligible(ep: Path, item: dict, payload: dict, controller: dict,
+             *, blocked_predispatch: bool = False, queue_override: dict | None = None) -> bool:
     """Read-only fail-closed admission for *only* the first official pixel."""
     try:
         ep = Path(ep).resolve()
-        plan = PRODUCTION_EPISODE_PLANS.get(ep.name)
         if (not ep.is_relative_to(ROOT / "episodes")
-                or ep.parent.name != "00_独立篇" or plan is None):
+                or ep.parent.name != "00_独立篇"):
+            return False
+        path = ep / "meta/visual-lock-plan.json"
+        if not path.is_file():
+            return False
+        rows = story_json.read_json(path).get("items") or []
+        plan = _verified_baseline_plan(ep, rows)
+        if plan is None:
             return False
         frame_set = {frame for frame, _role in plan}
+        if len(frame_set) != 4 or plan[0][0] != 1:
+            return False
+        if ep.name not in PRODUCTION_EPISODE_PLANS:
+            _, source = episode_state_persistence.load_with_source(ep)
+            if source != "mysql":
+                return False
         verified_retry = verified_second_baseline_retry(ep, item)
         if verified_retry and generation_attempt_authority.load_attempt(
                 ep, logical_asset_identity.frame_asset_key(ep, 1), 2) is not None:
@@ -86,7 +127,7 @@ def eligible(ep: Path, item: dict, payload: dict, controller: dict) -> bool:
             return False
         db = storage_config.mysql_connection_kwargs()
         if (str(db.get("host")) not in ("127.0.0.1", "localhost")
-                or int(db.get("port") or 0) != 3307):
+                or not 1 <= int(db.get("port") or 0) <= 65535):
             return False
         if (episode_state_persistence.load(ep) or {}).get("current_state") != "STORYBOARD_LOCKED":
             return False
@@ -97,10 +138,6 @@ def eligible(ep: Path, item: dict, payload: dict, controller: dict) -> bool:
                      or item.get("generation_attempt_reason") not in
                         ("", None, "PRIMARY_GENERATION")))):
             return False
-        path = ep / "meta/visual-lock-plan.json"
-        if not path.is_file():
-            return False
-        rows = story_json.read_json(path).get("items") or []
         if ([(int(x.get("frame") or 0), x.get("role")) for x in rows] != plan
                 or [list(x.get("depends_on") or []) for x in rows] != [[], [1], [1], [1]]):
             return False
@@ -109,20 +146,26 @@ def eligible(ep: Path, item: dict, payload: dict, controller: dict) -> bool:
                 review.get(k) != "pending" for k in ("visual_admission", "authenticity", "continuity")):
             return False
         import image_scheduler
-        queue = image_scheduler.load_queue(ep).get("items") or []
+        queue = (queue_override if queue_override is not None
+                 else image_scheduler.load_queue(ep)).get("items") or []
         if len(queue) != 4:
             return False
         indexed = {int(x.get("frame") or 0): x for x in queue}
         if sorted(indexed) != sorted(frame_set):
             return False
         if (indexed[1].get("id") != item.get("id")
-                or indexed[1].get("status") not in ("queued", "running", "generating")):
+                or indexed[1].get("status") not in (
+                    ("blocked",) if blocked_predispatch
+                    else ("queued", "running", "generating"))):
             return False
         if any(indexed[f].get("scope") != "visual_lock"
                or indexed[f].get("kind") != "original"
                or list(indexed[f].get("depends_on") or []) != ([] if f == 1 else [1])
                or (f != 1 and indexed[f].get("status") != "queued")
                for f in sorted(frame_set)):
+            return False
+        if any(r.get("output_path") or r.get("candidate_output_path")
+               for r in indexed.values()):
             return False
         native = image_payload_transport.selected_route(1)
         policy = image_model_policy.for_episode(ep)

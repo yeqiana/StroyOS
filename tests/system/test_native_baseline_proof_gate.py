@@ -69,7 +69,7 @@ def test_real_episode_baseline_is_only_eligible_candidate(case):
 
 @pytest.mark.parametrize("mutate", [
     lambda c: c["stage"].update(current_state="PREIMAGE"),
-    lambda c: c["db"].update(port=3306),
+    lambda c: c["db"].update(port=0),
     lambda c: c["cfg"].update(mode="COLLABORATIVE"),
     lambda c: c["cfg"]["runtime"].update(execution_mode="manual"),
     lambda c: c["states"][1].update(attempts_consumed=1),
@@ -377,3 +377,70 @@ def test_worker_requires_pixel_event_before_raw_commit():
     assert "NATIVE_BASELINE_PIXEL_TOOL_PROOF_UNVERIFIED" in source
     assert "release_ok,release_row = raw_candidate_budget.release(" in source
     assert "native_baseline_proof_unverified_raw_consumed" not in source
+
+
+def _dynamic_48_frame_case(case, monkeypatch):
+    import copy
+    import visual_lock_v21
+    ep = case["ep"].parent / "14_深渊疗愈所_第一集_净土生命还原"
+    (ep / "meta").mkdir(parents=True)
+    (ep / "meta/visual-lock-plan.json").write_text("{}", encoding="utf-8")
+    frames = (1, 45, 5, 47)
+    roles = ("ordinary_baseline", "worst_capture_condition",
+             "first_major_anomaly", "high_impact_admission")
+    rows = [
+        {"id": f"V-{i}", "frame": f, "role": role, "contract_sha256": str(i) * 64,
+         "depends_on": [] if i == 1 else [1]}
+        for i, (f, role) in enumerate(zip(frames, roles), start=1)
+    ]
+    case["rows"][:] = rows
+    case["q"]["items"][:] = [
+        {"id": f"q{frame}", "frame": frame, "kind": "original",
+         "model": "gpt-image-2.5-flare", "quality": "high",
+         "scope": "visual_lock", "status": "queued",
+         "depends_on": [] if i == 0 else [1]}
+        for i, frame in enumerate(frames)
+    ]
+    case["states"].clear()
+    case["states"].update({f: {"attempts_consumed": 0, "active_attempt_index": None}
+                           for f in frames})
+    case["db"]["port"] = 13307
+    source = {"value": "mysql"}
+    monkeypatch.setattr(proof.episode_state_persistence, "load_with_source",
+                        lambda _: (case["stage"], source["value"]))
+    authoritative = copy.deepcopy(rows)
+    monkeypatch.setattr(visual_lock_v21, "choose_plan",
+                        lambda _: {"items": authoritative,
+                                   "policy": {"baseline_first": True,
+                                              "calibration_count": 4}})
+    return ep, source, authoritative
+
+
+def test_dynamic_48_frame_exact_source_sha_mysql_13307(case, monkeypatch):
+    ep, source, _ = _dynamic_48_frame_case(case, monkeypatch)
+    baseline = case["q"]["items"][0]
+    assert proof.eligible(ep, baseline, case["payload"], case["controller"])
+    for other in case["q"]["items"][1:]:
+        assert not proof.eligible(ep, other, case["payload"], case["controller"])
+    source["value"] = "episode"
+    assert not proof.eligible(ep, baseline, case["payload"], case["controller"])
+
+
+@pytest.mark.parametrize("drift", ["contract_sha", "plan_id", "queue_dependency",
+                                   "queue_generated", "mysql_attempt", "wrong_port"])
+def test_dynamic_baseline_rejects_drift(case, monkeypatch, drift):
+    ep, _source, _expected = _dynamic_48_frame_case(case, monkeypatch)
+    if drift == "contract_sha":
+        case["rows"][0]["contract_sha256"] = "f" * 64
+    elif drift == "plan_id":
+        case["rows"][3]["id"] = "forged"
+    elif drift == "queue_dependency":
+        case["q"]["items"][2]["depends_on"] = []
+    elif drift == "queue_generated":
+        case["q"]["items"][1]["status"] = "generated"
+    elif drift == "mysql_attempt":
+        case["states"][1]["attempts_consumed"] = 1
+    elif drift == "wrong_port":
+        case["db"]["port"] = 0
+    assert not proof.eligible(ep, case["q"]["items"][0],
+                              case["payload"], case["controller"])
