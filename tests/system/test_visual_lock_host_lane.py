@@ -24,6 +24,10 @@ import storyos_visual_lock_readonly as triage
 
 
 def prepared(tmp_path,monkeypatch):
+    # This unit fixture tests image/pixel ordering, not PREIMAGE SHA migration.
+    import visual_lock_contract_bridge
+    monkeypatch.setattr(visual_lock_contract_bridge,"reconcile",
+                        lambda ep: {"status":"ALREADY_CURRENT"})
     ep=tmp_path/"episode"
     (ep/"meta").mkdir(parents=True)
     (ep/"prompts/production").mkdir(parents=True)
