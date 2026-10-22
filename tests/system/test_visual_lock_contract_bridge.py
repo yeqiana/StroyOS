@@ -185,3 +185,25 @@ def test_blocked_original_is_reused_not_second_queue_request(tmp_path,monkeypatc
     assert len(saved)==3
     assert saved[0]["frame"]==2
     assert "existing-f001" in res["added"]
+
+@pytest.mark.parametrize("crash_after",["index","plan"])
+def test_partial_commit_retry_repairs_only_missing_derived_binding(tmp_path,monkeypatch,crash_after):
+    ep,flags=fixture(tmp_path,monkeypatch)
+    index=ep/fc.INDEX_REL
+    rows=[{"frame":f"{i:02d}","contract_sha256":NEW} for i in range(1,5)]
+    index.write_text(json.dumps({"frames":rows,"index_sha256":fc.sha256_json(rows)}))
+    # Simulate the committed derived index after an abrupt Driver stop.
+    flags["compile"]=1
+    if crash_after=="plan":
+        plan_file=ep/"meta/visual-lock-plan.json"
+        plan=bridge._read(plan_file)
+        for row in plan["items"]:row["contract_sha256"]=NEW
+        plan_file.write_text(json.dumps(plan))
+    result=bridge.reconcile(ep)
+    assert result["status"]=="REBOUND_DERIVED_ONLY"
+    assert result["frames_rebound"]==[]
+    assert flags["compile"]==1,"never regenerate the already-current index"
+    assert all(row["contract_sha256"]==NEW
+        for row in bridge._read(ep/"meta/visual-lock-plan.json")["items"])
+    assert all(row["frame_contract_sha256"]==NEW
+        for row in bridge._read(ep/"meta/story-gates.json")["visual"]["calibration"]["items"])

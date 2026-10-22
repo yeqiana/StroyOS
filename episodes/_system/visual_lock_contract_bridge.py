@@ -91,20 +91,24 @@ def reconcile(ep: Path, *, dry_run: bool = False) -> dict:
                ("ordinary_baseline","worst_capture_condition",
                 "first_major_anomaly","high_impact_admission")):
         raise RebindBlocked("FROZEN_VISUAL_PLAN_SHAPE_INVALID")
-    # Once derived index and plan are current, this is a no-op even if
-    # baseline pixels have since been generated or independently reviewed.
-    # Never apply predispatch-only recovery rules to a genuine resumed run.
+    gates=_read(ep/"meta/story-gates.json")
+    cal=(((gates.get("visual") or {}).get("calibration") or {}).get("items") or [])
+    # Once both the index and pending plan/calibration are current, this is
+    # a no-op even if real pixels have since been reviewed. In the narrow
+    # index-committed/plan-pending crash window, the old plan is still repaired.
     if not frame_contract.verify_all(ep):
         current_plan_shas={
             int(row["frame"]):frame_contract.compile_frame(
                 ep,int(row["frame"]),write_cache=False)["contract_sha256"]
             for row in items}
-        if all(str(row.get("contract_sha256") or "")==
-               current_plan_shas[int(row["frame"])] for row in items):
+        if (all(str(row.get("contract_sha256") or "")==
+                current_plan_shas[int(row["frame"])] for row in items)
+                and (all(str(row.get("frame_contract_sha256") or "")==
+                         current_plan_shas.get(int(row.get("frame") or 0))
+                         for row in cal)
+                     or (gates.get("reviews") or {}).get("visual_admission")=="passed")):
             return {"status":"ALREADY_CURRENT","image_generation_called":False,
                     "authority_edited":False}
-    gates=_read(ep/"meta/story-gates.json")
-    cal=(((gates.get("visual") or {}).get("calibration") or {}).get("items") or [])
     if (len(cal)!=4 or
             any(not isinstance(x,dict) or x.get("decision")!="pending"
                 or x.get("asset_path") or x.get("sha256") for x in cal) or
@@ -127,13 +131,6 @@ def reconcile(ep: Path, *, dry_run: bool = False) -> dict:
             [f"{n:02d}" for n in range(1,total+1)]):
         raise RebindBlocked("OLD_FRAME_INDEX_NOT_CANONICAL")
     before={n:str(rows[n-1].get("contract_sha256") or "") for n in range(1,total+1)}
-    if any(before[int(row["frame"])]!=str(row.get("contract_sha256") or "")
-           for row in items):
-        raise RebindBlocked("OLD_VISUAL_PLAN_NOT_BOUND_TO_INDEX")
-    if any(before[int(row["frame"])]!=str(row.get("frame_contract_sha256") or "")
-           for row in cal):
-        raise RebindBlocked("OLD_CALIBRATION_NOT_BOUND_TO_INDEX")
-
     current={}
     changed=[]
     for frame in range(1,total+1):
@@ -144,8 +141,30 @@ def reconcile(ep: Path, *, dry_run: bool = False) -> dict:
             if not frame_contract.equivalent_to_current(ep,frame,old_sha,current=c):
                 raise RebindBlocked(f"NOT_A_MONOTONIC_VISUAL_PROJECTION:{frame:02d}")
             changed.append(frame)
+    # A crash after atomically replacing the index but before replacing the
+    # plan leaves the old four SHA bindings. Admit that exact restart only if
+    # each plan/calibration SHA is itself a proven historical machine-only
+    # projection, and the index SHA already equals the current full contract.
+    for row in items:
+        n=int(row["frame"])
+        previous=str(row.get("contract_sha256") or "")
+        if previous!=before[n]:
+            if before[n]!=current[n] or not frame_contract.equivalent_to_current(
+                    ep,n,previous):
+                raise RebindBlocked("OLD_VISUAL_PLAN_NOT_BOUND_TO_INDEX")
+    for row in cal:
+        n=int(row["frame"])
+        previous=str(row.get("frame_contract_sha256") or "")
+        if previous!=before[n]:
+            if before[n]!=current[n] or not frame_contract.equivalent_to_current(
+                    ep,n,previous):
+                raise RebindBlocked("OLD_CALIBRATION_NOT_BOUND_TO_INDEX")
+    plan_refresh=any(str(row.get("contract_sha256") or "")!=current[int(row["frame"])]
+                     for row in items)
+    cal_refresh=any(str(row.get("frame_contract_sha256") or "")!=current[int(row["frame"])]
+                    for row in cal)
     queue=_queue_guard(ep,old_plan,current)
-    if not changed:
+    if not changed and not plan_refresh and not cal_refresh:
         return {"status":"ALREADY_CURRENT","index_frames":total,**queue}
     # Revalidate all owned PREIMAGE source hashes before the first mutation.
     if preimage_authority_snapshot.stale_owned(ep,snap):
@@ -159,7 +178,8 @@ def reconcile(ep: Path, *, dry_run: bool = False) -> dict:
                 "model_calls":0,"sql_writes":0,
                 "image_attempts_reserved":0,
                 "image_generation_called":False}
-    frame_contract.compile_all(ep)  # canonical cache + index; all 48, not only four
+    if changed:
+        frame_contract.compile_all(ep)  # canonical cache + index; all 48, not only four
     candidate=visual_lock_v21.choose_plan(ep)
     if ([_role_frame(x) for x in candidate["items"]] !=
             [_role_frame(x) for x in items] or
