@@ -31,6 +31,7 @@ SLOTS = {
         "tests/system/test_review_stall_diagnostic.py",
         "tests/system/test_m00_finalizer_weakpass_reentry.py",
         "tests/system/test_prompt_package_equivalent_projection.py",
+        "tests/system/test_locked_story_prompt_authoring_fastpath.py",
         "tests/system/test_image_capability_blocked_plan.py",
         "tests/system/test_native_batch_reentry.py",
         "tests/system/test_native_batch_post_success_followon.py",
