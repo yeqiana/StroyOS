@@ -594,10 +594,104 @@ def verify_runner_scoped_generated_image(
         return None
 
 
+
+def verify_direct_runner_archived_pixel(log: Path, raw: Path,
+                                        runner_request_id: str) -> dict | None:
+    """Verify a pre-dispatch-bound, post-Codex captured native thread artifact.
+
+    The CLI can omit image_generation_call from public JSONL. The *direct*
+    Runner must have archived a single generated_images/thread PNG before the
+    ephemeral CODEX_HOME disappears, and saved that immutable archive identity
+    in the matching durable execution receipt. A loose PNG, replayed receipt or
+    reconstructed UNKNOWN claim is never sufficient.
+    """
+    try:
+        import base64
+        import codex_user_runner
+        rid = str(runner_request_id or "")
+        if not re.fullmatch(r"[0-9a-f]{32}", rid):
+            return None
+        receipt_path = codex_user_runner.task_result_path(rid)
+        if not receipt_path.is_file():
+            return None
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        evidence = receipt.get("evidence") or {}
+        if (receipt.get("request_id") != rid or
+                receipt.get("returncode") != 0 or
+                evidence.get("request_id") != rid or
+                evidence.get("returncode") != 0 or
+                evidence.get("task_type") != "image" or
+                evidence.get("transport_route") != "native_codex" or
+                evidence.get("transport") != "direct_codex_user_runner" or
+                evidence.get("direct_artifact_archive") != "DIRECT_THREAD_SCOPED_CAPTURE"):
+            return None
+        raw_log = Path(log).read_bytes()
+        output = base64.b64decode(receipt.get("output_base64") or "", validate=True)
+        if (raw_log != output or len(output) != receipt.get("output_bytes")
+                or hashlib.sha256(output).hexdigest() != receipt.get("output_sha256")):
+            return None
+        threads, artifacts = evidence.get("thread_ids"), evidence.get("generated_artifacts")
+        if (not isinstance(threads, list) or len(threads) != 1
+                or not isinstance(artifacts, list) or len(artifacts) != 1
+                or not re.fullmatch(r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}",
+                                    str(threads[0]))):
+            return None
+        relative = artifacts[0]
+        if (not isinstance(relative, str) or "\\" in relative
+                or len(Path(relative).parts) != 2
+                or Path(relative).parts[0] != threads[0]
+                or Path(relative).suffix.lower() != ".png"):
+            return None
+        events = []
+        for line in output.decode("utf-8", "replace").splitlines():
+            try:
+                e = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(e, dict):
+                events.append(e)
+        if (len([e for e in events if e.get("type") == "thread.started"
+                 and e.get("thread_id") == threads[0]]) != 1
+                or sum(e.get("type") == "thread.started" for e in events) != 1
+                or sum(e.get("type") == "turn.completed" for e in events) != 1
+                or any(e.get("type") == "turn.failed" for e in events)):
+            return None
+        root = (receipt_path.parent.parent / "image-artifacts" / rid).resolve()
+        source = root / relative
+        if (source.is_symlink() or not source.is_file()
+                or not source.resolve().is_relative_to(root)):
+            return None
+        source_bytes = source.read_bytes()
+        pixel = Path(raw)
+        if (len(source_bytes) <= 40 or source_bytes[:8] != b"\x89PNG\r\n\x1a\n"
+                or hashlib.sha256(source_bytes).hexdigest() != evidence.get("direct_artifact_sha256")
+                or len(source_bytes) != evidence.get("direct_artifact_bytes")
+                or not pixel.is_file() or pixel.read_bytes() != source_bytes):
+            return None
+        return {
+            "proof_kind": "TRUSTED_NATIVE_DIRECT_THREAD_SCOPED_IMAGE_SHA",
+            "tool_call_count": 0,
+            "native_image_generation_jsonl_events": 0,
+            "native_codex_thread_id": threads[0],
+            "runner_request_id": rid,
+            "runner_receipt_sha256": hashlib.sha256(receipt_path.read_bytes()).hexdigest(),
+            "pixel_sha256": hashlib.sha256(source_bytes).hexdigest(),
+            "pixel_size": len(source_bytes),
+            "provider_log_sha256": hashlib.sha256(raw_log).hexdigest(),
+            "provider_model_attested": False,
+            "review_pass": False,
+            "mysql_generation_attempt_state_changed": False,
+        }
+    except (OSError, ValueError, TypeError, KeyError):
+        return None
+
+
 def record_unreviewed_pixel(ep: Path, item: dict, lease: dict,
                            log: Path, pixel: Path, runner_request_id: str) -> dict:
     """Append-only, never a reviewer or entitlement PASS; refuse duplicates."""
     proof = observe_real_tool_pixel(log, pixel)
+    if proof is None:
+        proof = verify_direct_runner_archived_pixel(log, pixel, runner_request_id)
     if proof is None or not admitted_baseline_lease(ep, item, lease) or item.get("frame") != 1:
         raise RuntimeError("NATIVE_BASELINE_PIXEL_TOOL_PROOF_UNVERIFIED")
     package = item.get("prompt_package") or {}
