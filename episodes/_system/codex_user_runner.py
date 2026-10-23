@@ -1054,6 +1054,78 @@ def _thread_ids_from_output(output: bytes) -> list[str]:
     return found
 
 
+
+def _archive_direct_thread_image(request_id: str, output: bytes, child_env: dict) -> dict:
+    """Capture *existing* Codex generated_images while its ephemeral home exists.
+
+    A direct subprocess previously persisted rc=0/JSONL but discarded its
+    thread-owned generated_images with the disposable CODEX_HOME. This bounded
+    capture is performed after process exit and before caller workspace cleanup.
+    It never invokes a provider, infers an artifact from mtime, or accepts a
+    sibling thread. Missing provenance leaves the paid outcome UNKNOWN.
+    """
+    try:
+        from PIL import Image
+        rid = str(request_id or "")
+        if not re.fullmatch(r"[0-9a-f]{32}", rid):
+            return {}
+        events = []
+        for line in output.decode("utf-8", "replace").splitlines():
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(event, dict):
+                events.append(event)
+        threads = [str(e.get("thread_id") or "") for e in events
+                   if e.get("type") == "thread.started"]
+        if (len(threads) != 1
+                or re.fullmatch(r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}", threads[0]) is None
+                or sum(e.get("type") == "turn.completed" for e in events) != 1
+                or any(e.get("type") == "turn.failed" for e in events)):
+            return {}
+        home = Path(str(child_env.get("CODEX_HOME") or
+                        (Path.home() / ".codex"))).resolve()
+        source_root = (home / "generated_images").resolve()
+        thread_dir = source_root / threads[0]
+        if (not thread_dir.is_dir() or thread_dir.is_symlink()
+                or not thread_dir.resolve().is_relative_to(source_root)):
+            return {}
+        children = list(thread_dir.iterdir())
+        if (len(children) != 1 or not children[0].is_file()
+                or children[0].is_symlink()
+                or children[0].suffix.lower() != ".png"):
+            return {}
+        src = children[0]
+        with Image.open(src) as im:
+            im.verify()
+        original_sha = hashlib.sha256(src.read_bytes()).hexdigest()
+        target = (task_result_path(rid).parent.parent / "image-artifacts" /
+                  rid / threads[0] / src.name)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        fd, pending = tempfile.mkstemp(prefix=".capture-", suffix=".pending",
+                                       dir=str(target.parent))
+        try:
+            with os.fdopen(fd, "wb") as stream, src.open("rb") as source:
+                shutil.copyfileobj(source, stream)
+                stream.flush()
+                os.fsync(stream.fileno())
+            if hashlib.sha256(Path(pending).read_bytes()).hexdigest() != original_sha:
+                return {}
+            os.link(pending, target)  # NO-REPLACE: preserve earlier evidence
+        finally:
+            Path(pending).unlink(missing_ok=True)
+        return {
+            "thread_ids": threads,
+            "generated_artifacts": [threads[0] + "/" + src.name],
+            "direct_artifact_archive": "DIRECT_THREAD_SCOPED_CAPTURE",
+            "direct_artifact_sha256": original_sha,
+            "direct_artifact_bytes": target.stat().st_size,
+        }
+    except (OSError, ValueError, TypeError, RuntimeError):
+        return {}
+
+
 def _settle_generated_artifacts(
     home: Path,
     workdir: Path,
@@ -1964,6 +2036,14 @@ def run_codex(
                 **route_evidence,
             }
             raise
+        # Capture per-thread provider artifacts before CODEX_HOME is removed.
+        # This runs only after a successful native image subprocess and adds
+        # provenance, never a Generation Attempt state transition.
+        image_capture = {}
+        if request_id and task_type == "image" and completed.returncode == 0:
+            image_capture = _archive_direct_thread_image(
+                str(request_id), _direct_result_output(stdout, completed),
+                kwargs.get("env") or os.environ)
         # Preserve a runner-owned receipt for callers that need trustworthy
         # timing. This is measured around the actual Codex process, not host
         # preparation/handshake time.
@@ -1974,6 +2054,7 @@ def run_codex(
             "task_type": str(task_type),
             "transport": "direct_codex_user_runner",
             **({"request_id":str(request_id)} if request_id else {}),
+            **image_capture,
             **route_evidence,
         }
         if request_id:

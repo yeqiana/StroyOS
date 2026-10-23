@@ -181,7 +181,12 @@ def runner_verified_exported_candidate(workdir: Path, request_id: str | None) ->
                 started.add(str(event.get("thread_id") or ""))
         if threads[0] not in started:
             return None
-        root = codex_user_runner.exported_artifacts_dir(workdir).resolve()
+        # Direct Codex archives the current thread before disposable home cleanup.
+        direct = evidence.get("direct_artifact_archive") == "DIRECT_THREAD_SCOPED_CAPTURE"
+        if direct:
+            root = (ROOT / "runtime/codex-user-runner/image-artifacts" / value).resolve()
+        else:
+            root = codex_user_runner.exported_artifacts_dir(workdir).resolve()
         good = []
         for rel in artifacts:
             if not isinstance(rel, str):
@@ -199,6 +204,10 @@ def runner_verified_exported_candidate(workdir: Path, request_id: str | None) ->
                 return None
             with Image.open(path) as pixels:
                 pixels.verify()
+            if direct and (hashlib.sha256(path.read_bytes()).hexdigest() !=
+                           evidence.get("direct_artifact_sha256")
+                           or path.stat().st_size != evidence.get("direct_artifact_bytes")):
+                return None
             good.append(path.resolve())
         if len(good) != 1:
             # One-shot single-frame image generation must yield one unambiguous
@@ -1755,7 +1764,7 @@ def invoke_codex(prompt_path: Path, refs: list[Path], raw_output: Path, log: Pat
             recovered = image_artifact_collector.recover_codex_generated(log, workdir)
             if recovered is not None:
                 candidate = recovered
-        if not valid_image(candidate) and bridged:
+        if not valid_image(candidate):
             # A real image can be exported even when the Codex agent_message
             # says it is missing. Bind the recovery to this exact native
             # request's durable Runner receipt, never an mtime directory scan.
