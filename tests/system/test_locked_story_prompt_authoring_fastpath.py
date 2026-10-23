@@ -42,10 +42,11 @@ def test_reject_missing_frame_even_if_whole_storyboard_available(monkeypatch,tmp
         mat.locked_table_beats(tmp_path,expected_count=25)
 
 
-def test_exact_locked_source_generates_all_packages_without_codex(monkeypatch,tmp_path):
-    board=_board(tmp_path)
+@pytest.mark.parametrize("count", [25, 48])
+def test_exact_locked_source_generates_all_packages_without_codex(monkeypatch,tmp_path,count):
+    board=_board(tmp_path,count=count)
     monkeypatch.setattr(mat.frame_contract,"artifact_paths",lambda ep:(tmp_path/"docs/story.md",board))
-    monkeypatch.setattr(mat.frame_contract,"frame_count",lambda ep:25)
+    monkeypatch.setattr(mat.frame_contract,"frame_count",lambda ep:count)
     monkeypatch.setattr(mat.frame_contract,"verify_all",lambda ep:[])
     monkeypatch.setattr(fast.preproduction_handoff,"verify",lambda ep:[])
     monkeypatch.setattr(fast.runtime_request,"authority_for_episode",lambda ep:{
@@ -65,11 +66,11 @@ def test_exact_locked_source_generates_all_packages_without_codex(monkeypatch,tm
     monkeypatch.setattr(fast.runtime_atomic_store,"atomic_write_json",lambda p,data:written.append(data))
     proof=fast.run(tmp_path)
     assert proof["status"]=="PASS" and proof["model_execution_dispatched"] is False
-    assert len(proof["frame_packages"])==25
-    assert len(list((tmp_path/"prompts/production").glob("*.txt")))==25
+    assert len(proof["frame_packages"])==count
+    assert len(list((tmp_path/"prompts/production").glob("*.txt")))==count
     assert len(written)==1
     second=fast.run(tmp_path)
-    assert second["created_count"]==0 and second["reused_count"]==25
+    assert second["created_count"]==0 and second["reused_count"]==count
 
 
 def test_non_locked_authority_cannot_use_deterministic_shortcut(monkeypatch,tmp_path):
