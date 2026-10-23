@@ -182,7 +182,11 @@ def runner_verified_exported_candidate(workdir: Path, request_id: str | None) ->
         if threads[0] not in started:
             return None
         # Direct Codex archives the current thread before disposable home cleanup.
-        direct = evidence.get("direct_artifact_archive") == "DIRECT_THREAD_SCOPED_CAPTURE"
+        direct = evidence.get("transport") == "direct_codex_user_runner"
+        if direct and evidence.get("direct_artifact_archive") != "DIRECT_THREAD_SCOPED_CAPTURE":
+            return None
+        if not direct and evidence.get("direct_artifact_archive"):
+            return None
         if direct:
             root = (ROOT / "runtime/codex-user-runner/image-artifacts" / value).resolve()
         else:

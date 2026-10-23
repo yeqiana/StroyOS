@@ -154,3 +154,22 @@ def test_direct_run_without_thread_artifact_never_claims_image(tmp_path,monkeypa
     row=runner.read_task_result(RID)
     assert not row["evidence"].get("generated_artifacts")
     assert proof.verify_direct_runner_archived_pixel(log,raw,RID) is None
+
+
+def test_candidate_refuses_direct_archive_claim_from_bridge_receipt(tmp_path,monkeypatch):
+    home,src,raw,log,output=scenario(tmp_path,monkeypatch)
+    archive=runner._archive_direct_thread_image(RID,output,{"CODEX_HOME":str(home)})
+    rec=receipt(tmp_path,archive,output)
+    doc=json.loads(rec.read_text())
+    doc["evidence"]["transport"]="user_bridge"
+    rec.write_text(json.dumps(doc))
+    assert backend.runner_verified_exported_candidate(tmp_path,RID) is None
+
+def test_candidate_refuses_legacy_direct_receipt_without_archive_marker(tmp_path,monkeypatch):
+    home,src,raw,log,output=scenario(tmp_path,monkeypatch)
+    archive=runner._archive_direct_thread_image(RID,output,{"CODEX_HOME":str(home)})
+    rec=receipt(tmp_path,archive,output)
+    doc=json.loads(rec.read_text())
+    del doc["evidence"]["direct_artifact_archive"]
+    rec.write_text(json.dumps(doc))
+    assert backend.runner_verified_exported_candidate(tmp_path,RID) is None
