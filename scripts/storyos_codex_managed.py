@@ -336,6 +336,37 @@ def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
                         "read_only": True,
                         "production_authorization": False,
                     }
+        if (not restartable and rc == 0
+                and driver.get("driver_state") == "EXITED"
+                and driver.get("exit_code") == "4"
+                and driver.get("liveness") == "DEAD"
+                and driver.get("pid") == 0
+                and isinstance(driver.get("record"), dict)
+                and driver["record"].get("log")
+                and stage.get("status") == "STAGE_ELIGIBLE"
+                and attempts.get("status") == "ATTEMPT_HISTORY_READ_ONLY"
+                and not attempts.get("outcome_unknown_assets")
+                and not attempts.get("active_attempt_assets")):
+            # Exactly the latest Visual Lock F001 predispatch block after an
+            # independently attested one-shot rearm. Never a general rc4 retry.
+            baseline_rc, baseline_proof = _probe(
+                env, "scripts/storyos_visual_lock_baseline_rearm_rc4_readonly.py",
+                ["--episode", rel]
+            )
+            if (baseline_rc == 0 and baseline_proof.get("status") ==
+                    "VISUAL_LOCK_RC4_VERIFIED_F001_PREDISPATCH_REARM_RECOVERABLE"
+                    and baseline_proof.get("driver_record_sha256") ==
+                    exit_remediation.canonical_sha(driver.get("record") or {})):
+                restartable = True
+                driver_recovery = {
+                    "status": baseline_proof["status"],
+                    "driver_record_sha256": baseline_proof["driver_record_sha256"],
+                    "f001_queue_item_id": baseline_proof["f001_queue_item_id"],
+                    "f001_reattest_proof_sha256": baseline_proof["f001_reattest_proof_sha256"],
+                    "recovery_action": "CANONICAL_VISUAL_LOCK_F001_ONLY",
+                    "read_only": True,
+                    "production_authorization": False,
+                }
         if not restartable:
             blockers.append("EPISODE_DRIVER_OWNER_NOT_IDLE_OR_UNVERIFIED")
         if driver.get("driver_state") == "EXITED" and not restartable:
@@ -570,6 +601,8 @@ def main(argv: list[str] | None = None) -> int:
                 "scripts/storyos_visual_lock_rc4_readonly.py",
             "PROMPT_RC4_PREIMAGE_VISUAL_INDEX_REBIND_RECOVERABLE":
                 "scripts/storyos_prompt_contract_rc4_readonly.py",
+            "VISUAL_LOCK_RC4_VERIFIED_F001_PREDISPATCH_REARM_RECOVERABLE":
+                "scripts/storyos_visual_lock_baseline_rearm_rc4_readonly.py",
         }
         recovery_status = (state.get("driver_recovery") or {}).get("status")
         if args.command in {"start", "run"} and recovery_status in valid_recoveries:
@@ -586,7 +619,14 @@ def main(argv: list[str] | None = None) -> int:
                     state["driver_recovery"]["driver_record_sha256"]
                     or (recovery_status == "PREIMAGE_RC4_HOST_ENVELOPE_RECOVERABLE"
                         and latest.get("candidate_sha256") !=
-                            state["driver_recovery"].get("candidate_sha256"))):
+                            state["driver_recovery"].get("candidate_sha256"))
+                    or (recovery_status ==
+                        "VISUAL_LOCK_RC4_VERIFIED_F001_PREDISPATCH_REARM_RECOVERABLE"
+                        and (latest.get("f001_queue_item_id") !=
+                                 state["driver_recovery"].get("f001_queue_item_id")
+                             or latest.get("f001_reattest_proof_sha256") !=
+                                 state["driver_recovery"].get(
+                                     "f001_reattest_proof_sha256")))):
                 print("HISTORICAL_STORY_RC4_AUTHORITY_CHANGED_BEFORE_START",
                       file=sys.stderr)
                 return 3
