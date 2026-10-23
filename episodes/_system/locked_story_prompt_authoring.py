@@ -36,8 +36,8 @@ def run(ep: Path) -> dict:
     if errors:
         raise RuntimeError("preproduction handoff invalid: "+"; ".join(errors[:8]))
     total=frame_contract.frame_count(ep)
-    if total!=25:
-        raise RuntimeError(f"this production pilot requires precisely 25 frames; got {total}")
+    # The verified Frame Contracts and the locked storyboard own the count.
+    # Historical 25-frame pilots must not block a valid 48-frame episode.
     beats=production_prompt_materializer.locked_table_beats(ep,expected_count=total)
     output=production_prompt_materializer.ensure(ep,require_locked_table=True)
     rows=[]
