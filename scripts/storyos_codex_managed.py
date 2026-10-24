@@ -397,6 +397,34 @@ def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
                     "read_only": True,
                     "production_authorization": False,
                 }
+        if (not restartable and rc == 0
+                and driver.get("driver_state") == "EXITED"
+                and driver.get("exit_code") == "24"
+                and driver.get("pid") == 0
+                and driver.get("liveness") == "DEAD"
+                and stage.get("status") == "STAGE_ELIGIBLE"
+                and attempts.get("status") == "ATTEMPT_HISTORY_READ_ONLY"
+                and not attempts.get("outcome_unknown_assets")
+                and not attempts.get("active_attempt_assets")):
+            proof_rc, proof = _probe(
+                env, "episodes/_system/f001_attempt2_native_raw_reconcile.py",
+                ["--episode", rel, "--verify-rearmed"])
+            if (proof_rc == 0
+                and proof.get("status") ==
+                    "VISUAL_LOCK_RC24_F001_ATTEMPT2_RECONCILED_RECOVERABLE"
+                and proof.get("driver_record_sha256") ==
+                    exit_remediation.canonical_sha(driver.get("record") or {})):
+                restartable = True
+                driver_recovery = {
+                    "status": proof["status"],
+                    "driver_record_sha256": proof["driver_record_sha256"],
+                    "receipt_sha256": proof["runner_receipt_sha256"],
+                    "candidate_sha256": proof["candidate_sha256"],
+                    "item_id": proof["item_id"],
+                    "recovery_action": "RESUME_REVIEW_VERIFIED_F001_NO_NEW_GENERATION",
+                    "read_only": True,
+                    "production_authorization": False,
+                }
         if not restartable:
             blockers.append("EPISODE_DRIVER_OWNER_NOT_IDLE_OR_UNVERIFIED")
         if driver.get("driver_state") == "EXITED" and not restartable:
@@ -635,6 +663,8 @@ def main(argv: list[str] | None = None) -> int:
                 "scripts/storyos_visual_lock_baseline_rearm_rc4_readonly.py",
             "VISUAL_LOCK_RC24_OPERATOR_DISPOSITION_REARM_RECOVERABLE":
                 "episodes/_system/f001_unknown_operator_disposition.py",
+            "VISUAL_LOCK_RC24_F001_ATTEMPT2_RECONCILED_RECOVERABLE":
+                "episodes/_system/f001_attempt2_native_raw_reconcile.py",
         }
         recovery_status = (state.get("driver_recovery") or {}).get("status")
         if args.command in {"start", "run"} and recovery_status in valid_recoveries:
@@ -647,6 +677,8 @@ def main(argv: list[str] | None = None) -> int:
                 ["--episode", episode.relative_to(ROOT).as_posix()]
                 + (["--verify-rearmed"] if recovery_status ==
                    "VISUAL_LOCK_RC24_OPERATOR_DISPOSITION_REARM_RECOVERABLE"
+                   else ["--verify-rearmed"] if recovery_status ==
+                   "VISUAL_LOCK_RC24_F001_ATTEMPT2_RECONCILED_RECOVERABLE"
                    else [])
             )
             if (recovery_rc != 0 or latest.get("status") != recovery_status
@@ -655,6 +687,14 @@ def main(argv: list[str] | None = None) -> int:
                     or (recovery_status == "PREIMAGE_RC4_HOST_ENVELOPE_RECOVERABLE"
                         and latest.get("candidate_sha256") !=
                             state["driver_recovery"].get("candidate_sha256"))
+                    or (recovery_status ==
+                        "VISUAL_LOCK_RC24_F001_ATTEMPT2_RECONCILED_RECOVERABLE"
+                        and (latest.get("runner_receipt_sha256") !=
+                                 state["driver_recovery"].get("receipt_sha256")
+                             or latest.get("candidate_sha256") !=
+                                 state["driver_recovery"].get("candidate_sha256")
+                             or latest.get("item_id") !=
+                                 state["driver_recovery"].get("item_id")))
                     or (recovery_status ==
                         "VISUAL_LOCK_RC24_OPERATOR_DISPOSITION_REARM_RECOVERABLE"
                         and (latest.get("receipt_sha256") !=
