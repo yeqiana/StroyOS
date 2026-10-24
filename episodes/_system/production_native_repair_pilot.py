@@ -39,6 +39,10 @@ def eligible(ep: Path, item: dict, payload: dict, controller: dict,
     """Read-only exact identity fence; only the existing second paid Attempt."""
     try:
         ep = Path(ep).resolve()
+        if ep.name == "14_深渊疗愈所_第一集_净土生命还原":
+            import production_ep14_visual_repair
+            return production_ep14_visual_repair.eligible(
+                ep,item,payload,controller,queue=queue,blocked=blocked)
         if (not ep.is_relative_to(ROOT / "episodes")
                 or ep.parent.name != "00_独立篇"
                 or ep.name != "13_失物归还的那扇门"
