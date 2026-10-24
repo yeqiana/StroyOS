@@ -5,10 +5,19 @@ No review PASS is inferred from an image that was only normalized.
 from __future__ import annotations
 import hashlib
 import json
+import platform as _stdlib_platform
 import sys
 from pathlib import Path
 
+# Import Python's stdlib platform before repo path shadowing. The StoryOS
+# package named platform has repository modules, but stdlib clients such as
+# uuid still need platform.system() on both Windows and Ubuntu.
 ROOT=Path(__file__).resolve().parents[2]
+_repo_platform=str(ROOT/"platform")
+if not hasattr(_stdlib_platform,"__path__"):
+    _stdlib_platform.__path__=[_repo_platform]
+elif _repo_platform not in _stdlib_platform.__path__:
+    _stdlib_platform.__path__.append(_repo_platform)
 if str(ROOT) not in sys.path:
     sys.path.insert(0,str(ROOT))
 
