@@ -485,6 +485,34 @@ def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
                     "read_only": True,
                     "production_authorization": False,
                 }
+        if (not restartable and rc == 0
+                and driver.get("driver_state") == "EXITED"
+                and driver.get("exit_code") == "22"
+                and driver.get("pid") == 0
+                and driver.get("liveness") == "DEAD"
+                and stage.get("status") == "STAGE_ELIGIBLE"
+                and attempts.get("status") == "ATTEMPT_HISTORY_READ_ONLY"
+                and not attempts.get("outcome_unknown_assets")
+                and not attempts.get("active_attempt_assets")):
+            # Existing *actual-pixel FAIL* authorizes exactly three previously
+            # blocked content repairs. Never generate F001 or bypass the
+            # subsequent native visibility / MySQL paid Attempt fences.
+            proof_rc, proof = _probe(
+                env,"episodes/_system/production_ep14_visual_repair.py",
+                ["--episode",rel,"--verify-rearmed"])
+            if (proof_rc == 0
+                and proof.get("status") == "VISUAL_LOCK_RC22_EP14_REPAIR_REARMED"
+                and proof.get("driver_record_sha256") ==
+                    exit_remediation.canonical_sha(driver.get("record") or {})):
+                restartable = True
+                driver_recovery = {
+                    "status":proof["status"],
+                    "driver_record_sha256":proof["driver_record_sha256"],
+                    "review_sha256":proof["review_sha256"],
+                    "repair_queue_sha256":proof["repair_queue_sha256"],
+                    "recovery_action":"RESUME_THREE_REVIEWED_REPAIRS_NO_F001_IMAGE",
+                    "read_only":True,"production_authorization":False,
+                }
         if not restartable:
             blockers.append("EPISODE_DRIVER_OWNER_NOT_IDLE_OR_UNVERIFIED")
         if driver.get("driver_state") == "EXITED" and not restartable:
@@ -729,6 +757,8 @@ def main(argv: list[str] | None = None) -> int:
                 "episodes/_system/f001_independent_baseline_pass_cas.py",
             "VISUAL_LOCK_RC24_F045_RAW_RATIO_RECOVERED":
                 "episodes/_system/f045_raw_verified_rc24_rearm.py",
+            "VISUAL_LOCK_RC22_EP14_REPAIR_REARMED":
+                "episodes/_system/production_ep14_visual_repair.py",
         }
         recovery_status = (state.get("driver_recovery") or {}).get("status")
         if args.command in {"start", "run"} and recovery_status in valid_recoveries:
@@ -747,6 +777,8 @@ def main(argv: list[str] | None = None) -> int:
                    "VISUAL_LOCK_RC22_F001_INDEPENDENT_PASS_RECOVERABLE"
                    else ["--verify-rearmed"] if recovery_status ==
                    "VISUAL_LOCK_RC24_F045_RAW_RATIO_RECOVERED"
+                   else ["--verify-rearmed"] if recovery_status ==
+                   "VISUAL_LOCK_RC22_EP14_REPAIR_REARMED"
                    else [])
             )
             if (recovery_rc != 0 or latest.get("status") != recovery_status
@@ -763,6 +795,12 @@ def main(argv: list[str] | None = None) -> int:
                                  state["driver_recovery"].get("candidate_sha256")
                              or latest.get("item_id") !=
                                  state["driver_recovery"].get("item_id")))
+                    or (recovery_status ==
+                        "VISUAL_LOCK_RC22_EP14_REPAIR_REARMED"
+                        and (latest.get("review_sha256") !=
+                                 state["driver_recovery"].get("review_sha256")
+                             or latest.get("repair_queue_sha256") !=
+                                 state["driver_recovery"].get("repair_queue_sha256")))
                     or (recovery_status ==
                         "VISUAL_LOCK_RC24_F045_RAW_RATIO_RECOVERED"
                         and any(latest.get(field) !=

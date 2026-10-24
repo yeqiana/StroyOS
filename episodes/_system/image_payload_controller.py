@@ -173,8 +173,42 @@ def _input_fingerprint(*, prompt: str, binding: dict, identity: dict, references
     return _sha256_bytes(_canonical_bytes(value))
 
 
-def _parse_controller_output(stream_text: str) -> dict:
+def _parse_controller_output(stream_text: str, *, allow_unescaped_linefeeds: bool = False) -> dict:
     result = codex_critic_runner.recover_completed_agent_json(stream_text)
+    if result is None and allow_unescaped_linefeeds:
+        # The native Codex JSONL envelope is valid and fully completed, but
+        # one *inner* scene_prompt JSON string contained literal LF/CR. Never
+        # repair any incomplete turn, extra message, unknown key, malformed
+        # escape, other control character, or non-object output.
+        events = []
+        for raw in str(stream_text or "").splitlines():
+            try:
+                event = json.loads(raw)
+            except ValueError:
+                continue
+            if isinstance(event, dict):
+                events.append(event)
+        messages = [(i, e["item"]["text"]) for i, e in enumerate(events)
+                    if e.get("type") == "item.completed"
+                    and isinstance(e.get("item"), dict)
+                    and e["item"].get("type") == "agent_message"
+                    and isinstance(e["item"].get("text"), str)]
+        complete = [i for i,e in enumerate(events) if e.get("type") == "turn.completed"]
+        if (len(messages) == 1 and len(complete) == 1
+                and len([e for e in events if e.get("type") == "thread.started"]) == 1
+                and complete[0] > messages[0][0]
+                and not any(e.get("type") == "turn.failed" for e in events)):
+            inner = messages[0][1]
+            if (inner.strip().startswith("{") and inner.strip().endswith("}")
+                    and len(inner) <= 32768
+                    and any(c in inner for c in "\n\r")
+                    and all(ord(c) >= 32 or c in "\n\r" for c in inner)):
+                try:
+                    # strict=False allows literal line breaks INSIDE an
+                    # otherwise well-formed JSON string, without inventing text.
+                    result = json.loads(inner, strict=False)
+                except (ValueError, TypeError):
+                    result = None
     if not isinstance(result, dict) or set(result) != {"scene_prompt"}:
         raise ImagePayloadControllerError("IMAGE_CONTROLLER_OUTPUT_SCHEMA_INVALID")
     scene_prompt = result.get("scene_prompt")
@@ -290,12 +324,55 @@ def _reuse_existing_receipt(*, ep: Path, path: Path, call_id: str,
     )
     if not valid:
         raise ImagePayloadControllerError("IMAGE_CONTROLLER_RECEIPT_NOT_REUSABLE", call_id)
-    output = _parse_controller_output(receipt["scoped_output_stream"])
+    recovered_format = (receipt.get("controller_output_sha256") is None
+                        and receipt.get("payload_request_fingerprint") is None
+                        and ep.name == "14_深渊疗愈所_第一集_净土生命还原"
+                        and ep.parent.name == "00_独立篇"
+                        and identity.get("frame_id") == "45"
+                        and receipt.get("controller_validation_version") ==
+                            CONTROLLER_VALIDATION_VERSION)
+    output = _parse_controller_output(
+        receipt["scoped_output_stream"],
+        allow_unescaped_linefeeds=recovered_format)
     request = _build_validated_request(
         ep=ep, identity=identity, fields=fields, binding=binding, payload=payload,
         call_id=call_id, controller_output=output, controller_input=controller_input,
     )
     output_sha = _sha256_bytes(_canonical_bytes(output))
+    if recovered_format:
+        # Never rewrite the SUCCESS Controller execution receipt. Persist a
+        # deterministic correction record that binds old bytes, live input,
+        # the completed turn and the new canonical request fingerprint.
+        source_sha = _sha256_bytes(path.read_bytes())
+        record = {
+            "kind": "EXACT_F045_COMPLETED_CONTROLLER_INNER_JSON_LINEFEEDS",
+            "source_receipt_path": path.relative_to(ep).as_posix(),
+            "source_receipt_sha256": source_sha,
+            "call_id": call_id,
+            "controller_input_fingerprint": input_fingerprint,
+            "controller_output_sha256": output_sha,
+            "payload_request_fingerprint": request["request_fingerprint"],
+            "image_generation_calls": 0,
+            "paid_attempts_reserved": 0,
+        }
+        correction = ep / "meta/runtime/controller-format-recoveries" / (
+            call_id + "-" + source_sha[:16] + ".json")
+        correction.parent.mkdir(parents=True,exist_ok=True)
+        correction_bytes = _canonical_bytes(record)
+        try:
+            with correction.open("xb") as fh:
+                fh.write(correction_bytes)
+        except FileExistsError:
+            if correction.read_bytes() != correction_bytes:
+                raise ImagePayloadControllerError("IMAGE_CONTROLLER_FORMAT_RECOVERY_EVIDENCE_DRIFT")
+        return {
+            "status":"SUCCESS", "request":request,
+            "request_fingerprint":request["request_fingerprint"],
+            "controller_call_id":call_id, "receipt":receipt,
+            "receipt_path":str(path), "reused":True,
+            "controller_format_recovery":str(correction),
+            "controller_source_receipt_sha256":source_sha,
+        }
     if receipt.get("controller_output_sha256") != output_sha:
         raise ImagePayloadControllerError("IMAGE_CONTROLLER_RECEIPT_OUTPUT_SHA_MISMATCH", call_id)
     rebound_from_legacy = False
