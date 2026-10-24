@@ -311,6 +311,10 @@ def eligible_reviewed_followon(ep: Path, item: dict, payload: dict, controller: 
 
         ep = Path(ep).resolve()
         frame = int(item.get("frame") or 0)
+        if ep.name == "14_深渊疗愈所_第一集_净土生命还原":
+            import production_native_f001_reviewed_followon
+            return production_native_f001_reviewed_followon.eligible(
+                ep,item,payload,controller)
         if (ep.name != "13_失物归还的那扇门"
                 or ep.parent.name != "00_独立篇"
                 or not ep.is_relative_to(ROOT / "episodes")
