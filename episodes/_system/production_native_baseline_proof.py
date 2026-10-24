@@ -39,6 +39,10 @@ def verified_second_baseline_retry(ep: Path, item: dict) -> bool:
     """Exact Episode 13 network-failed Attempt 1, never a general entitlement."""
     try:
         ep = Path(ep).resolve()
+        if (ep.name == "14_深渊疗愈所_第一集_净土生命还原"
+                and ep.parent.name == "00_独立篇"):
+            import f001_unknown_operator_disposition
+            return f001_unknown_operator_disposition.operator_second_attempt_source(ep, item)
         if (ep.name != "13_失物归还的那扇门"
                 or ep.parent.name != "00_独立篇"
                 or item.get("scope") != "visual_lock"

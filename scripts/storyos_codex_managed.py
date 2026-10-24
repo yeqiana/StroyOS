@@ -367,6 +367,36 @@ def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
                     "read_only": True,
                     "production_authorization": False,
                 }
+        if (not restartable and rc == 0
+                and driver.get("driver_state") == "EXITED"
+                and driver.get("exit_code") == "24"
+                and driver.get("pid") == 0
+                and driver.get("liveness") == "DEAD"
+                and stage.get("status") == "STAGE_ELIGIBLE"
+                and attempts.get("status") == "ATTEMPT_HISTORY_READ_ONLY"
+                and not attempts.get("outcome_unknown_assets")
+                and not attempts.get("active_attempt_assets")):
+            # An explicitly acknowledged *lost local provenance* disposition
+            # may settle the old paid UNKNOWN as a local acceptance failure.
+            # Never silently reclassify it; this exact one-shot MySQL ack,
+            # matching archived bytes, four-frame queue and rc24 must re-prove.
+            disp_rc, disp = _probe(
+                env, "episodes/_system/f001_unknown_operator_disposition.py",
+                ["--episode", rel, "--verify-rearmed"])
+            if (disp_rc == 0 and disp.get("status") ==
+                    "VISUAL_LOCK_RC24_OPERATOR_DISPOSITION_REARM_RECOVERABLE"
+                    and disp.get("driver_record_sha256") ==
+                        exit_remediation.canonical_sha(driver.get("record") or {})):
+                restartable = True
+                driver_recovery = {
+                    "status": disp["status"],
+                    "driver_record_sha256": disp["driver_record_sha256"],
+                    "receipt_sha256": disp["receipt_sha256"],
+                    "item_id": disp["item_id"],
+                    "recovery_action": "CANONICAL_VISUAL_LOCK_ATTEMPT_2_ONLY",
+                    "read_only": True,
+                    "production_authorization": False,
+                }
         if not restartable:
             blockers.append("EPISODE_DRIVER_OWNER_NOT_IDLE_OR_UNVERIFIED")
         if driver.get("driver_state") == "EXITED" and not restartable:
@@ -603,6 +633,8 @@ def main(argv: list[str] | None = None) -> int:
                 "scripts/storyos_prompt_contract_rc4_readonly.py",
             "VISUAL_LOCK_RC4_VERIFIED_F001_PREDISPATCH_REARM_RECOVERABLE":
                 "scripts/storyos_visual_lock_baseline_rearm_rc4_readonly.py",
+            "VISUAL_LOCK_RC24_OPERATOR_DISPOSITION_REARM_RECOVERABLE":
+                "episodes/_system/f001_unknown_operator_disposition.py",
         }
         recovery_status = (state.get("driver_recovery") or {}).get("status")
         if args.command in {"start", "run"} and recovery_status in valid_recoveries:
@@ -613,6 +645,9 @@ def main(argv: list[str] | None = None) -> int:
             recovery_rc, latest = _probe(
                 env, valid_recoveries[recovery_status],
                 ["--episode", episode.relative_to(ROOT).as_posix()]
+                + (["--verify-rearmed"] if recovery_status ==
+                   "VISUAL_LOCK_RC24_OPERATOR_DISPOSITION_REARM_RECOVERABLE"
+                   else [])
             )
             if (recovery_rc != 0 or latest.get("status") != recovery_status
                     or latest.get("driver_record_sha256") !=
@@ -620,6 +655,12 @@ def main(argv: list[str] | None = None) -> int:
                     or (recovery_status == "PREIMAGE_RC4_HOST_ENVELOPE_RECOVERABLE"
                         and latest.get("candidate_sha256") !=
                             state["driver_recovery"].get("candidate_sha256"))
+                    or (recovery_status ==
+                        "VISUAL_LOCK_RC24_OPERATOR_DISPOSITION_REARM_RECOVERABLE"
+                        and (latest.get("receipt_sha256") !=
+                                 state["driver_recovery"].get("receipt_sha256")
+                             or latest.get("item_id") !=
+                                 state["driver_recovery"].get("item_id")))
                     or (recovery_status ==
                         "VISUAL_LOCK_RC4_VERIFIED_F001_PREDISPATCH_REARM_RECOVERABLE"
                         and (latest.get("f001_queue_item_id") !=
