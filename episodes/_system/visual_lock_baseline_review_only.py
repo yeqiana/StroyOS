@@ -4,6 +4,8 @@ import argparse
 import hashlib
 import json
 import shutil
+import re
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import character_visual_contract as character
 import codex_critic_runner as critic
@@ -25,7 +27,57 @@ class ReviewOnlyDenied(RuntimeError):pass
 def sha(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
 def deny(s):raise ReviewOnlyDenied(s)
 
-def inspect(ep):
+def quota_recovery_prefix(prefix: Path, *, oldsha: str, image_sha: str,
+                          contract_sha: str, promptsha: str, now=None) -> tuple[Path,str]:
+    """Exactly one fresh review after a real logged Codex usage-limit error.
+
+    Previous terminal technical evidence is immutable and input SHA-bound.
+    Other failures, finished content verdicts and pre-reset attempts are not
+    eligible for this narrow exception. It never authorizes image generation.
+    """
+    report=prefix.with_suffix(".json")
+    log=prefix.with_suffix(".log.jsonl")
+    if not report.is_file() or not log.is_file() or report.is_symlink() or log.is_symlink():
+        deny("PRIOR_QUOTA_FAILURE_EVIDENCE_MISSING")
+    previous=json.loads(report.read_text(encoding="utf-8"))
+    provenance=previous.get("critic_provenance") or {}
+    if (previous.get("status")!="TECHNICAL_FAILURE"
+        or previous.get("critic_returncode")!=1
+        or previous.get("reply") not in ({},None)
+        or previous.get("prior_review_sha256")!=oldsha
+        or previous.get("image_sha256")!=image_sha
+        or previous.get("frame_contract_sha256")!=contract_sha
+        or previous.get("prompt_sha256")!=promptsha
+        or previous.get("image_generation_calls")!=0
+        or previous.get("image_attempts_reserved")!=0
+        or provenance.get("log_sha256")!=sha(log)):
+        deny("PRIOR_FAILURE_NOT_EXACT_QUOTA_SOURCE")
+    text=log.read_text(encoding="utf-8-sig",errors="replace")
+    match=re.search(r"try again at (\d{1,2}:\d{2})\s*(AM|PM)",text,re.I)
+    if ("usage limit" not in text.lower() or "turn.failed" not in text
+        or "turn.completed" in text or not match):
+        deny("PRIOR_FAILURE_NOT_USAGE_LIMIT")
+    reviewed=datetime.fromisoformat(str(provenance.get("reviewed_at") or ""))
+    if reviewed.tzinfo is None:deny("QUOTA_REVIEW_TIMESTAMP_NO_TIMEZONE")
+    hour,minute=map(int,match.group(1).split(":"))
+    hour=hour%12+(12 if match.group(2).upper()=="PM" else 0)
+    reset=reviewed.replace(hour=hour,minute=minute,second=0,microsecond=0)
+    if reset<=reviewed:reset+=timedelta(days=1)
+    current=now if now is not None else datetime.now(reviewed.tzinfo)
+    if current<reset:
+        deny("CODEX_USAGE_LIMIT_NOT_RESET:"+reset.isoformat())
+    reference=sha(report)
+    newkey=hashlib.sha256(
+        (prefix.name+reference+"one-bounded-quota-vision-retry").encode()
+    ).hexdigest()[:20]
+    nextprefix=prefix.parent/("f001-quota-"+newkey)
+    if any(nextprefix.with_suffix(x).exists() for x in
+           (".json",".log.jsonl",".candidate.json")):
+        deny("QUOTA_REVIEW_ALREADY_RETRIED")
+    return nextprefix,reference
+
+
+def inspect(ep,*,quota_retry=False):
     ep=Path(ep).resolve()
     if ep!=(ROOT/REL).resolve():deny("WRONG_EPISODE")
     driver=runtime_driver.status(ep)
@@ -78,8 +130,15 @@ def inspect(ep):
     keyhash=hashlib.sha256((oldsha+image["sha256"]+promptsha).encode()).hexdigest()[:20]
     prefix=ep/EVIDENCE/("f001-"+keyhash)
     artifacts=[prefix.with_suffix(s) for s in (".json",".candidate.json",".log.jsonl")]
-    if any(p.exists() for p in artifacts):deny("SAME_SOURCE_REVIEW_ALREADY_ATTEMPTED")
+    prior_quota_sha=None
+    if any(p.exists() for p in artifacts):
+        if not quota_retry:deny("SAME_SOURCE_REVIEW_ALREADY_ATTEMPTED")
+        prefix,prior_quota_sha=quota_recovery_prefix(
+            prefix,oldsha=oldsha,image_sha=image["sha256"],
+            contract_sha=image["frame_contract_sha256"],promptsha=promptsha)
+    elif quota_retry:deny("NO_QUOTA_LIMITED_REVIEW_TO_RETRY")
     return {"status":"REVIEW_ONLY_READY","ep":ep,"asset":asset,"old":old,
+        "quota_recovery_from_sha256":prior_quota_sha,
         "oldlog":oldlog,"old_sha":oldsha,"oldlog_sha":sha(oldlog),
         "image_sha":image["sha256"],"contract_sha":image["frame_contract_sha256"],
         "prompt":prompt,"prompt_sha":promptsha,"prefix":prefix,
@@ -111,9 +170,9 @@ def verdict(reply):
         return "REVIEW_ONLY_PASS"
     return "REVIEW_ONLY_FAIL"
 
-def review_only(ep,ack):
+def review_only(ep,ack,*,quota_retry=False):
     if not ack:deny("EXPLICIT_NO_IMAGE_REVIEW_ACK_REQUIRED")
-    source=inspect(ep)
+    source=inspect(ep,quota_retry=quota_retry)
     prefix=source["prefix"]
     prefix.parent.mkdir(parents=True,exist_ok=True)
     output=prefix.with_suffix(".candidate.json")
@@ -145,6 +204,7 @@ def review_only(ep,ack):
     record={"schema_version":1,"status":result,
         "review_only":True,"canonical_pass_authorized":False,
         "prior_decision":"FAIL","prior_review_sha256":source["old_sha"],
+        "quota_recovery_from_sha256":source["quota_recovery_from_sha256"],
         "prior_critic_log_sha256":source["oldlog_sha"],
         "frame":1,"frame_contract_sha256":source["contract_sha"],
         "image_sha256":source["image_sha"],"prompt_sha256":source["prompt_sha"],
@@ -159,11 +219,12 @@ def main(argv=None):
     ap=argparse.ArgumentParser()
     ap.add_argument("--episode",required=True)
     ap.add_argument("--run",action="store_true")
+    ap.add_argument("--retry-after-usage-limit",action="store_true")
     ap.add_argument("--ack-review-only-no-image-generation",action="store_true")
     a=ap.parse_args(argv)
     try:
         ep=Path(a.episode).resolve()
-        r=review_only(ep,a.ack_review_only_no_image_generation) if a.run else inspect(ep)
+        r=review_only(ep,a.ack_review_only_no_image_generation,quota_retry=a.retry_after_usage_limit) if a.run else inspect(ep,quota_retry=a.retry_after_usage_limit)
         if not a.run:
             r={k:r[k] for k in ("status","old_sha","image_sha","contract_sha","prompt_sha",
               "image_generation_calls","image_attempts_reserved")}
