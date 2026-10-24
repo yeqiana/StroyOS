@@ -64,7 +64,11 @@ def eligible(ep,item):
     """Read-only exact scope: native subscription/Batch, trusted bytes and UNKNOWN."""
     try:
         ep=Path(ep).resolve()
-        if (item.get("status")!="external_blocked" or item.get("scope")!="batch"
+        import f045_visual_lock_raw_scope
+        visual_f045=(item.get("scope")=="visual_lock"
+                     and f045_visual_lock_raw_scope.allowed(ep,item))
+        if (item.get("status")!="external_blocked"
+                or (item.get("scope")!="batch" and not visual_f045)
                 or item.get("kind")!="original" or item.get("technical_failure_code")!=FAILURE
                 or item.get("output_path") or item.get("candidate_output_path")):
             return None
@@ -124,7 +128,7 @@ def eligible(ep,item):
             return None
         return {**plan,"receipt_path":receipt_path,"raw_path":raw,"generation_key":gen,
                 "asset_key":key,"frame":frame,"item_id":item["id"],
-                "attempt_index":idx,
+                "attempt_index":idx,"scope":item.get("scope"),
                 "raw_sha256":receipt["raw_sha256"],
                 "receipt_sha256":_receipt_digest(receipt),
                 "receipt_legacy_path":loaded["legacy_path"],
@@ -197,7 +201,7 @@ def _mysql_reconcile(ep,plan,output,output_sha):
                     or row.get("RESULT_REF") not in (None,"")
                     or row.get("GENERATION_KEY")!=plan["generation_key"]
                     or row.get("PROVIDER")!="codex_subscription"
-                    or context.get("scope")!="batch"
+                    or context.get("scope")!=plan.get("scope","batch")
                     or context.get("queue_item_id")!=plan["item_id"]
                     or context.get("frame_contract_sha256")!=plan["frame_contract_sha256"]
                     or context.get("prompt_package_sha256")!=plan["prompt_package_sha256"]
@@ -228,7 +232,9 @@ def recover_one(ep,frame):
         with scheduler_core.queue_transaction(ep):
             q=scheduler_core.load_queue(ep)
             row=next((x for x in q.get("items",[])
-                      if x.get("scope")=="batch" and int(x.get("frame") or 0)==int(frame)),None)
+                      if (x.get("scope")=="batch" or
+                          (x.get("scope")=="visual_lock" and int(frame)==45))
+                      and int(x.get("frame") or 0)==int(frame)),None)
             if row is None:
                 return {"status":"BLOCKED","reason":"FRAME_NOT_IN_BATCH_QUEUE"}
             plan=eligible(ep,row)
