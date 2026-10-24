@@ -100,3 +100,15 @@ def test_retry_never_borrows_f001_image_budget():
     code=(ROOT/"episodes/_system/image_unknown_raw_reconcile.py").read_text("utf-8")
     assert "generation_failed_before_candidate_commit" in code
     assert "f045_visual_lock_raw_scope.allowed" in code
+
+
+def test_driver_readonly_cli_resolves_local_platform_repository():
+    """Production starts scripts by path; this must not import stdlib platform."""
+    import subprocess
+    result=subprocess.run(
+        [sys.executable,str(ROOT/"episodes/_system/f045_raw_verified_rc24_rearm.py"),
+         "--episode",str(ROOT/"episodes"/"unrelated"),"--verify-rearmed"],
+        cwd=ROOT,capture_output=True,text=True,timeout=30,check=False)
+    assert result.returncode==2
+    assert "ModuleNotFoundError" not in result.stderr
+    assert json.loads(result.stdout)["status"]=="BLOCKED"
