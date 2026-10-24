@@ -329,6 +329,52 @@ def repair_prompt(
     return text
 
 
+def _native_real_attempt_budget_preflight(ep: Path, frame: int) -> dict | None:
+    """Read the Generation Attempt authority BEFORE creating a doomed repair.
+
+    The Production Ledger's one content-repair allowance is not another real
+    paid image generation allowance. Only GenerationAttempt.remaining may
+    grant that. Never reserve, refund or start a provider from here.
+    """
+    import production_ledger_persistence
+    import runtime_router
+
+    if (runtime_router.image_execution_runtime()[0] != "CODEX"
+            or production_ledger_persistence.mode() != "mysql"):
+        return None
+    import generation_attempt_authority as authority
+    import logical_asset_identity as identity
+
+    try:
+        state=authority.load_asset_state(ep,identity.frame_asset_key(ep,frame))
+    except Exception as exc:
+        # In native MySQL production, an unavailable budget is an admission
+        # block, NOT a fallback to another chargeable repair.
+        return {
+            "status":"BLOCKED",
+            "reason_code":"GENERATION_ATTEMPT_AUTHORITY_UNVERIFIED",
+            "frame":frame,"detail":type(exc).__name__,
+            "model_calls":0,"attempts_reserved":0,
+        }
+    if not isinstance(state,dict) or "remaining_attempts" not in state:
+        return {"status":"BLOCKED",
+                "reason_code":"GENERATION_ATTEMPT_AUTHORITY_UNVERIFIED",
+                "frame":frame,"model_calls":0,"attempts_reserved":0}
+    if (int(state.get("remaining_attempts") or 0) <= 0
+            and state.get("active_attempt_index") is None):
+        return {"status":"NEEDS_USER",
+                "reason_code":"REAL_IMAGE_ATTEMPT_BUDGET_EXHAUSTED",
+                "frame":frame,
+                "attempts_consumed":int(state.get("attempts_consumed") or 0),
+                "remaining_attempts":0,
+                "model_calls":0,"attempts_reserved":0}
+    if state.get("active_attempt_index") is not None:
+        return {"status":"BLOCKED",
+                "reason_code":"GENERATION_ATTEMPT_STILL_ACTIVE",
+                "frame":frame,"model_calls":0,"attempts_reserved":0}
+    return None
+
+
 def enqueue(
     ep: Path,
     *,
@@ -341,6 +387,10 @@ def enqueue(
     frame = int(frame)
     if repair_pending(ep, frame):
         return {"status": "REPAIR_ALREADY_PENDING", "frame": frame, "attempt": review_attempt(ep, frame)}
+
+    bounded=_native_real_attempt_budget_preflight(ep,frame)
+    if bounded is not None:
+        return bounded
 
     ledger = _ledger_frame(ep, frame)
     status = str(ledger.get("status") or "")
