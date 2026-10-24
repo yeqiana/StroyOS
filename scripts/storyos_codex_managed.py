@@ -453,6 +453,38 @@ def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
                     "recovery_action": "RESUME_DEPENDENT_VISUAL_LOCK_3_NO_F001_GENERATION",
                     "read_only": True, "production_authorization": False,
                 }
+        if (not restartable and rc == 0
+                and driver.get("driver_state") == "EXITED"
+                and driver.get("exit_code") == "24"
+                and driver.get("liveness") == "DEAD"
+                and driver.get("pid") == 0
+                and stage.get("status") == "STAGE_ELIGIBLE"
+                and attempts.get("status") == "ATTEMPT_HISTORY_READ_ONLY"
+                and not attempts.get("outcome_unknown_assets")
+                and not attempts.get("active_attempt_assets")):
+            # Strict F045 raw-source ratio correction following a single
+            # existing paid image. The PNG/receipt/typed ledger and all 4
+            # Visual Lock queue rows are verified; no new frame-45 Attempt.
+            f045_rc, f045 = _probe(
+                env, "episodes/_system/f045_raw_verified_rc24_rearm.py",
+                ["--episode", rel, "--verify-rearmed"])
+            if (f045_rc == 0
+                and f045.get("status") ==
+                    "VISUAL_LOCK_RC24_F045_RAW_RATIO_RECOVERED"
+                and f045.get("driver_record_sha256") ==
+                    exit_remediation.canonical_sha(driver.get("record") or {})):
+                restartable = True
+                driver_recovery = {
+                    "status": f045["status"],
+                    "driver_record_sha256": f045["driver_record_sha256"],
+                    "f045_candidate_sha256": f045["f045_candidate_sha256"],
+                    "f045_raw_sha256": f045["f045_raw_sha256"],
+                    "f005_candidate_sha256": f045["f005_candidate_sha256"],
+                    "f047_candidate_sha256": f045["f047_candidate_sha256"],
+                    "recovery_action": "RESUME_REVIEW_EXISTING_VISUAL_LOCK_PIXELS",
+                    "read_only": True,
+                    "production_authorization": False,
+                }
         if not restartable:
             blockers.append("EPISODE_DRIVER_OWNER_NOT_IDLE_OR_UNVERIFIED")
         if driver.get("driver_state") == "EXITED" and not restartable:
@@ -695,6 +727,8 @@ def main(argv: list[str] | None = None) -> int:
                 "episodes/_system/f001_attempt2_native_raw_reconcile.py",
             "VISUAL_LOCK_RC22_F001_INDEPENDENT_PASS_RECOVERABLE":
                 "episodes/_system/f001_independent_baseline_pass_cas.py",
+            "VISUAL_LOCK_RC24_F045_RAW_RATIO_RECOVERED":
+                "episodes/_system/f045_raw_verified_rc24_rearm.py",
         }
         recovery_status = (state.get("driver_recovery") or {}).get("status")
         if args.command in {"start", "run"} and recovery_status in valid_recoveries:
@@ -711,6 +745,8 @@ def main(argv: list[str] | None = None) -> int:
                    "VISUAL_LOCK_RC24_F001_ATTEMPT2_RECONCILED_RECOVERABLE"
                    else ["--verify-rearmed"] if recovery_status ==
                    "VISUAL_LOCK_RC22_F001_INDEPENDENT_PASS_RECOVERABLE"
+                   else ["--verify-rearmed"] if recovery_status ==
+                   "VISUAL_LOCK_RC24_F045_RAW_RATIO_RECOVERED"
                    else [])
             )
             if (recovery_rc != 0 or latest.get("status") != recovery_status
@@ -727,6 +763,14 @@ def main(argv: list[str] | None = None) -> int:
                                  state["driver_recovery"].get("candidate_sha256")
                              or latest.get("item_id") !=
                                  state["driver_recovery"].get("item_id")))
+                    or (recovery_status ==
+                        "VISUAL_LOCK_RC24_F045_RAW_RATIO_RECOVERED"
+                        and any(latest.get(field) !=
+                                state["driver_recovery"].get(field)
+                                for field in ("f045_candidate_sha256",
+                                              "f045_raw_sha256",
+                                              "f005_candidate_sha256",
+                                              "f047_candidate_sha256")))
                     or (recovery_status ==
                         "VISUAL_LOCK_RC22_F001_INDEPENDENT_PASS_RECOVERABLE"
                         and (latest.get("review_sha256") !=

@@ -43,6 +43,7 @@ SLOTS = {
         "tests/system/test_native_batch_reentry.py",
         "tests/system/test_native_batch_post_success_followon.py",
         "tests/system/test_image_unknown_raw_reconcile.py",
+        "tests/system/test_f045_raw_ratio_scope.py",
         "tests/system/test_native_image_failure_receipt_durability.py",
         "tests/system/test_native_runner_mysql_dispatch_identity.py",
         "tests/system/test_native_network_failure_rearm.py",
