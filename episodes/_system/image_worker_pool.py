@@ -522,7 +522,8 @@ def execute(ep,item,timeout,codex):
             # and PNG before any downstream review can see this first frame.
             try:
                 production_native_baseline_proof.record_unreviewed_pixel(
-                    ep, item, generation_lease, log, out, runner_request_id)
+                    ep, item, generation_lease, log, out, runner_request_id,
+                    raw_pixel=(payload or {}).get("raw_output"))
             except Exception as exc:
                 # IMPORTANT: post-dispatch unverifiable provider evidence is
                 # OUTCOME_UNKNOWN, NOT SUCCEEDED and NOT free to regenerate.

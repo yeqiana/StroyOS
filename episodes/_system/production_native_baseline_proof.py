@@ -691,11 +691,33 @@ def verify_direct_runner_archived_pixel(log: Path, raw: Path,
 
 
 def record_unreviewed_pixel(ep: Path, item: dict, lease: dict,
-                           log: Path, pixel: Path, runner_request_id: str) -> dict:
+                           log: Path, pixel: Path, runner_request_id: str,
+                           *, raw_pixel: Path | None = None) -> dict:
     """Append-only, never a reviewer or entitlement PASS; refuse duplicates."""
     proof = observe_real_tool_pixel(log, pixel)
     if proof is None:
-        proof = verify_direct_runner_archived_pixel(log, pixel, runner_request_id)
+        # Direct Codex archives the original PNG before NP01 normalization.
+        # Compare exact native bytes with provider RAW, never the resized
+        # release candidate; verify the latter as a separate valid PNG.
+        original = Path(raw_pixel).resolve() if raw_pixel is not None else None
+        native_root = (Path(ep).resolve() / "media" / "raw").resolve()
+        if (original is not None and original.is_file()
+                and not Path(raw_pixel).is_symlink()
+                and original.parent == native_root):
+            from PIL import Image
+            try:
+                with Image.open(pixel) as im:
+                    if im.format != "PNG":
+                        raise ValueError("normalized candidate not a PNG")
+                    im.verify()
+                proof = verify_direct_runner_archived_pixel(
+                    log, original, runner_request_id)
+                if proof is not None:
+                    proof["normalized_candidate_sha256"] = hashlib.sha256(
+                        Path(pixel).read_bytes()).hexdigest()
+                    proof["native_original_pixel_sha256"] = proof["pixel_sha256"]
+            except (OSError, ValueError):
+                proof = None
     if proof is None or not admitted_baseline_lease(ep, item, lease) or item.get("frame") != 1:
         raise RuntimeError("NATIVE_BASELINE_PIXEL_TOOL_PROOF_UNVERIFIED")
     package = item.get("prompt_package") or {}
