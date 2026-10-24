@@ -17,6 +17,8 @@ elif _repo_platform not in _stdlib_platform.__path__:
     _stdlib_platform.__path__.append(_repo_platform)
 if str(ROOT) not in sys.path:
     sys.path.insert(0,str(ROOT))
+if str(ROOT/"scripts") not in sys.path:
+    sys.path.insert(0,str(ROOT/"scripts"))
 import episode_state_persistence
 import frame_contract
 import generation_attempt_authority as authority
@@ -237,7 +239,7 @@ def verify_rearmed(ep):
         or drv.get("pid")!=0
         or str(drv.get("exit_code"))!="22"):
         return {"status":"BLOCKED","reason":"REARMED_REPAIR_SOURCE_OR_RC22_INVALID"}
-    import exit_remediation
+    import storyos_driver_exit_remediation as exit_remediation
     stable=[{k:x.get(k) for k in ("id","frame","kind","status",
             FLAG,"native_repair_visibility_sha256","ep14_review_sha256",
             "prompt_package","frame_contract")} for x in rows]

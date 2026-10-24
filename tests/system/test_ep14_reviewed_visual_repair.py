@@ -119,3 +119,23 @@ def test_prior_known_ep13_pilot_remains_on_distinct_path():
     text=(ROOT/"episodes/_system/production_native_repair_pilot.py").read_text(encoding="utf-8")
     assert "production_ep14_visual_repair.eligible" in text
     assert "ep.name != \"13_失物归还的那扇门\"" in text
+
+
+def test_rc22_exact_driver_record_uses_official_remediation_module(monkeypatch):
+    ep=repairs.ROOT/"episodes"/"00_独立篇"/repairs.EPISODE
+    q={"items":[{"frame":f,"id":iid,"scope":"repair","kind":"repair",
+        "status":"queued","native_ep14_repair_rearm_count":1,
+        "native_repair_visibility_sha256":"a"*64,
+        "ep14_review_sha256":"b"*64,"prompt_package":{},
+        "frame_contract":{}} for f,iid in repairs.FRAMES.items()]}
+    monkeypatch.setattr(repairs.model_policy,"resolve",lambda *args,**kw:{})
+    monkeypatch.setattr(repairs.scheduler_core,"load_queue",lambda *_:q)
+    monkeypatch.setattr(repairs.runtime_driver,"status",lambda *_:{
+        "driver_state":"EXITED","liveness":"DEAD","pid":0,
+        "exit_code":"22","record":{"exit_code":22}})
+    monkeypatch.setattr(repairs,"eligible",lambda *args,**kwargs:True)
+    monkeypatch.setattr(repairs,"sha",lambda *_:"b"*64)
+    result=repairs.verify_rearmed(ep)
+    assert result["status"]=="VISUAL_LOCK_RC22_EP14_REPAIR_REARMED"
+    assert result["new_paid_attempts"]==0
+    assert len(result["repair_queue_sha256"])==64
