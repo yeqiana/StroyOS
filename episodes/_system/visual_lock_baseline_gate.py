@@ -81,6 +81,41 @@ def generated_baseline(ep):
     row=rows[-1];asset=repo_file(row["output_path"])
     return {"frame":frame,"asset_path":repo_rel(asset),"sha256":sha_file(asset),"frame_contract_sha256":frame_contract.compile_frame(ep,frame,write_cache=False)["contract_sha256"],"queue_item_id":row.get("id")}
 
+def baseline_review_obligations(ep):
+    """Derive obligations from the existing immutable Frame Contract."""
+    ep=Path(ep).resolve()
+    frame=baseline_frame(ep)
+    contract=frame_contract.compile_frame(ep,frame,write_cache=False)
+    material=contract.get("hash_material") or {}
+    directive=material.get("frame_directive") or {}
+    capture=material.get("capture_event") or {}
+    required=character_visual_contract.pixel_master_required(ep)
+    identity=(
+        "The locked opening social anchor DOES require a Pixel Master. "
+        "Every primary cast member must be visibly recognizable and accurately boxed; "
+        "a missing required person is a FAIL."
+        if required else
+        "The locked opening social anchor DOES NOT require a Pixel Master in this baseline. "
+        "A valid first-person windshield, environment, object, or hand shot MUST NOT fail "
+        "merely because absent primary-cast faces or an absent group photograph cannot "
+        "be boxed. Treat identity_usable, group_members_distinct, identity_anchor_usable "
+        "as PASS when inapplicable to the actual locked shot, with face_boxes=[] if no "
+        "identifiable faces exist. If any person IS visibly depicted, verify that "
+        "identity faithfully. NEVER invent faces, add people, change composition, "
+        "or excuse independent photographic/style/physical failures."
+    )
+    return {
+        "frame":frame,
+        "frame_contract_sha256":contract["contract_sha256"],
+        "camera_device":capture.get("capture_device") or "",
+        "device_position":capture.get("device_position") or "",
+        "framing_constraint":capture.get("framing_constraint") or "",
+        "required_visual_cues":list(directive.get("required_visual_cues") or []),
+        "identity_text":identity,
+        "pixel_master_required":required,
+    }
+
+
 def prepare_review(ep,force=False):
     ep=Path(ep).resolve();p=ep/REL
     binding=_revision_baseline_binding(ep)
@@ -99,6 +134,7 @@ def prepare_review(ep,force=False):
                 if archive.read_bytes()!=original:
                     raise ValueError("BASELINE_HISTORY_ARCHIVE_COLLISION")
     src=generated_baseline(ep);cv=character_visual_contract.load(ep) or {};primary=[str(x) for x in (cv.get("primary_cast_ids") or [])]
+    if not character_visual_contract.pixel_master_required(ep):primary=[]
     d={"schema_version":1,"status":"DRAFT","decision":"PENDING","created_at":now(),"role":"ordinary_baseline",**src,
        **(binding or {}),
        "reviewer_scope":"delegated_pixel_review","checks":{k:"PENDING" for k in CHECKS},
@@ -248,16 +284,20 @@ def _ledger_pass(ep,frame):
 
 def critic_prompt(ep):
     draft=prepare_review(ep,force=False);candidate=Path(ep)/CANDIDATE_REL
+    obligations=baseline_review_obligations(ep)
+    face_example=('[{"character_id":"P01","x":0.0,"y":0.0,"w":0.1,"h":0.1}]'
+                  if obligations["pixel_master_required"] else "[]")
     face_hint=local_vision_shadow.face_hint(ep)
     return f"""You are a fresh isolated Story OS Visual Lock ordinary-baseline actual-pixel reviewer.
 Inspect the attached baseline image itself. This PASS unlocks the parallel-three Visual Lock images and may create the provisional character pixel master, so fail closed on visible identity/capture/style problems.
 Required checks: {list(CHECKS)}
-The target is an ordinary believable phone/photo baseline: reality-first, unposed, non-cinematic, usable identity, distinct group members where applicable.
+The target is ordinary believable photography with the contract-bound capture device (which need not be a phone): reality-first, unposed, non-cinematic, usable identity, distinct group members where applicable.
 Capture/style review is genre/action neutral: judge the actual locked story and frame; never demand any example action, location, prop, cast size, or motion intensity. Stillness can be authentic. Motion blur and camera defects require physical causes. Reject forced drama, invented action, director-blocked staging, and excessive cinematic polish.
-If this Episode is an explicit pure daily-life / no-anomaly story, ordinary_life_density means believable resident/friend life (breakfast, walking, chatting, errands, rest). Do NOT require a visible job workflow merely because a reusable celestial visual profile also supports worker stories.
-For core characters, this baseline is also Frame01 Character Identity Anchor evidence. The image must be usable as a later identity reference: clear face visibility, recognizable person, not only back view, not too distant, and suitable for Character Master creation.
+If this Episode is an explicit pure daily-life / no-anomaly story, ordinary_life_density means believable resident/friend life (breakfast, walking, chatting, errands, rest). Do NOT require a visible job workflow merely because a reusable celestial visual profile also supports worker stories.\nFor a locked non-daily-life first-person establishing shot, ordinary_life_density instead means credible spontaneous observation grounded in the scene. Do NOT require visible people, breakfast or errands when the contract specifies a landscape, road, windshield or object POV. Still FAIL independently for implausible camera physics, exaggerated cinema styling, missing visual cues, or theatrical staging.
+Locked Frame {obligations["frame"]:02d} and Frame Contract SHA {obligations["frame_contract_sha256"]}. Capture device: {obligations["camera_device"]}; position: {obligations["device_position"]}; framing: {obligations["framing_constraint"]}. Required visual cues: {json.dumps(obligations["required_visual_cues"], ensure_ascii=False)}.
+Identity obligation: {obligations["identity_text"]}
 Write ONLY JSON to {repo_rel(candidate)}:
-{{"decision":"PASS|FAIL","checks":{{"visual_profile_match":"PASS|FAIL","reality_first":"PASS|FAIL","ordinary_life_density":"PASS|FAIL","unposed_capture":"PASS|FAIL","not_cinematic":"PASS|FAIL","capture_credibility":"PASS|FAIL","identity_usable":"PASS|FAIL","group_members_distinct":"PASS|FAIL","identity_anchor_usable":"PASS|FAIL"}},"face_boxes":[{{"character_id":"P01","x":0.0,"y":0.0,"w":0.1,"h":0.1}}],"note":"actual-pixel evidence"}}
+{{"decision":"PASS|FAIL","checks":{{"visual_profile_match":"PASS|FAIL","reality_first":"PASS|FAIL","ordinary_life_density":"PASS|FAIL","unposed_capture":"PASS|FAIL","not_cinematic":"PASS|FAIL","capture_credibility":"PASS|FAIL","identity_usable":"PASS|FAIL","group_members_distinct":"PASS|FAIL","identity_anchor_usable":"PASS|FAIL"}},"face_boxes":{face_example},"note":"actual-pixel evidence"}}
 Face boxes use normalized 0..1 coordinates and must cover every primary cast member when pixel master is required.
 Local pre-scan (advisory only, never authoritative):
 {face_hint or "none"}
@@ -266,6 +306,7 @@ Do not modify source files or the image.
 """
 
 def codex_critic_prompt(ep):
+    obligations=baseline_review_obligations(ep)
     character_contract = character_visual_contract.load(Path(ep)) or {}
     primary_ids = [str(x) for x in character_contract.get("primary_cast_ids") or []]
     members = character_contract.get("members") or {}
@@ -273,21 +314,33 @@ def codex_critic_prompt(ep):
                     for cid in primary_ids}
     candidate=Path(ep)/CANDIDATE_REL
     schema='{"pixel_evidence_available":true,"decision":"PASS|FAIL","checks":{"visual_profile_match":"PASS|FAIL","reality_first":"PASS|FAIL","ordinary_life_density":"PASS|FAIL","unposed_capture":"PASS|FAIL","not_cinematic":"PASS|FAIL","capture_credibility":"PASS|FAIL","identity_usable":"PASS|FAIL","group_members_distinct":"PASS|FAIL","identity_anchor_usable":"PASS|FAIL"},"face_boxes":[{"character_id":"P01","x":0.0,"y":0.0,"w":0.1,"h":0.1}],"note":"actual-pixel evidence"}'
+    if not obligations["pixel_master_required"]:
+        schema=schema.replace(
+            '"face_boxes":[{"character_id":"P01","x":0.0,"y":0.0,"w":0.1,"h":0.1}]',
+            '"face_boxes":[]')
+    identity_box_instruction=(
+        "Use exact primary IDs for every required face box; never substitute "
+        "a supporting character. A missing required person is FAIL."
+        if obligations["pixel_master_required"] else
+        "No cast ensemble or face box is required for this baseline. Only report "
+        "a face box for an actually visible and identifiable character; otherwise []."
+    )
     face_hint=local_vision_shadow.face_hint(ep)
     return f"""You are a fresh isolated Story OS Visual Lock ordinary-baseline actual-pixel reviewer.
 The baseline image is already attached to this request. Inspect the attached pixels directly.
 Do NOT search the filesystem, do NOT call shell/tools, and do NOT modify any source file or image.
 This PASS unlocks the parallel-three Visual Lock images and may create the provisional character pixel master, so fail closed on visible identity/capture/style problems.
 Required checks: {list(CHECKS)}
-The target is an ordinary believable phone/photo baseline: reality-first, unposed, non-cinematic, usable identity, distinct group members where applicable.
+The target is ordinary believable photography with the contract-bound capture device (which need not be a phone): reality-first, unposed, non-cinematic, usable identity, distinct group members where applicable.
 Capture/style review is genre/action neutral: judge the actual locked story and frame; never demand any example action, location, prop, cast size, or motion intensity. Stillness can be authentic. Motion blur and camera defects require physical causes. Reject forced drama, invented action, director-blocked staging, and excessive cinematic polish.
-If this Episode is an explicit pure daily-life / no-anomaly story, ordinary_life_density means believable resident/friend life (breakfast, walking, chatting, errands, rest). Do NOT require a visible job workflow merely because a reusable celestial visual profile also supports worker stories.
-For core characters, this baseline is also Frame01 Character Identity Anchor evidence. The image must be usable as a later identity reference: clear face visibility, recognizable person, not only back view, not too distant, and suitable for Character Master creation.
+If this Episode is an explicit pure daily-life / no-anomaly story, ordinary_life_density means believable resident/friend life (breakfast, walking, chatting, errands, rest). Do NOT require a visible job workflow merely because a reusable celestial visual profile also supports worker stories.\nFor a locked non-daily-life first-person establishing shot, ordinary_life_density instead means credible spontaneous observation grounded in the scene. Do NOT require visible people, breakfast or errands when the contract specifies a landscape, road, windshield or object POV. Still FAIL independently for implausible camera physics, exaggerated cinema styling, missing visual cues, or theatrical staging.
+Locked Frame {obligations["frame"]:02d} and Frame Contract SHA {obligations["frame_contract_sha256"]}. Capture device: {obligations["camera_device"]}; position: {obligations["device_position"]}; framing: {obligations["framing_constraint"]}. Required visual cues: {json.dumps(obligations["required_visual_cues"], ensure_ascii=False)}.
+Identity obligation: {obligations["identity_text"]}
 Face boxes use normalized 0..1 coordinates and must cover every primary cast member when pixel master is required.
 The authoritative primary cast IDs in this Episode are {primary_ids}. Their hair identity cues are {json.dumps(primary_hair, ensure_ascii=False)}.
-Use these exact primary IDs in face_boxes; a supporting character ID (for example P02) never substitutes for P03.
+{identity_box_instruction}
 Locate each primary person by visual identity; never relabel an unrelated face or fabricate a box.
-If a primary person is absent or cannot be identified confidently from the pixels and cast contract, return FAIL and explain which ID is missing.
+A missing primary person is a FAIL only if a Pixel Master is actually required by the locked opening anchor or the current Frame Contract explicitly requires this visible person. Do not invent absent people.
 If the attachment cannot actually be decoded/seen, set pixel_evidence_available=false; that is an infrastructure failure, not a content FAIL.
 Local pre-scan (advisory only, never authoritative):
 {face_hint or "none"}
