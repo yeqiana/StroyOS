@@ -1,7 +1,15 @@
 """Exact Episode14 first Batch-native paid-attempt pilot; no bulk UNKNOWN bypass."""
 from __future__ import annotations
 import argparse,hashlib,json,re,sys
+import platform as _stdlib_platform
 from pathlib import Path
+
+_root_platform = str(Path(__file__).resolve().parents[2]/"platform")
+if not hasattr(_stdlib_platform,"__path__"):
+    _stdlib_platform.__path__=[_root_platform]
+elif _root_platform not in _stdlib_platform.__path__:
+    _stdlib_platform.__path__.append(_root_platform)
+
 import episode_state_persistence as stage
 import generation_attempt_authority as attempts
 import image_payload_transport as transport
