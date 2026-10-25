@@ -1,5 +1,7 @@
 """Bounded Episode14 F002 native pilot regression."""
 import sys
+import json
+import subprocess
 from pathlib import Path
 from contextlib import nullcontext
 import pytest
@@ -101,3 +103,14 @@ def test_no_session_visibility_no_write(fixture,monkeypatch):
     monkeypatch.setattr(pilot.native,"attest_secondary",lambda *_:None)
     assert pilot.rearm_one(ep,acknowledged=True)["status"]=="BLOCKED"
     assert not writes
+
+
+def test_direct_rc22_cli_has_imports_and_fails_closed():
+    script=ROOT/"episodes/_system/production_ep14_native_batch_pilot.py"
+    completed=subprocess.run(
+        [sys.executable,str(script),"--episode",str(ROOT/"episodes"/"other"),
+         "--verify-rearmed"],cwd=ROOT,capture_output=True,text=True,timeout=25)
+    assert completed.returncode==2
+    assert "ModuleNotFoundError" not in completed.stderr
+    result=json.loads(completed.stdout)
+    assert result=={"status":"BLOCKED","reason":"WRONG_EPISODE"}
