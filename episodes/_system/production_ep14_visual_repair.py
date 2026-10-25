@@ -49,6 +49,12 @@ SOURCE="meta/visual-lock-critic-attempt-2.jsonl"
 def sha(path):return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 def _is_sha(s):return isinstance(s,str) and bool(re.fullmatch(r"[0-9a-f]{64}",s))
 
+def _allowed_target_ledger_status(status: str, *, blocked: bool) -> bool:
+    # The scheduler already transitions to REPAIRING before image Worker
+    # preflight. The historical blocked queue must remain TECH_FAILED.
+    return status == "TECH_FAILED" if blocked else status in {"TECH_FAILED","REPAIRING"}
+
+
 def eligible(ep,item,payload,controller,*,queue=None,blocked=False)->bool:
     try:
         ep=Path(ep).resolve()
@@ -152,7 +158,10 @@ def eligible(ep,item,payload,controller,*,queue=None,blocked=False)->bool:
                 or repairs[n].get("source_artifact_sha256") not in (None,original_sha)):
                 return False
             if n==f or blocked:
-                if (row.get("status")!="TECH_FAILED"
+                # The scheduler transitions to REPAIRING before the Worker
+                # rechecks native visibility. A blocked predispatch rearm
+                # must still have the terminal TECH_FAILED state.
+                if (not _allowed_target_ledger_status(row.get("status"),blocked=blocked)
                     or candidate.get("sha256")!=original_sha):
                     return False
             if not blocked and repairs[n].get("ep14_review_sha256")!=reviewsha:
