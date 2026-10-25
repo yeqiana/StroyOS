@@ -342,6 +342,49 @@ def weak_pass_eligible_frames(ep: Path) -> list[int]:
     return sorted(set(frames))
 
 
+def _retire_ep14_exhausted_candidate_blocks(ep: Path, projection: dict) -> dict:
+    """Supersede *only* three existing predispatch candidate blocks after 4 weak passes.
+
+    The immutable failure and original queue row remain in Redis. Retirement
+    prevents the old no-provider-attempt rows from starving FINALIZE_VISUAL_LOCK.
+    """
+    if not bool((projection or {}).get("all_passed")):
+        return {"status":"NOT_READY"}
+    ep=Path(ep).resolve()
+    root=Path(__file__).resolve().parents[2]
+    if ep != (root/"episodes"/"00_独立篇"/
+              "14_深渊疗愈所_第一集_净土生命还原").resolve():
+        return {"status":"NOT_APPLICABLE"}
+    registry=(visual_lock_admission_state.load(ep) or {}).get("items") or {}
+    selected=[v for v in registry.values()
+              if isinstance(v,dict) and int(v.get("frame") or 0) in {1,5,45,47}]
+    if (len(selected)!=4 or {int(x["frame"]) for x in selected}!={1,5,45,47}
+        or any(x.get("status")!="WEAK_PASS"
+               or (x.get("weak_pass") or {}).get("approved_by_policy")!=
+                  "episode14_paid_2of2_soft_visual_quality"
+               or ((x.get("weak_pass") or {}).get("prior_independent_fail") or {}).get("status")!="FAIL"
+               for x in selected)):
+        return {"status":"BLOCKED","reason":"NOT_FOUR_AUDITED_WEAK_PASSES"}
+    expected={5:"771048aed8ca",45:"42ca8cbc3884",47:"ae074a3d3c27"}
+    with scheduler_core.queue_transaction(ep):
+        q=scheduler_core.load_queue(ep)
+        candidates=[x for x in q.get("items") or [] if x.get("kind")=="baseline_candidate"]
+        if (len(candidates)!=3
+            or {int(x.get("frame") or 0) for x in candidates}!=set(expected)
+            or any(x.get("id")!=expected[int(x["frame"])]
+                   or x.get("status")!="blocked"
+                   or x.get("technical_failure_code")!="LOGIN_AUTH_IMAGE_TOOL_CAPABILITY_UNKNOWN"
+                   or x.get("output_path") for x in candidates)):
+            return {"status":"BLOCKED","reason":"CANDIDATE_QUEUE_SOURCE_DRIFT"}
+        for x in candidates:
+            x["status"]="superseded"
+            x["superseded_reason"]="ep14_2of2_soft_vision_weak_pass"
+            x["superseded_by_policy"]="episode14_paid_2of2_soft_visual_quality"
+            # Do not erase the original failure, technical_failures or execution.
+        scheduler_core.save_queue(ep,q)
+    return {"status":"PASS","frames":[5,45,47],"new_model_calls":0}
+
+
 def apply_weak_passes(ep: Path, frames: list[int] | None = None) -> dict:
     """Apply the speed policy to exact current candidates; never generate new pixels."""
     ep = Path(ep).resolve()
@@ -385,6 +428,15 @@ def apply_weak_passes(ep: Path, frames: list[int] | None = None) -> dict:
             visual_lock_baseline_gate.record_weak_baseline(ep)
         applied.append({"frame": frame, **entry["weak_pass"], "sha256": asset["sha256"]})
     projection = visual_lock_admission_state.sync_gate_decisions(ep) if applied else {}
+    candidate_retirement = (
+        _retire_ep14_exhausted_candidate_blocks(ep, projection)
+        if applied and any(x.get("approved_by_policy")==
+                          "episode14_paid_2of2_soft_visual_quality" for x in applied)
+        else None
+    )
+    if isinstance(candidate_retirement,dict) and candidate_retirement.get("status")=="BLOCKED":
+        blocked.append({"reason":"EXHAUSTED_CANDIDATE_RETIREMENT_BLOCKED",
+                        "retirement":candidate_retirement})
     pixel_master = _lock_pixel_master_after_accepted_visual_gate(ep, projection)
     return {
         "status": "PASS" if applied and not blocked else ("REUSED" if not wanted else "BLOCKED"),
@@ -392,6 +444,7 @@ def apply_weak_passes(ep: Path, frames: list[int] | None = None) -> dict:
         "blocked": blocked,
         "gate_projection": projection,
         "pixel_master": pixel_master,
+        "candidate_retirement": candidate_retirement,
     }
 
 

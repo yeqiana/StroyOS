@@ -729,6 +729,32 @@ def derive(ep: Path) -> dict:
                     reason="current-policy Visual Lock candidate was rejected before provider execution by the local prompt budget; recompile a bounded replacement candidate",
                 )
             unresolved_blocked = other_blocked
+        if (cur=="STORYBOARD_LOCKED" and image_runtime=="CODEX"
+                and len(unresolved_blocked)==3):
+            # All four original/repair paid slots are exhausted (2/2).
+            # These exact extra Visual Lock candidate attempts failed before
+            # provider dispatch. Evaluate existing independent Vision FAIL,
+            # never issue a third paid attempt solely for a soft quality issue.
+            history={int(x.get("frame") or 0):x for x in unresolved_blocked}
+            expected={5:"771048aed8ca",45:"42ca8cbc3884",
+                      47:"ae074a3d3c27"}
+            if (set(history)==set(expected)
+                and all(history[f].get("id")==iid
+                        and history[f].get("kind")=="baseline_candidate"
+                        and history[f].get("scope")=="repair"
+                        and history[f].get("status")=="blocked"
+                        and history[f].get("technical_failure_code")==
+                            "LOGIN_AUTH_IMAGE_TOOL_CAPABILITY_UNKNOWN"
+                        and not history[f].get("output_path")
+                        for f,iid in expected.items())):
+                eligible=visual_lock_candidate_pool.weak_pass_eligible_frames(ep)
+                if eligible==[1,5,45,47]:
+                    return action_result(
+                        action="APPLY_VISUAL_LOCK_WEAK_PASS",
+                        executor="MACHINE",frames=eligible,
+                        auto_recoverable=True,hard_stop=False,
+                        quality_debt=True,
+                        reason="real Visual Lock pixels exhausted 2/2; accept soft findings with original FAIL audit, never third paid generation")
         if unresolved_blocked:
             budget_blocked = [
                 row for row in unresolved_blocked
