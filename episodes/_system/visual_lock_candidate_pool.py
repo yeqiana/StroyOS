@@ -211,6 +211,68 @@ def weak_pass_allowed(ep: Path) -> bool:
     return calibration.get("allow_weak_pass") is not False
 
 
+def _ep14_exhausted_weak_pass(ep: Path, frame: int, row: dict, ledger: dict) -> bool:
+    """One Episode, four current reviewed PNGs, actual two paid attempts, soft FAIL."""
+    try:
+        import hashlib
+        import episode_state_persistence as episode_state
+        import generation_attempt_authority as authority
+        import logical_asset_identity as identity
+        import visual_lock_baseline_gate as baseline
+        ep=Path(ep).resolve()
+        root=Path(__file__).resolve().parents[2]
+        if (ep != (root/"episodes"/"00_独立篇"/
+                   "14_深渊疗愈所_第一集_净土生命还原").resolve()
+            or frame not in {1,5,45,47}
+            or (episode_state.load(ep) or {}).get("current_state")!="STORYBOARD_LOCKED"
+            or baseline_frame(ep)!=1 or not baseline.approved(ep)):
+            return False
+        rows=(scheduler_core.load_queue(ep) or {}).get("items") or []
+        original={int(x.get("frame") or 0):x for x in rows
+                  if x.get("kind")=="original" and x.get("scope")=="visual_lock"}
+        repairs={int(x.get("frame") or 0):x for x in rows
+                 if x.get("kind")=="repair" and x.get("scope")=="repair"}
+        candidates=[x for x in rows if x.get("kind")=="baseline_candidate"]
+        if (set(original)!={1,5,45,47} or set(repairs)!={1,5,45,47}
+            or len(candidates)!=3
+            or any(x.get("status")!="generated" for x in original.values())
+            or repairs[1].get("status")!="superseded"
+            or any(repairs[n].get("status")!="generated" for n in (5,45,47))
+            or {int(x.get("frame") or 0) for x in candidates}!={5,45,47}
+            or any(x.get("status")!="blocked" or x.get("output_path")
+                   for x in candidates)):
+            return False
+        acceptable={"PASSED"} if frame==1 else {"TECH_FAILED","NEEDS_USER"}
+        candidate=ledger.get("current_candidate") or {}
+        if (ledger.get("status") not in acceptable
+            or not isinstance(row,dict) or row.get("sha256")!=candidate.get("sha256")):
+            return False
+        prior=((visual_lock_admission_state.load(ep) or {}).get("items") or {}).get(
+            str(row.get("id") or "")) or {}
+        if (prior.get("status")!="FAIL" or prior.get("frame")!=frame
+            or prior.get("sha256")!=row.get("sha256")
+            or prior.get("frame_contract_sha256")!=row.get("frame_contract_sha256")):
+            return False
+        path=Path(str(candidate.get("path") or ""))
+        path=(path if path.is_absolute() else root/path).resolve()
+        if (not path.is_relative_to(ep) or not path.is_file()
+            or hashlib.sha256(path.read_bytes()).hexdigest()!=row["sha256"]):
+            return False
+        for n in (1,5,45,47):
+            key=identity.frame_asset_key(ep,n)
+            state=authority.load_asset_state(ep,key)
+            paid=authority.load_attempt(ep,key,2) or {}
+            if (state.get("attempts_consumed")!=2
+                or state.get("remaining_attempts")!=0
+                or state.get("active_attempt_index") is not None
+                or paid.get("status")!="SUCCEEDED"
+                or authority.load_attempt(ep,key,3) is not None):
+                return False
+        return True
+    except Exception:
+        return False
+
+
 def weak_pass_eligibility(ep: Path, frame: int) -> dict:
     """Return auditable low-score eligibility; technical attempts never count as content tries."""
     ep = Path(ep).resolve()
@@ -245,6 +307,8 @@ def weak_pass_eligibility(ep: Path, frame: int) -> dict:
     exhausted_threshold = (
         exhausted_baseline and content_attempts == 2
         and str(ledger.get("status") or "") in {"REPAIR_READY", "NEEDS_USER"})
+    ep14_exhausted = _ep14_exhausted_weak_pass(ep, frame, row, ledger)
+    exhausted_threshold = exhausted_threshold or ep14_exhausted
     eligible = (policy_allowed and current_candidate_bound
                 and (ordinary_threshold or exhausted_threshold)
                 and bool(failed_checks or issues)
@@ -259,8 +323,9 @@ def weak_pass_eligibility(ep: Path, frame: int) -> dict:
         "issue_codes": issues,
         "hard_failed_checks": hard_checks,
         "hard_issue_codes": hard_issues,
-        "threshold": (2 if exhausted_baseline else WEAK_PASS_CONTENT_ATTEMPT_THRESHOLD),
+        "threshold": (2 if (exhausted_baseline or ep14_exhausted) else WEAK_PASS_CONTENT_ATTEMPT_THRESHOLD),
         "eligible_by_budget_exhaustion": exhausted_threshold,
+        "episode14_paid_exhaustion": ep14_exhausted,
         "current_candidate_bound": current_candidate_bound,
     }
 
@@ -307,6 +372,7 @@ def apply_weak_passes(ep: Path, frames: list[int] | None = None) -> dict:
         entry = visual_lock_admission_state.record_weak_pass(
             ep, asset=asset, review_row=row, profile_sha256=profile_sha,
             story_os_version=version, content_attempts=eligibility["content_attempts"],
+            approved_by_policy=("episode14_paid_2of2_soft_visual_quality" if eligibility.get("episode14_paid_exhaustion") else "attempt_over_3_auto_release"),
             technical_attempts=eligibility["technical_attempts"],
             failed_checks=eligibility["failed_checks"], issue_codes=eligibility["issue_codes"],
             reason=reason,

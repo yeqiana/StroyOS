@@ -23,6 +23,7 @@ SLOTS = {
         "tests/system/test_native_f001_verified_three_followon.py",
         "tests/system/test_ep14_reviewed_visual_repair.py",
         "tests/system/test_ep14_inflight_repair_guard.py",
+        "tests/system/test_ep14_exhausted_soft_visual_release.py",
         "tests/system/test_native_image_outcome_evidence.py",
         "tests/system/test_native_429_attempt_reconciliation_fence.py",
         "tests/system/test_native_repair_pilot_capability.py",

@@ -520,12 +520,16 @@ def record_weak_pass(
     failed_checks: list[str],
     issue_codes: list[str],
     reason: str,
+    approved_by_policy: str = "attempt_over_3_auto_release",
 ) -> dict:
     """Persist a SHA-bound low-score acceptance without rewriting critic FAIL evidence."""
     ep = Path(ep)
     data = load(ep)
     rid = str(asset.get("id") or "")
     entry = binding(asset, profile_sha256=profile_sha256, story_os_version=story_os_version)
+    prior = (data.get("items") or {}).get(rid)
+    if approved_by_policy == "episode14_paid_2of2_soft_visual_quality" and (not isinstance(prior,dict) or prior.get("status") != "FAIL"):
+        raise ValueError("EXHAUSTED_WEAK_PASS_REQUIRES_ORIGINAL_FAIL")
     weak = {
         "weak_pass": True,
         "weak_pass_reason": str(reason),
@@ -533,14 +537,16 @@ def record_weak_pass(
         "issue_codes": sorted({str(x) for x in issue_codes if str(x)}),
         "content_attempts": int(content_attempts),
         "technical_attempts": int(technical_attempts),
-        "approved_by_policy": "attempt_over_3_auto_release",
+        "approved_by_policy": approved_by_policy,
     }
+    if approved_by_policy == "episode14_paid_2of2_soft_visual_quality":
+        weak["prior_independent_fail"] = dict(prior)
     entry.update({
         "status": "WEAK_PASS",
         "reviewed_at": now(),
         "attempt": int(content_attempts),
         "review_row": dict(review_row),
-        "provenance": {"policy": "attempt_over_3_auto_release"},
+        "provenance": {"policy": approved_by_policy},
         "weak_pass": weak,
     })
     data.setdefault("items", {})[rid] = entry
@@ -563,7 +569,7 @@ def restore_ledger_weak_pass(ep: Path, *, asset: dict, weak_pass: dict) -> bool:
         return False
     audit = dict(weak_pass or {})
     audit["weak_pass"] = True
-    audit["approved_by_policy"] = "attempt_over_3_auto_release"
+    audit["approved_by_policy"] = str(audit.get("approved_by_policy") or "attempt_over_3_auto_release")
     audit["accepted_at"] = now()
     frame["weak_pass"] = audit
     frame.setdefault("reviews", []).append({
@@ -572,7 +578,7 @@ def restore_ledger_weak_pass(ep: Path, *, asset: dict, weak_pass: dict) -> bool:
         "notes": str(audit.get("weak_pass_reason") or "content attempts exceeded speed policy"),
         "candidate_sha256": str(asset.get("sha256") or "").lower(),
         "frame_contract_sha256": str(asset.get("frame_contract_sha256") or "").lower(),
-        "approved_by_policy": "attempt_over_3_auto_release",
+        "approved_by_policy": audit["approved_by_policy"],
     })
     frame["status"] = "WEAK_PASS"
     ledger["updated_at"] = now()
