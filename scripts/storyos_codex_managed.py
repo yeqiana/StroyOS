@@ -522,6 +522,35 @@ def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
                 and attempts.get("status")=="ATTEMPT_HISTORY_READ_ONLY"
                 and not attempts.get("outcome_unknown_assets")
                 and not attempts.get("active_attempt_assets")):
+            # Resume only the verified zero-paid machine WEAK_PASS action.
+            # The Driver itself must execute it under the canonical owner lock.
+            pending_rc,pending=_probe(
+                env,"episodes/_system/production_ep14_exhausted_weakpass_reentry.py",
+                ["--episode",rel,"--verify-pending"])
+            if (pending_rc==0
+                and pending.get("status")==
+                    "VISUAL_LOCK_RC22_EP14_PENDING_WEAK_PASS_RECOVERABLE"
+                and pending.get("driver_record_sha256")==
+                    exit_remediation.canonical_sha(driver.get("record") or {})):
+                restartable=True
+                driver_recovery={
+                    "status":pending["status"],
+                    "driver_record_sha256":pending["driver_record_sha256"],
+                    "queue_fingerprint":pending["queue_fingerprint"],
+                    "candidate_sha256_by_frame":pending["candidate_sha256_by_frame"],
+                    "remaining_frames":pending["remaining_frames"],
+                    "recovery_action":"RESUME_MACHINE_WEAK_PASS_THEN_NORMAL_DAG",
+                    "read_only":True,"production_authorization":False
+                }
+        if (not restartable and rc == 0
+                and driver.get("driver_state")=="EXITED"
+                and str(driver.get("exit_code"))=="22"
+                and driver.get("pid")==0
+                and driver.get("liveness")=="DEAD"
+                and stage.get("status")=="STAGE_ELIGIBLE"
+                and attempts.get("status")=="ATTEMPT_HISTORY_READ_ONLY"
+                and not attempts.get("outcome_unknown_assets")
+                and not attempts.get("active_attempt_assets")):
             # Four real exhausted Visual Lock pixels have auditable WEAK_PASS
             # (independent Vision FAIL retained), with all extra predispatch
             # candidates superseded. This does not grant any third paid image.
@@ -790,6 +819,8 @@ def main(argv: list[str] | None = None) -> int:
                 "episodes/_system/production_ep14_visual_repair.py",
             "VISUAL_LOCK_RC22_EP14_EXHAUSTED_WEAK_PASS_RECOVERABLE":
                 "episodes/_system/production_ep14_exhausted_weakpass_reentry.py",
+            "VISUAL_LOCK_RC22_EP14_PENDING_WEAK_PASS_RECOVERABLE":
+                "episodes/_system/production_ep14_exhausted_weakpass_reentry.py",
         }
         recovery_status = (state.get("driver_recovery") or {}).get("status")
         if args.command in {"start", "run"} and recovery_status in valid_recoveries:
@@ -811,6 +842,8 @@ def main(argv: list[str] | None = None) -> int:
                    else ["--verify-rearmed"] if recovery_status in {
                        "VISUAL_LOCK_RC22_EP14_REPAIR_REARMED",
                        "VISUAL_LOCK_RC22_EP14_EXHAUSTED_WEAK_PASS_RECOVERABLE"}
+                   else ["--verify-pending"] if recovery_status ==
+                       "VISUAL_LOCK_RC22_EP14_PENDING_WEAK_PASS_RECOVERABLE"
                    else [])
             )
             if (recovery_rc != 0 or latest.get("status") != recovery_status
@@ -827,12 +860,17 @@ def main(argv: list[str] | None = None) -> int:
                                  state["driver_recovery"].get("candidate_sha256")
                              or latest.get("item_id") !=
                                  state["driver_recovery"].get("item_id")))
-                    or (recovery_status ==
-                        "VISUAL_LOCK_RC22_EP14_EXHAUSTED_WEAK_PASS_RECOVERABLE"
+                    or (recovery_status in {
+                        "VISUAL_LOCK_RC22_EP14_EXHAUSTED_WEAK_PASS_RECOVERABLE",
+                        "VISUAL_LOCK_RC22_EP14_PENDING_WEAK_PASS_RECOVERABLE"}
                         and (latest.get("queue_fingerprint") !=
                                 state["driver_recovery"].get("queue_fingerprint")
                              or latest.get("candidate_sha256_by_frame") !=
                                 state["driver_recovery"].get("candidate_sha256_by_frame")))
+                    or (recovery_status ==
+                        "VISUAL_LOCK_RC22_EP14_PENDING_WEAK_PASS_RECOVERABLE"
+                        and latest.get("remaining_frames") !=
+                            state["driver_recovery"].get("remaining_frames"))
                     or (recovery_status ==
                         "VISUAL_LOCK_RC22_EP14_REPAIR_REARMED"
                         and (latest.get("review_sha256") !=

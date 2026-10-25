@@ -99,3 +99,38 @@ def test_zero_remaining_admissions_can_resume_retirement(partial, monkeypatch):
 
 def test_unrelated_episode_never_admitted(tmp_path):
     assert pool.ep14_remaining_exhausted_weak_passes(tmp_path) is None
+
+
+def test_pending_rc22_requires_exact_existing_queue_and_zero_paid(partial, monkeypatch):
+    import production_ep14_exhausted_weakpass_reentry as reentry
+    ep, _, ledgers = partial
+    monkeypatch.setattr(reentry, "EPISODE", ep)
+    monkeypatch.setattr(reentry.runtime_driver, "status", lambda *_: {
+        "driver_state": "EXITED", "liveness": "DEAD",
+        "pid": 0, "exit_code": "22", "record": {"rc": "22"}})
+    monkeypatch.setattr(reentry.episode_state_persistence, "load", lambda *_: {
+        "current_state": "STORYBOARD_LOCKED"})
+    monkeypatch.setattr(reentry.baseline, "approved", lambda *_: True)
+    queue = {"items": [
+        *[{"id": f"original{f}", "frame": f, "kind": "original",
+           "scope": "visual_lock", "status": "generated"} for f in (1,5,45,47)],
+        *[{"id": f"repair{f}", "frame": f, "kind": "repair",
+           "scope": "repair", "status": "superseded" if f == 1 else "generated"}
+          for f in (1,5,45,47)],
+        *[{"id": i, "frame": f, "kind": "baseline_candidate",
+           "scope": "repair", "status": "blocked", "output_path": None,
+           "technical_failure_code": "LOGIN_AUTH_IMAGE_TOOL_CAPABILITY_UNKNOWN"}
+          for f, i in ((5, "771048aed8ca"), (45, "42ca8cbc3884"),
+                       (47, "ae074a3d3c27"))],
+    ]}
+    monkeypatch.setattr(reentry.scheduler_core, "load_queue", lambda *_: queue)
+    monkeypatch.setattr(reentry.production_ledger_persistence, "load_authority",
+                        lambda *_: {"frames": {f"{f:02d}": entry
+                                                for f, entry in ledgers.items()}})
+    result = reentry.inspect_pending(ep)
+    assert result["status"] == "VISUAL_LOCK_RC22_EP14_PENDING_WEAK_PASS_RECOVERABLE"
+    assert result["remaining_frames"] == [5, 45, 47]
+    assert result["new_paid_attempts"] == result["new_model_calls"] == 0
+    queue["items"][-1]["status"] = "running"
+    with pytest.raises(reentry.SourceUnverified, match="PREDISPATCH_EXTRA_CANDIDATES_DRIFT"):
+        reentry.inspect_pending(ep)
