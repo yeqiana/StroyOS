@@ -34,7 +34,7 @@ import visual_lock_candidate_pool
 import visual_lock_finalizer
 import visual_lock_v21
 
-ALLOWED_ACTIONS = {"PREPARE_BASELINE_CANDIDATE", "PREPARE_VISUAL_LOCK_CANDIDATES", "APPLY_VISUAL_LOCK_WEAK_PASS", "PREPARE_STALE_VISUAL_LOCK_REFRESH", "RESOLVE_IMAGE_NORMALIZATION", "RESUME_BUDGET_AUTHORIZED_IMAGES", "RESUME_NATIVE_BATCH_AFTER_SUCCESS", "RECONCILE_PRESERVED_PROVIDER_RAW", "FINALIZE_VISUAL_LOCK", "PREPARE_PRODUCTION_BATCH", "FINALIZE_PRODUCTION_IMAGES"}
+ALLOWED_ACTIONS = {"RESTORE_EP14_VISUAL_PROJECTION_ANCHORS", "PREPARE_BASELINE_CANDIDATE", "PREPARE_VISUAL_LOCK_CANDIDATES", "APPLY_VISUAL_LOCK_WEAK_PASS", "PREPARE_STALE_VISUAL_LOCK_REFRESH", "RESOLVE_IMAGE_NORMALIZATION", "RESUME_BUDGET_AUTHORIZED_IMAGES", "RESUME_NATIVE_BATCH_AFTER_SUCCESS", "RECONCILE_PRESERVED_PROVIDER_RAW", "FINALIZE_VISUAL_LOCK", "PREPARE_PRODUCTION_BATCH", "FINALIZE_PRODUCTION_IMAGES"}
 
 
 class MachineActionError(RuntimeError):
@@ -58,6 +58,120 @@ def _state(ep: Path) -> str:
 def _read(ep: Path, rel: str) -> dict:
     data = story_json.read_json(ep / rel, default={})
     return data if isinstance(data, dict) else {}
+
+
+def _restore_ep14_overwritten_machine_anchors(
+    ep: Path, anchors: dict, proposed: dict,
+) -> dict:
+    """Restore only two accidentally overwritten locked continuity fields.
+
+    The failed finalizer turned two original Frame Contract anchors into derived
+    placeholders. This scoped CAS restores identical SHA-bound historical values
+    from all four independently reviewed 2/2 pixels, never resets attempts or
+    grants another image. Any unexpected new source edit fails closed.
+    """
+    root = Path(__file__).resolve().parents[2]
+    expected_ep = (root / "episodes" / "00_独立篇" /
+                   "14_深渊疗愈所_第一集_净土生命还原").resolve()
+    if Path(ep).resolve() != expected_ep:
+        return {"status": "NOT_APPLICABLE"}
+    fields = ("location", "weather_time")
+    if all(anchors.get(k) != proposed.get(k) for k in fields):
+        return {"status": "UNCHANGED"}
+    if visual_lock_candidate_pool.ep14_remaining_exhausted_weak_passes(ep) != []:
+        raise MachineActionError("EP14_ANCHOR_RESTORE_WEAK_PASS_EVIDENCE_UNVERIFIED")
+    import frame_contract_persistence
+    registry = (visual_lock_candidate_pool.visual_lock_admission_state.load(ep)
+                .get("items") or {})
+    expected = {1: "V-B", 5: "V-A", 45: "V-W", 47: "V-H"}
+    snapshots = []
+    for frame, rid in expected.items():
+        item = registry.get(rid) or {}
+        sha = item.get("frame_contract_sha256")
+        past = frame_contract_persistence.load_sha_bound_version(ep, frame, sha)
+        old_anchors = ((((past or {}).get("hash_material") or {})
+                        .get("continuity") or {}).get("anchors") or {})
+        if (not isinstance(past, dict) or past.get("contract_sha256") != sha
+                or item.get("status") != "WEAK_PASS"
+                or any(not isinstance(old_anchors.get(k), str) or not old_anchors[k]
+                       for k in fields)):
+            raise MachineActionError("EP14_ANCHOR_RESTORE_HISTORICAL_CONTRACT_UNVERIFIED")
+        snapshots.append({k: old_anchors[k] for k in fields})
+    if any(row != snapshots[0] for row in snapshots[1:]):
+        raise MachineActionError("EP14_ANCHOR_RESTORE_HISTORICAL_ANCHORS_DISAGREE")
+    original = snapshots[0]
+    for key in fields:
+        if anchors.get(key) not in (proposed.get(key), original[key]):
+            raise MachineActionError("EP14_ANCHOR_RESTORE_UNEXPECTED_CURRENT_VALUE")
+    repaired = [key for key in fields if anchors.get(key) != original[key]]
+    for key in repaired:
+        anchors[key] = original[key]
+    return {"status": "RESTORED" if repaired else "REUSED",
+            "fields": repaired, "source": "four_sha_bound_historical_frame_contracts",
+            "paid_image_attempts": 0}
+
+
+def ep14_visual_anchor_restore_plan(ep: Path) -> dict:
+    """Read-only CAS plan for the exact interrupted Episode14 Visual Lock finalizer."""
+    import hashlib
+    import json
+    ep = Path(ep).resolve()
+    gate_path = ep / "meta/story-gates.json"
+    if _state(ep) != "STORYBOARD_LOCKED" or not gate_path.is_file():
+        return {"status": "BLOCKED", "reason": "STAGE_OR_GATE_MISSING"}
+    try:
+        gates = _read(ep, "meta/story-gates.json")
+        world = _read(ep, "meta/world-state.json")
+        temporal = _read(ep, "meta/temporal-continuity.json")
+        visual = gates.get("visual") or {}
+        current = (((visual.get("continuity") or {}).get("anchors")) or {})
+        if not isinstance(current, dict):
+            return {"status": "BLOCKED", "reason": "ANCHORS_INVALID"}
+        location = str(world.get("initial_location") or
+                       (visual.get("world_identity") or {}).get("world") or
+                       "locked episode world")
+        timeline = temporal.get("timeline") or []
+        proposed = {"location": location,
+                    "weather_time": "; ".join(str(x) for x in timeline) or
+                        str(temporal.get("weather_rule") or "locked temporal continuity")}
+        candidate = dict(current)
+        proof = _restore_ep14_overwritten_machine_anchors(ep, candidate, proposed)
+        if proof.get("status") != "RESTORED" or proof.get("fields") != ["location", "weather_time"]:
+            return {"status": "BLOCKED", "reason": "NOT_EXACT_PROJECTION_OVERWRITE"}
+        return {
+            "status": "READY",
+            "action": "RESTORE_EP14_VISUAL_PROJECTION_ANCHORS",
+            "source_gate_sha256": hashlib.sha256(gate_path.read_bytes()).hexdigest(),
+            "restored": {key: candidate[key] for key in proof["fields"]},
+            "fields": proof["fields"],
+            "read_only": True, "new_paid_attempts": 0, "new_model_calls": 0,
+        }
+    except (OSError, ValueError, MachineActionError):
+        return {"status": "BLOCKED", "reason": "ANCHOR_RESTORE_AUTHORITY_UNVERIFIED"}
+
+
+def restore_ep14_visual_projection_anchors(ep: Path, *, expected_gate_sha: str) -> dict:
+    """Scoped original-gate edit under the canonical Driver machine-action owner."""
+    import hashlib
+    ep = Path(ep).resolve()
+    path = ep / "meta/story-gates.json"
+    plan = ep14_visual_anchor_restore_plan(ep)
+    if (plan.get("status") != "READY"
+            or plan.get("source_gate_sha256") != expected_gate_sha
+            or hashlib.sha256(path.read_bytes()).hexdigest() != expected_gate_sha):
+        raise MachineActionError("EP14_ANCHOR_RESTORE_CAS_DRIFT")
+    gates = _read(ep, "meta/story-gates.json")
+    anchors = (((gates.get("visual") or {}).get("continuity") or {}).get("anchors") or {})
+    if not isinstance(anchors, dict):
+        raise MachineActionError("EP14_ANCHORS_INVALID")
+    for key, value in plan["restored"].items():
+        anchors[key] = value
+    # No model calls and no Generation Attempt reservations.
+    story_json.write_json(path, gates)
+    migrations = frame_contract.record_projection_migrations(ep)
+    return {"status": "PASS", "action": "RESTORE_EP14_VISUAL_PROJECTION_ANCHORS",
+            "fields": plan["fields"], "new_paid_attempts": 0,
+            "projection_migrations": migrations}
 
 
 def _materialize_visual_machine_contract(ep: Path) -> dict:
@@ -115,17 +229,24 @@ def _materialize_visual_machine_contract(ep: Path) -> dict:
     anchors = continuity.setdefault("anchors", {})
     persistent = world.get("persistent_props") or []
     timeline = temporal.get("timeline") or []
-    anchors.update({
+    proposed_anchors = {
         "protagonist": str(pov.get("character_id") or photographer),
         "location": str(world.get("initial_location") or location),
         "key_prop": ", ".join(str(x) for x in persistent) or device,
         "wardrobe": str((wardrobe.get("P01") if isinstance(wardrobe, dict) else None) or "locked wardrobe contract"),
         "weather_time": "; ".join(str(x) for x in timeline) or str(temporal.get("weather_rule") or "locked temporal continuity"),
-    })
+    }
+    anchor_recovery = _restore_ep14_overwritten_machine_anchors(ep, anchors, proposed_anchors)
+    # This is a monotonic projection fill, not authority rewriting: never
+    # replace locked PREIMAGE continuity anchors with generic fallbacks.
+    for key, value in proposed_anchors.items():
+        if key not in anchors or anchors[key] in (None, ""):
+            anchors[key] = value
     reviews = gates.setdefault("reviews", {})
     reviews["authenticity"] = "passed"
     story_json.write_json(gates_path, gates)
-    return {"admission_frames": admissions, "photographer": photographer, "device": device}
+    return {"admission_frames": admissions, "photographer": photographer, "device": device,
+            "anchor_recovery": anchor_recovery}
 
 
 def _finalize_production_images(ep: Path) -> dict:
@@ -201,6 +322,9 @@ def execute(ep: Path, action: dict) -> dict:
     name = local_machine_action(action)
     if name is None:
         raise MachineActionError(f"not an auto-allowed machine action: {action}")
+    if name == "RESTORE_EP14_VISUAL_PROJECTION_ANCHORS":
+        expected = str(action.get("source_gate_sha256") or "")
+        return restore_ep14_visual_projection_anchors(ep, expected_gate_sha=expected)
     if name == "PREPARE_BASELINE_CANDIDATE":
         result = baseline_candidate_pool.enqueue_next(ep)
         status = str(result.get("status") or "FAIL").upper()

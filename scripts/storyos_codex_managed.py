@@ -571,6 +571,41 @@ def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
                     "recovery_action":"RESUME_AFTER_AUDITED_VISUAL_WEAK_PASS_NO_NEW_IMAGE",
                     "read_only":True,"production_authorization":False
                 }
+        if (not restartable and rc == 0
+                and driver.get("driver_state") == "EXITED"
+                and str(driver.get("exit_code")) == "900"
+                and driver.get("pid") == 0 and driver.get("liveness") == "DEAD"
+                and stage.get("status") == "STAGE_ELIGIBLE"
+                and attempts.get("status") == "ATTEMPT_HISTORY_READ_ONLY"
+                and not attempts.get("outcome_unknown_assets")
+                and not attempts.get("active_attempt_assets")):
+            # Exact old machine-finalizer continuity projection overwrite.
+            # Not a generic rc900 retry and never a new image entitlement.
+            anchor_rc, anchor = _probe(
+                env, "episodes/_system/production_ep14_machine_anchor_rc900.py",
+                ["--episode", rel, "--verify-rearmed"])
+            if (anchor_rc == 0 and anchor.get("status") ==
+                    "VISUAL_LOCK_RC900_EP14_MACHINE_ANCHOR_RESTORE_RECOVERABLE"
+                and anchor.get("driver_record_sha256") ==
+                    exit_remediation.canonical_sha(driver.get("record") or {})):
+                action_rc, action = _probe(
+                    env, "episodes/_system/next_action.py", ["show", rel])
+                if (action_rc == 0
+                    and action.get("action") ==
+                        "RESTORE_EP14_VISUAL_PROJECTION_ANCHORS"
+                    and action.get("executor") == "MACHINE"
+                    and action.get("source_gate_sha256") ==
+                        anchor.get("gate_sha256")):
+                    restartable = True
+                    driver_recovery = {
+                        "status": anchor["status"],
+                        "driver_record_sha256": anchor["driver_record_sha256"],
+                        "driver_log_sha256": anchor["driver_log_sha256"],
+                        "gate_sha256": anchor["gate_sha256"],
+                        "restored": anchor["restored"],
+                        "recovery_action": "RESTORE_PREIMAGE_ANCHORS_NO_PAID_IMAGE",
+                        "read_only": True, "production_authorization": False,
+                    }
         if not restartable:
             blockers.append("EPISODE_DRIVER_OWNER_NOT_IDLE_OR_UNVERIFIED")
         if driver.get("driver_state") == "EXITED" and not restartable:
@@ -821,6 +856,8 @@ def main(argv: list[str] | None = None) -> int:
                 "episodes/_system/production_ep14_exhausted_weakpass_reentry.py",
             "VISUAL_LOCK_RC22_EP14_PENDING_WEAK_PASS_RECOVERABLE":
                 "episodes/_system/production_ep14_exhausted_weakpass_reentry.py",
+            "VISUAL_LOCK_RC900_EP14_MACHINE_ANCHOR_RESTORE_RECOVERABLE":
+                "episodes/_system/production_ep14_machine_anchor_rc900.py",
         }
         recovery_status = (state.get("driver_recovery") or {}).get("status")
         if args.command in {"start", "run"} and recovery_status in valid_recoveries:
@@ -844,11 +881,18 @@ def main(argv: list[str] | None = None) -> int:
                        "VISUAL_LOCK_RC22_EP14_EXHAUSTED_WEAK_PASS_RECOVERABLE"}
                    else ["--verify-pending"] if recovery_status ==
                        "VISUAL_LOCK_RC22_EP14_PENDING_WEAK_PASS_RECOVERABLE"
+                   else ["--verify-rearmed"] if recovery_status ==
+                       "VISUAL_LOCK_RC900_EP14_MACHINE_ANCHOR_RESTORE_RECOVERABLE"
                    else [])
             )
             if (recovery_rc != 0 or latest.get("status") != recovery_status
                     or latest.get("driver_record_sha256") !=
                     state["driver_recovery"]["driver_record_sha256"]
+                    or (recovery_status ==
+                        "VISUAL_LOCK_RC900_EP14_MACHINE_ANCHOR_RESTORE_RECOVERABLE"
+                        and any(latest.get(key) !=
+                                state["driver_recovery"].get(key)
+                                for key in ("driver_log_sha256", "gate_sha256", "restored")))
                     or (recovery_status == "PREIMAGE_RC4_HOST_ENVELOPE_RECOVERABLE"
                         and latest.get("candidate_sha256") !=
                             state["driver_recovery"].get("candidate_sha256"))

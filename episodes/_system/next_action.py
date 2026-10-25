@@ -897,6 +897,19 @@ def derive(ep: Path) -> dict:
             for x in q.get("items") or []
         )
         if cur=="STORYBOARD_LOCKED" and not visual_repair_active and len(visual_rows)==4 and all(x.get("status")=="generated" for x in visual_rows):
+            # A previous machine finalizer overwrote two locked continuity anchors.
+            # Restore only the original four-SHA-bound values before declaring
+            # already-reviewed 2/2 paid pixels stale or scheduling regeneration.
+            import machine_action_executor
+            anchor_recovery = machine_action_executor.ep14_visual_anchor_restore_plan(ep)
+            if anchor_recovery.get("status") == "READY":
+                return action_result(
+                    action="RESTORE_EP14_VISUAL_PROJECTION_ANCHORS",
+                    executor="MACHINE", frames=[1, 5, 45, 47],
+                    source_gate_sha256=anchor_recovery["source_gate_sha256"],
+                    auto_recoverable=True, hard_stop=False,
+                    reason="reconcile only two accidentally overwritten PREIMAGE continuity anchors from four SHA-bound historic contracts, zero image generation",
+                )
             stale_bindings = visual_lock_v21.stale_generation_bindings(ep)
             if stale_bindings:
                 return action_result(
