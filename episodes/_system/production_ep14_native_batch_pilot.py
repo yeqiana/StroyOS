@@ -1,6 +1,6 @@
 """Exact Episode14 first Batch-native paid-attempt pilot; no bulk UNKNOWN bypass."""
 from __future__ import annotations
-import argparse,hashlib,json,re
+import argparse,hashlib,json,re,sys
 from pathlib import Path
 import episode_state_persistence as stage
 import generation_attempt_authority as attempts
@@ -11,6 +11,8 @@ import production_native_baseline_proof as native
 import runtime_driver,runtime_request,runtime_router,scheduler_core,storage_config,story_json
 
 ROOT=Path(__file__).resolve().parents[2]
+if str(ROOT/"scripts") not in sys.path:
+    sys.path.insert(0,str(ROOT/"scripts"))
 EP=ROOT/"episodes"/"00_独立篇"/"14_深渊疗愈所_第一集_净土生命还原"
 BATCH=set(range(1,49))-{1,5,45,47}
 FAIL="LOGIN_AUTH_IMAGE_TOOL_CAPABILITY_UNKNOWN"
@@ -117,8 +119,9 @@ def rearm_one(ep,*,acknowledged=False):
 def inspect_rc22(ep):
     import storyos_driver_exit_remediation as exit_tools
     ep=Path(ep).resolve()
+    if ep!=EP.resolve():return {"status":"BLOCKED","reason":"WRONG_EPISODE"}
     d=runtime_driver.status(ep)
-    if (ep!=EP.resolve() or d.get("driver_state")!="EXITED"
+    if (d.get("driver_state")!="EXITED"
         or d.get("liveness")!="DEAD" or d.get("pid")!=0
         or str(d.get("exit_code"))!="22"):
         return {"status":"BLOCKED","reason":"EXACT_RC22_NOT_DEAD"}
