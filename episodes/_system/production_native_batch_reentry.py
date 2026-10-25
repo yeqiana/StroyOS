@@ -55,6 +55,10 @@ def _reviewed(ep,q):
     except Exception: return False
 
 def eligible(ep,item,payload,controller,*,queue=None,blocked=False):
+    if Path(ep).resolve().name=="14_深渊疗愈所_第一集_净土生命还原":
+        import production_ep14_native_batch_pilot
+        return production_ep14_native_batch_pilot.eligible(
+            ep,item,payload,controller,queue=queue,blocked=blocked)
     try:
         ep=Path(ep).resolve()
         req=runtime_request.effective_for_episode(ep) or {}
@@ -105,6 +109,10 @@ def eligible(ep,item,payload,controller,*,queue=None,blocked=False):
 def rearm_one(ep,*,acknowledged=False):
     """Two short locked checks with untrusted live Codex probe OUTSIDE lock."""
     ep=Path(ep).resolve()
+    if ep.name=="14_深渊疗愈所_第一集_净土生命还原":
+        import production_ep14_native_batch_pilot
+        return production_ep14_native_batch_pilot.rearm_one(
+            ep,acknowledged=acknowledged)
     if not acknowledged: return {"status":"BLOCKED","reason":"ACK_REQUIRED"}
     payload=model_policy.resolve("image.payload",episode=ep)
     controller=model_policy.resolve("image.controller",episode=ep)
