@@ -27,6 +27,7 @@ SLOTS = {
         "tests/system/test_ep14_weakpass_route_and_rc22.py",
         "tests/system/test_ep14_weakpass_partial_resume.py",
         "tests/system/test_ep14_visual_machine_projection_anchor_restore.py",
+        "tests/system/test_ep14_native_batch_pilot.py",
         "tests/system/test_native_image_outcome_evidence.py",
         "tests/system/test_native_429_attempt_reconciliation_fence.py",
         "tests/system/test_native_repair_pilot_capability.py",
