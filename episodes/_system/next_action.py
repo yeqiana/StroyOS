@@ -747,14 +747,14 @@ def derive(ep: Path) -> dict:
                             "LOGIN_AUTH_IMAGE_TOOL_CAPABILITY_UNKNOWN"
                         and not history[f].get("output_path")
                         for f,iid in expected.items())):
-                eligible=visual_lock_candidate_pool.weak_pass_eligible_frames(ep)
-                if eligible==[1,5,45,47]:
+                eligible=visual_lock_candidate_pool.ep14_remaining_exhausted_weak_passes(ep)
+                if eligible is not None:
                     return action_result(
                         action="APPLY_VISUAL_LOCK_WEAK_PASS",
                         executor="MACHINE",frames=eligible,
                         auto_recoverable=True,hard_stop=False,
                         quality_debt=True,
-                        reason="real Visual Lock pixels exhausted 2/2; accept soft findings with original FAIL audit, never third paid generation")
+                        reason="exact 2/2 real Visual Lock pixels; resume remaining soft admissions or finalize interrupted acceptance; no new paid generation")
         if unresolved_blocked:
             budget_blocked = [
                 row for row in unresolved_blocked

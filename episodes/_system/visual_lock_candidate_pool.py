@@ -342,6 +342,72 @@ def weak_pass_eligible_frames(ep: Path) -> list[int]:
     return sorted(set(frames))
 
 
+def ep14_remaining_exhausted_weak_passes(ep: Path) -> list[int] | None:
+    """Fail-closed zero-paid continuation after some of four WEAK_PASS writes."""
+    try:
+        import hashlib
+        import generation_attempt_authority as authority
+        import logical_asset_identity as identity
+        ep = Path(ep).resolve()
+        root = Path(__file__).resolve().parents[2]
+        expected = {1: "V-B", 5: "V-A", 45: "V-W", 47: "V-H"}
+        if (ep != (root / "episodes" / "00_独立篇" /
+                   "14_深渊疗愈所_第一集_净土生命还原").resolve()
+                or not weak_pass_allowed(ep)):
+            return None
+        review = visual_profile_review_persistence.load(ep) or {}
+        rows = {int(x.get("frame") or 0): x for x in review.get("calibration") or []
+                if isinstance(x, dict)}
+        if set(rows) != set(expected) or any(rows[f].get("id") != rid
+                                               for f, rid in expected.items()):
+            return None
+        pending = weak_pass_eligible_frames(ep)
+        registry = (visual_lock_admission_state.load(ep) or {}).get("items") or {}
+        for frame, rid in expected.items():
+            key = identity.frame_asset_key(ep, frame)
+            state = authority.load_asset_state(ep, key)
+            a2 = authority.load_attempt(ep, key, 2) or {}
+            if (state.get("attempts_consumed") != 2
+                    or state.get("remaining_attempts") != 0
+                    or state.get("active_attempt_index") is not None
+                    or a2.get("status") != "SUCCEEDED"
+                    or authority.load_attempt(ep, key, 3) is not None):
+                return None
+            if frame in pending:
+                if not weak_pass_eligibility(ep, frame).get("episode14_paid_exhaustion"):
+                    return None
+                continue
+            entry = registry.get(rid) or {}
+            weak = entry.get("weak_pass") or {}
+            original = weak.get("prior_independent_fail") or {}
+            ledger = _ledger_frame(ep, frame)
+            current = ledger.get("current_candidate") or {}
+            row = rows[frame]
+            raw = Path(str(current.get("path") or ""))
+            path = (raw if raw.is_absolute() else root / raw).resolve()
+            if (entry.get("status") != "WEAK_PASS"
+                    or weak.get("approved_by_policy") != "episode14_paid_2of2_soft_visual_quality"
+                    or ledger.get("status") != "WEAK_PASS"
+                    or (ledger.get("weak_pass") or {}).get("approved_by_policy")
+                       != "episode14_paid_2of2_soft_visual_quality"
+                    or int(entry.get("frame") or 0) != frame
+                    or entry.get("sha256") != row.get("sha256")
+                    or entry.get("sha256") != current.get("sha256")
+                    or entry.get("frame_contract_sha256") != row.get("frame_contract_sha256")
+                    or entry.get("profile_sha256") != review.get("profile_sha256")
+                    or entry.get("story_os_version") != review.get("story_os_version")
+                    or original.get("status") != "FAIL"
+                    or original.get("sha256") != entry.get("sha256")
+                    or original.get("frame_contract_sha256") != entry.get("frame_contract_sha256")
+                    or (original.get("provenance") or {}).get("review_capability") != "vision"
+                    or not path.is_relative_to(ep) or not path.is_file()
+                    or hashlib.sha256(path.read_bytes()).hexdigest() != entry.get("sha256")):
+                return None
+        return pending
+    except Exception:
+        return None
+
+
 def _retire_ep14_exhausted_candidate_blocks(ep: Path, projection: dict) -> dict:
     """Supersede *only* three existing predispatch candidate blocks after 4 weak passes.
 
@@ -388,7 +454,8 @@ def _retire_ep14_exhausted_candidate_blocks(ep: Path, projection: dict) -> dict:
 def apply_weak_passes(ep: Path, frames: list[int] | None = None) -> dict:
     """Apply the speed policy to exact current candidates; never generate new pixels."""
     ep = Path(ep).resolve()
-    wanted = sorted({int(x) for x in (frames or weak_pass_eligible_frames(ep)) if int(x) > 0})
+    requested = weak_pass_eligible_frames(ep) if frames is None else frames
+    wanted = sorted({int(x) for x in requested if int(x) > 0})
     review = visual_profile_review_persistence.load(ep) or {}
     profile_sha = str(review.get("profile_sha256") or "")
     version = str(review.get("story_os_version") or "")
@@ -427,11 +494,12 @@ def apply_weak_passes(ep: Path, frames: list[int] | None = None) -> dict:
             import visual_lock_baseline_gate
             visual_lock_baseline_gate.record_weak_baseline(ep)
         applied.append({"frame": frame, **entry["weak_pass"], "sha256": asset["sha256"]})
-    projection = visual_lock_admission_state.sync_gate_decisions(ep) if applied else {}
+    resumed_all = not wanted and ep14_remaining_exhausted_weak_passes(ep) == []
+    projection = visual_lock_admission_state.sync_gate_decisions(ep) if applied or resumed_all else {}
     candidate_retirement = (
         _retire_ep14_exhausted_candidate_blocks(ep, projection)
-        if applied and any(x.get("approved_by_policy")==
-                          "episode14_paid_2of2_soft_visual_quality" for x in applied)
+        if resumed_all or (applied and any(x.get("approved_by_policy")==
+                          "episode14_paid_2of2_soft_visual_quality" for x in applied))
         else None
     )
     if isinstance(candidate_retirement,dict) and candidate_retirement.get("status")=="BLOCKED":
@@ -439,7 +507,9 @@ def apply_weak_passes(ep: Path, frames: list[int] | None = None) -> dict:
                         "retirement":candidate_retirement})
     pixel_master = _lock_pixel_master_after_accepted_visual_gate(ep, projection)
     return {
-        "status": "PASS" if applied and not blocked else ("REUSED" if not wanted else "BLOCKED"),
+        "status": ("PASS" if (applied or (resumed_all and
+                         (candidate_retirement or {}).get("status") == "PASS")) and not blocked
+                   else ("REUSED" if not wanted else "BLOCKED")),
         "applied": applied,
         "blocked": blocked,
         "gate_projection": projection,
