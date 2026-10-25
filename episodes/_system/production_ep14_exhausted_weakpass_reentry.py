@@ -131,14 +131,75 @@ def inspect(ep):
         "read_only":True,"production_authorization":False
     }
 
+def inspect_pending(ep):
+    """Read-only proof for resuming the machine-only WEAK_PASS from dead rc22."""
+    import visual_lock_candidate_pool as pool
+
+    ep=Path(ep).resolve()
+    require(ep==EPISODE.resolve(),"WRONG_EPISODE")
+    drv=runtime_driver.status(ep)
+    require(drv.get("driver_state")=="EXITED" and drv.get("liveness")=="DEAD"
+            and drv.get("pid")==0 and str(drv.get("exit_code"))=="22",
+            "DRIVER_RC22_NOT_DEAD")
+    require((episode_state_persistence.load(ep) or {}).get("current_state")==
+            "STORYBOARD_LOCKED","EPISODE_STAGE_NOT_LOCKED")
+    require(baseline.approved(ep),"F001_BASELINE_NOT_APPROVED")
+    remaining=pool.ep14_remaining_exhausted_weak_passes(ep)
+    require(remaining is not None,"EXHAUSTED_WEAK_PASS_PROOF_UNVERIFIED")
+    rows=(scheduler_core.load_queue(ep) or {}).get("items") or []
+    originals={int(x.get("frame") or 0):x for x in rows
+               if x.get("kind")=="original" and x.get("scope")=="visual_lock"}
+    repairs={int(x.get("frame") or 0):x for x in rows
+             if x.get("kind")=="repair" and x.get("scope")=="repair"}
+    extras={int(x.get("frame") or 0):x for x in rows
+            if x.get("kind")=="baseline_candidate"}
+    require(len(rows)==11 and set(originals)=={1,5,45,47}
+            and set(repairs)=={1,5,45,47} and set(extras)==set(EXPECTED)
+            and all(x.get("status")=="generated" for x in originals.values())
+            and repairs[1].get("status")=="superseded"
+            and all(repairs[f].get("status")=="generated" for f in EXPECTED),
+            "ORIGINAL_OR_REPAIR_QUEUE_DRIFT")
+    require(all(extras[f].get("id")==expected
+                and extras[f].get("status")=="blocked"
+                and extras[f].get("technical_failure_code")==
+                    "LOGIN_AUTH_IMAGE_TOOL_CAPABILITY_UNKNOWN"
+                and not extras[f].get("output_path")
+                for f,expected in EXPECTED.items()),
+            "PREDISPATCH_EXTRA_CANDIDATES_DRIFT")
+    frames=(production_ledger_persistence.load_authority(ep) or {}).get("frames") or {}
+    fingerprints={}
+    for f in (1,5,45,47):
+        asset=(frames.get(f"{f:02d}") or {}).get("current_candidate") or {}
+        fingerprints[str(f)]=asset.get("sha256")
+        require(fingerprints[str(f)] and candidate_sha(ep,asset)==
+                fingerprints[str(f)],"CURRENT_CANDIDATE_PIXELS_DRIFT")
+    qsha=sha_bytes(json.dumps(
+        [{k:x.get(k) for k in ("id","frame","kind","scope","status",
+                               "technical_failure_code","output_path")}
+         for x in rows],sort_keys=True,ensure_ascii=False,
+        separators=(",",":")).encode("utf-8"))
+    return {
+        "status":"VISUAL_LOCK_RC22_EP14_PENDING_WEAK_PASS_RECOVERABLE",
+        "driver_record_sha256":exit_tools.canonical_sha(drv.get("record") or {}),
+        "queue_fingerprint":qsha,
+        "candidate_sha256_by_frame":fingerprints,
+        "remaining_frames":remaining,
+        "recovery_action":"RESUME_MACHINE_WEAK_PASS_THEN_NORMAL_DAG",
+        "new_model_calls":0,"new_paid_attempts":0,
+        "read_only":True,"production_authorization":False,
+    }
+
+
 def main(argv=None):
     p=argparse.ArgumentParser()
     p.add_argument("--episode",required=True)
     p.add_argument("--verify-rearmed",action="store_true")
+    p.add_argument("--verify-pending",action="store_true")
     a=p.parse_args(argv)
-    try:out=inspect(a.episode)
+    try:out=inspect_pending(a.episode) if a.verify_pending else inspect(a.episode)
     except Exception as exc:out={"status":"BLOCKED","reason":str(exc),"error_class":type(exc).__name__}
     print(json.dumps(out,ensure_ascii=False,sort_keys=True))
-    return 0 if out["status"]=="VISUAL_LOCK_RC22_EP14_EXHAUSTED_WEAK_PASS_RECOVERABLE" else 2
+    return 0 if out["status"] in {"VISUAL_LOCK_RC22_EP14_EXHAUSTED_WEAK_PASS_RECOVERABLE",
+                                  "VISUAL_LOCK_RC22_EP14_PENDING_WEAK_PASS_RECOVERABLE"} else 2
 
 if __name__=="__main__":raise SystemExit(main())
