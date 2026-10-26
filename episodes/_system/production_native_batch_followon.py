@@ -163,6 +163,7 @@ def worker_eligible(ep, item, payload, controller, *, queue=None) -> bool:
     """Re-validate every released frame before the canonical capacity/Attempt claim."""
     try:
         if (item.get(FLAG) is not True
+                or item.get("no_automatic_original_prompt_retry") is True
                 or item.get("scope") != "batch"
                 or item.get("kind") != "original"
                 or item.get("status") not in {"queued", "running", "generating"}
@@ -172,7 +173,9 @@ def worker_eligible(ep, item, payload, controller, *, queue=None) -> bool:
         q = queue if queue is not None else scheduler_core.load_queue(ep)
         rows = _batch(q,ep)
         current = next((x for x in rows if x.get("id") == item.get("id")), None)
-        if current is None or current.get(FLAG) is not True or int(current["frame"]) == 2:
+        if (current is None or current.get(FLAG) is not True
+                or current.get("no_automatic_original_prompt_retry") is True
+                or int(current["frame"]) == 2):
             return False
         proof_sha = str(item.get("native_batch_success_anchor_sha256") or "")
         if len(proof_sha) != 64 or current.get("native_batch_success_anchor_sha256") != proof_sha:
