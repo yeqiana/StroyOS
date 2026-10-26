@@ -138,6 +138,15 @@ def finalize_receipt(path:Path,normalization:dict,final_path:Path)->dict:
     data["normalization"]={k:normalization.get(k) for k in ("operation","ratio_delta","crop_applied","reencoded","local_attempts")}
     data["release_canvas"]={"width":int(normalization["target_size"][0]),"height":int(normalization["target_size"][1]),
         "path":str(final_path),"sha256":sha256_file(final_path)}
+    # Store the complete exceptional editorial crop geometry in the canonical
+    # MySQL receipt. This is never a user approval or a completed Vision gate.
+    if normalization.get("policy")=="NP01_EP14_REVIEWED_EDITORIAL_REFRAME":
+        data["editorial_reframe"]={
+            key:normalization[key] for key in (
+                "policy","crop_box","original_raw_sha256","protected_story_beat",
+                "editorial_review_source","user_approved",
+                "requires_independent_vision_review")
+        }
     serialized=json.dumps(data,ensure_ascii=False,indent=2)+"\n"; rel=_rel(path)
     mode=storage_config.episode_meta_store_config()["mode"]
     if mode != "mysql":

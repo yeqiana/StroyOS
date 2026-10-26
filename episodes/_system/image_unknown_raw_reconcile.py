@@ -89,8 +89,11 @@ def eligible(ep,item):
             return None
         frame=int(item["frame"])
         near_portrait=_near_portrait_scope(ep,frame)
+        import production_ep14_reviewed_landscape as editorial
+        reviewed_landscape=editorial.is_scoped(ep,frame)
         plan=legacy.inspect_item(
             ep,item,exception_crop_ratio_max=(
+                editorial.EDITORIAL_RATIO_MAX if reviewed_landscape else
                 _EP14_NEAR_PORTRAIT_MAX if near_portrait else None))
         if not plan.get("auto_resolvable") or plan.get("code")!=FAILURE:
             return None
@@ -98,6 +101,9 @@ def eligible(ep,item):
         if near_portrait and (str(loaded.get("source"))!="mysql"
                 or str(receipt.get("raw_sha256"))!=_EP14_NEAR_PORTRAIT_RAW[frame]
                 or not 0.06<float(plan.get("ratio_delta") or 0)<=_EP14_NEAR_PORTRAIT_MAX):
+            return None
+        if reviewed_landscape and not editorial.verify_original(
+                ep,frame,plan.get("raw_path"),receipt,plan.get("ratio_delta")):
             return None
         key=logical_asset_identity.frame_asset_key(ep,frame)
         state=authority.load_asset_state(ep,key)
@@ -149,6 +155,7 @@ def eligible(ep,item):
             or sha(raw)!=receipt["raw_sha256"]):
             return None
         return {**plan,"receipt_path":receipt_path,"raw_path":raw,"generation_key":gen,
+                "reviewed_landscape":reviewed_landscape,
                 "asset_key":key,"frame":frame,"item_id":item["id"],
                 "attempt_index":idx,"scope":item.get("scope"),
                 "raw_sha256":receipt["raw_sha256"],
@@ -266,14 +273,21 @@ def recover_one(ep,frame):
             if output.exists():
                 return {"status":"BLOCKED","reason":"CANDIDATE_ALREADY_EXISTS_REQUIRES_RECONCILIATION"}
             width,height,_=canvas_normalize.read_canvas(ep)
-            scope=_near_portrait_scope(ep,frame)
-            normalization=canvas_normalize.normalize_provider_crop_exception(
-                Path(plan["raw_path"]),output,width,height,
-                reason="verified original native RAW, deterministic ratio exception only; no regeneration",
-                exception_crop_ratio_max=(
-                    _EP14_NEAR_PORTRAIT_MAX if scope and
-                    plan.get("raw_sha256")==_EP14_NEAR_PORTRAIT_RAW.get(int(frame))
-                    else None))
+            if plan.get("reviewed_landscape") is True:
+                import production_ep14_reviewed_landscape as editorial
+                # Re-check the original at commit time; no caller may select
+                # an arbitrary crop box or image outside the SHA allowlist.
+                normalization=editorial.normalize_verified(
+                    ep,frame,Path(plan["raw_path"]),output,width,height)
+            else:
+                scope=_near_portrait_scope(ep,frame)
+                normalization=canvas_normalize.normalize_provider_crop_exception(
+                    Path(plan["raw_path"]),output,width,height,
+                    reason="verified original native RAW, deterministic ratio exception only; no regeneration",
+                    exception_crop_ratio_max=(
+                        _EP14_NEAR_PORTRAIT_MAX if scope and
+                        plan.get("raw_sha256")==_EP14_NEAR_PORTRAIT_RAW.get(int(frame))
+                        else None))
             with Image.open(output) as image:
                 if image.format!="PNG" or image.size!=(width,height):
                     _deny("NORMALIZED_CANVAS_INVALID")
@@ -305,6 +319,15 @@ def recover_one(ep,frame):
             row["normalization_recovery"]={"kind":"verified_provider_raw_after_unknown",
                                           "crop_applied":bool(normalization.get("crop_applied")),
                                           "candidate_sha256":output_sha,"provider_receipt":receipt["path"]}
+            if plan.get("reviewed_landscape") is True:
+                # Durable audit of the reviewed reframing, never a fake
+                # human approval or an exemption from later Vision review.
+                row["normalization_recovery"]["editorial_reframe"]={
+                    "crop_box":normalization["crop_box"],
+                    "original_raw_sha256":normalization["original_raw_sha256"],
+                    "requires_independent_vision_review":True,
+                    "user_approved":False,
+                }
             row.pop("technical_failure_code",None)
             row.pop("external_block_reason",None)
             row.pop("retry_exhausted",None)
