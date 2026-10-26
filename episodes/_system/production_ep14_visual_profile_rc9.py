@@ -21,6 +21,8 @@ ROOT=Path(__file__).resolve().parents[2]
 if str(ROOT/"scripts") not in sys.path:sys.path.insert(0,str(ROOT/"scripts"))
 
 import delegated_approval
+import approval_persistence
+from types import SimpleNamespace
 import episode_state_persistence
 import generation_attempt_authority as attempts
 import image_payload_transport
@@ -41,11 +43,53 @@ import visual_profile_lock_lifecycle as lifecycle
 EP=ROOT/"episodes"/"00_独立篇"/"14_深渊疗愈所_第一集_净土生命还原"
 PROFILES=EP/"meta"/"visual-profile.json"
 M00="standards/visual_profiles/M00_MP4_网吧_流水席_旧数码.json"
+SNAPSHOT="meta/runtime/ep14-profile-delegation-before-rc9.json"
 AUTH="StoryOS delegated-auto Visual Lock authority"
 RECOVERY="EP14_RC9_DELEGATED_PROFILE_FROZEN_BATCH_FOLLOWON_RECOVERABLE"
 
 def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+def _prior_approval_valid(ep, profile, report_sha):
+    # Before change the actual SHA-bound delegated approval must still verify.
+    if profile.get("lifecycle_state")=="SELECTED":
+        return not delegated_approval.verify(ep,"visual_lock")
+    # After canonical delegated confirmation we preserve original SHA evidence
+    # rather than rewriting the historic approval payload without an audit.
+    snap=story_json.read_json(ep/SNAPSHOT,default={})
+    old=snap.get("original_approval_bundle") if isinstance(snap,dict) else None
+    if (not isinstance(old,dict)
+        or snap.get("original_approval_sha256")!=approval_persistence.payload_sha(old)
+        or snap.get("report_sha256")!=report_sha
+        or not isinstance((old.get("approvals") or {}).get("visual_lock"),dict)):
+        return False
+    visual=old["approvals"]["visual_lock"]
+    if (visual.get("delegated_auto_review") is not True
+        or visual.get("user_approved") is not False):
+        return False
+    return any(row.get("role")=="visual_spec"
+               and row.get("sha256")==snap.get("original_profile_sha256")
+               for row in visual.get("artifacts") or [])
+
+def _archive_prior_approval(ep, proof):
+    prior=delegated_approval.load_store(ep)[1]
+    if not isinstance(prior,dict):
+        raise ValueError("original delegated approval missing")
+    data={"schema_version":1,
+          "original_approval_sha256":approval_persistence.payload_sha(prior),
+          "original_approval_bundle":prior,
+          "original_profile_sha256":proof["profile_sha256"],
+          "report_sha256":proof["report_sha256"],
+          "source":"verified_prior_delegated_visual_lock_before_canonical_profile_transition"}
+    path=ep/SNAPSHOT
+    if path.is_file():
+        if story_json.read_json(path)!=data:
+            raise ValueError("prior delegated approval evidence drift")
+    else:
+        story_json.write_json(path,data)
+    if not _prior_approval_valid(ep,{"lifecycle_state":"FROZEN"},proof["report_sha256"]):
+        raise ValueError("old delegated approval snapshot cannot verify")
+    return data["original_approval_sha256"]
 
 def _base(ep):
     ep=Path(ep).resolve()
@@ -64,7 +108,7 @@ def _base(ep):
             or checkpoint.get("approval_basis") not in {"delegated_continuous_execution","delegated_auto_review"}
             or request.get("mode")!="full_auto"
             or (request.get("runtime") or {}).get("execution_mode")!="dag"
-            or delegated_approval.verify(ep,"visual_lock")
+            or not _prior_approval_valid(ep,profile,sha(ep/"meta/visual-lock-final-report.json"))
             or (gates.get("reviews") or {}).get("visual_admission")!="passed"
             or report.get("decision")!="PASS"
             or visual_lock_baseline_gate.validate_final_requirement(ep)
@@ -146,6 +190,7 @@ def apply(ep,*,acknowledged=False):
         # All checked prior approval and pixel authorities must stay unchanged.
         again=eligible(ep)
         if again!=proof:return {"status":"BLOCKED","reason":"SOURCE_CHANGED"}
+        original_approval_sha=_archive_prior_approval(ep,proof)
         lifecycle.confirm_visual_lock(
             ep,confirmed_by=AUTH,mode="delegated_auto",profile_id="M00",
             reason=("Full-auto delegated visual-lock decision; source_report_sha256="
@@ -157,6 +202,19 @@ def apply(ep,*,acknowledged=False):
     frozen=visual_profile_closure.reconcile_episode(ep)
     if frozen.get("status") not in {"frozen","noop"}:
         return {"status":"BLOCKED","reason":"CANONICAL_FREEZE_FAILED","detail":frozen}
+    if not delegated_approval.verify(ep,"visual_lock"):
+        pass
+    else:
+        # Canonical approval refresh, not a user approval: the original
+        # SHA-bound bundle remains in the episode's immutable recovery snapshot.
+        original=story_json.read_json(ep/SNAPSHOT)
+        delegated_approval.cmd_record(SimpleNamespace(
+            episode_dir=str(ep),kind="visual_lock",
+            note=("canonical delegated M00 profile closure after original SHA-bound "
+                  "approval="+original["original_approval_sha256"]+
+                  "; independent Vision FAIL and 2/2 WEAK_PASS unchanged")))
+    if delegated_approval.verify(ep,"visual_lock"):
+        return {"status":"BLOCKED","reason":"DELEGATED_APPROVAL_REFRESH_FAILED"}
     check=visual_profile_gate.validate_visual_profile_for_production(ep,stage="release")
     if check.get("status")!="pass":
         return {"status":"BLOCKED","reason":"RELEASE_GATE_FAILED","errors":check.get("errors")}

@@ -28,6 +28,8 @@ def test_no_user_confirmation_is_fabricated(ep,monkeypatch):
     monkeypatch.setattr(profile,"_base",lambda *_:{
         "profile":state[0],"profile_sha":"before","report_sha":"sha","f002_sha":"png"})
     monkeypatch.setattr(profile,"_driver_stopped",lambda *_:True)
+    monkeypatch.setattr(profile,"_archive_prior_approval",lambda *_:"priorSHA")
+    monkeypatch.setattr(profile.delegated_approval,"verify",lambda *_:[])
     captured=[]
     def confirm(*args,**kwargs):
         captured.append(kwargs)
@@ -105,3 +107,20 @@ def test_live_driver_never_rewrites_visual_profile(ep,monkeypatch):
     monkeypatch.setattr(profile.lifecycle,"confirm_visual_lock",unexpected)
     assert profile.apply(ep,acknowledged=True)["reason"]=="RC9_DRIVER_NOT_CONFIRMED_STOPPED"
     unexpected.assert_not_called()
+
+
+def test_previous_delegated_bundle_is_snapshotted_and_immutable(ep,monkeypatch):
+    prior={"approvals":{"visual_lock":{"approved":True,
+           "delegated_auto_review":True,"user_approved":False,
+           "artifacts":[{"role":"visual_spec","sha256":"originalsha"}]}}}
+    monkeypatch.setattr(profile.delegated_approval,"load_store",
+                        lambda *_:(ep/"meta/delegated-approvals.json",prior))
+    proof={"profile_sha256":"originalsha","report_sha256":"reportsha"}
+    expected=profile.approval_persistence.payload_sha(prior)
+    assert profile._archive_prior_approval(ep,proof)==expected
+    payload=profile.story_json.read_json(ep/profile.SNAPSHOT)
+    assert payload["original_approval_sha256"]==expected
+    assert payload["original_approval_bundle"]==prior
+    assert profile._archive_prior_approval(ep,proof)==expected
+    with pytest.raises(ValueError,match="drift"):
+        profile._archive_prior_approval(ep,{**proof,"report_sha256":"changed"})
