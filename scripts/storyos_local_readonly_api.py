@@ -25,6 +25,7 @@ from platform.api.http_server import PlatformApiDispatcher, PlatformApiRequestHa
 from platform.operations.local_episode_monitoring import read_recorded_production
 from platform.operations.local_mysql_monitor_readonly import observe_mysql_episode, empty as empty_mysql_monitor
 from platform.operations.local_mysql_catalog_readonly import observe_mysql_catalog
+from platform.operations.local_candidate_media_readonly import LocalCandidateMedia, CATALOG_PATH, IMAGE_PREFIX
 from platform.operations.local_runtime_trace_readonly import latest_node
 from platform.operations.local_worker_heartbeat_readonly import observe_local_redis_heartbeats
 from platform.operations.local_task_state_readonly import observe_local_redis_task_states
@@ -418,7 +419,9 @@ class LocalReadOnlyHandler(PlatformApiRequestHandler):
             self._send(200, {"code": "OK", "data": observation})
             return
         media = getattr(self.server, "approved_media", None)
-        if media is not None and (route.path == "/api/v1/local-media/catalog" or route.path.startswith(MEDIA_PREFIX) or route.path.startswith(FINGERPRINT_PREFIX)):
+        candidate_media = getattr(self.server, "candidate_media", None)
+        if media is not None and (route.path == "/api/v1/local-media/catalog" or route.path.startswith(MEDIA_PREFIX) or route.path.startswith(FINGERPRINT_PREFIX)
+                                  or (candidate_media is not None and (route.path == CATALOG_PATH or route.path.startswith(IMAGE_PREFIX)))):
             # Additional guard for browser cross-site reads; the Vite proxy sends Host 127.0.0.1.
             site = self.headers.get("Sec-Fetch-Site", "")
             origin = self.headers.get("Origin", "")
@@ -430,6 +433,25 @@ class LocalReadOnlyHandler(PlatformApiRequestHandler):
                 return
             if route.query or route.fragment:
                 self._send(400, {"code": "INVALID_REQUEST", "data": None})
+                return
+            if route.path == CATALOG_PATH:
+                catalog, _ = candidate_media.scan()
+                self._send(200, {"code": "OK", "data": {"items": catalog, "source": "local_workspace_unreviewed_candidates"}})
+                return
+            if route.path.startswith(IMAGE_PREFIX):
+                result = candidate_media.image(route.path[len(IMAGE_PREFIX):])
+                if result is None:
+                    self._send(404, {"code": "MEDIA_NOT_FOUND", "data": None})
+                    return
+                data, content_type = result
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Security-Policy", "default-src 'none'")
+                self.end_headers()
+                self.wfile.write(data)
                 return
             if route.path == "/api/v1/local-media/catalog":
                 catalog, _ = media.scan()
@@ -482,6 +504,7 @@ def main() -> None:
     }
     server = build_http_server(controllers, host="127.0.0.1", port=args.port)
     server.approved_media = LocalApprovedMedia(service)
+    server.candidate_media = LocalCandidateMedia(service)
     server.dispatcher = ReadOnlyLocalDispatcher(controllers)
     server.RequestHandlerClass = LocalReadOnlyHandler
     print("READY LOCAL_WORKSPACE_READONLY", server.server_address[1], flush=True)

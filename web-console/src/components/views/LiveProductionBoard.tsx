@@ -4,6 +4,7 @@ import { Activity, AlertTriangle, ArrowRight, Check, Circle, Image as ImageIcon,
 import { platformApi, type RuntimeStatusDetail, type RuntimeStatusSummary, stageLabel } from '../../api/platformApi';
 import { PRODUCTION_MILESTONES, projectProductionProgress } from '../../api/productionProgress';
 import { useLocalApprovedMedia } from '../../api/localApprovedMedia';
+import { useLocalCandidateMedia } from '../../api/localCandidateMedia';
 import { matchCanonicalHistoricalEpisode } from '../../api/canonicalRuntimeCatalog';
 import type { Episode } from '../../types';
 
@@ -32,10 +33,11 @@ const stateOrder: Record<string, number> = {
   completed: 6,
 };
 
-function ProductionProgressCard({ entry, onOpenEpisode, thumbnailUrl, synopsis, synopsisSource }: {
+function ProductionProgressCard({ entry, onOpenEpisode, thumbnailUrl, thumbnailIsCandidate, synopsis, synopsisSource }: {
   entry: ObservedEpisode;
   onOpenEpisode: Props['onOpenEpisode'];
   thumbnailUrl?: string;
+  thumbnailIsCandidate?: boolean;
   synopsis: string | null;
   synopsisSource: string | null;
 }) {
@@ -50,7 +52,7 @@ function ProductionProgressCard({ entry, onOpenEpisode, thumbnailUrl, synopsis, 
     <div className="flex flex-wrap items-start gap-3">
       <div className="relative flex h-[100px] w-[76px] shrink-0 items-center justify-center overflow-hidden rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] sm:h-[112px] sm:w-[84px]">
         {thumbnailUrl
-          ? <img src={thumbnailUrl} loading="lazy" alt={(summary.title || '作品') + '的已批准图片缩略图'} className="h-full w-full object-cover object-top"/>
+          ? <img src={thumbnailUrl} loading="lazy" alt={(summary.title || '作品') + (thumbnailIsCandidate ? '的未审核候选图片预览' : '的已批准图片缩略图')} className="h-full w-full object-cover object-top"/>
           : <div className="flex flex-col items-center gap-1 text-[var(--text-tertiary)]"><ImageIcon size={20} strokeWidth={1.4}/><span className="text-center text-[10px] leading-4">暂无已批准图片</span></div>}
       </div>
       <div className="min-w-0 flex-1">
@@ -67,7 +69,7 @@ function ProductionProgressCard({ entry, onOpenEpisode, thumbnailUrl, synopsis, 
           {progress.action ? (progress.state === 'historical_block' || progress.state === 'waiting_start' ? ' · 历史节点 ' : ' · 最近节点 ') + progress.action : ''}
         </p>
         <p className="mt-2 line-clamp-2 text-[12px] leading-[1.65] text-[var(--text-secondary)]" title={synopsis || undefined}>{synopsis || '暂无可核验的剧情简介'}</p>
-        <p className="mt-1 text-[10px] text-[var(--text-tertiary)]">{synopsisSource || '简介未收录'}{thumbnailUrl ? ' · 封面为已批准素材' : ''}</p>
+        <p className="mt-1 text-[10px] text-[var(--text-tertiary)]">{synopsisSource || '简介未收录'}{thumbnailUrl ? (thumbnailIsCandidate ? ' · 未审核生成候选图（非发布成品）' : ' · 封面为已批准素材') : ''}</p>
       </div>
       <Button size="small" className="!shrink-0" onClick={() => ref && onOpenEpisode(ref)} disabled={!ref}>监控详情 <ArrowRight size={13}/></Button>
     </div>
@@ -111,6 +113,7 @@ function ProductionProgressCard({ entry, onOpenEpisode, thumbnailUrl, synopsis, 
 
 export const LiveProductionBoard: React.FC<Props> = ({ episodes, onOpenEpisode }) => {
   const { findEpisode } = useLocalApprovedMedia();
+  const { findByRuntimeRef } = useLocalCandidateMedia();
   const [entries, setEntries] = useState<ObservedEpisode[]>([]);
   const [status, setStatus] = useState<'loading'|'ready'|'partial'|'offline'>('loading');
   const [total, setTotal] = useState<number | null>(null);
@@ -189,9 +192,13 @@ export const LiveProductionBoard: React.FC<Props> = ({ episodes, onOpenEpisode }
             const synopsisSource = fromDraft ? '工作区故事草稿 · 未经发布审核' : fromHistory ? '已匹配的历史作品简介' : null;
             const approved = row.title && row.business_episode_id
               ? findEpisode(row.title, row.business_episode_id) : undefined;
-            const thumbnailUrl = approved?.episode_ref === row.episode_ref ? approved.frames[0]?.url : undefined;
+            const candidate = findByRuntimeRef(row.episode_ref || row.episode_id);
+            const thumbnailIsCandidate = Boolean(candidate?.preview.url);
+            const thumbnailUrl = candidate?.preview.url ||
+              (approved?.episode_ref === row.episode_ref ? approved.frames[0]?.url : undefined);
             return <ProductionProgressCard key={row.episode_ref || row.episode_id} entry={entry} onOpenEpisode={onOpenEpisode}
-              thumbnailUrl={thumbnailUrl} synopsis={synopsis} synopsisSource={synopsisSource}/>;
+              thumbnailUrl={thumbnailUrl} thumbnailIsCandidate={thumbnailIsCandidate}
+              synopsis={synopsis} synopsisSource={synopsisSource}/>;
           })}
         </div> : <p className="p-4 text-[12px] text-[var(--text-secondary)]">尚未找到可以展示的生产作品。</p>}
         {ranked.length > 4 && <button type="button" className="flex w-full items-center justify-center gap-1 border-b border-[var(--border-subtle)] py-2 text-[12px] text-[var(--info)] hover:bg-[var(--bg-hover)]" onClick={()=>setExpanded(value=>!value)}>
