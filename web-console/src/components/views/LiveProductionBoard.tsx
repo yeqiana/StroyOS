@@ -11,6 +11,7 @@ import type { Episode } from '../../types';
 interface Props {
   episodes: Episode[];
   onOpenEpisode: (episodeRef: string) => void;
+  onOpenStory: (episodeRef: string,title: string) => void;
 }
 
 interface ObservedEpisode {
@@ -33,9 +34,10 @@ const stateOrder: Record<string, number> = {
   completed: 6,
 };
 
-function ProductionProgressCard({ entry, onOpenEpisode, thumbnailUrl, thumbnailIsCandidate, synopsis, synopsisSource }: {
+function ProductionProgressCard({ entry, onOpenEpisode, onOpenStory, thumbnailUrl, thumbnailIsCandidate, synopsis, synopsisSource }: {
   entry: ObservedEpisode;
   onOpenEpisode: Props['onOpenEpisode'];
+  onOpenStory: Props['onOpenStory'];
   thumbnailUrl?: string;
   thumbnailIsCandidate?: boolean;
   synopsis: string | null;
@@ -57,7 +59,7 @@ function ProductionProgressCard({ entry, onOpenEpisode, thumbnailUrl, thumbnailI
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <h3 className="min-w-0 max-w-full truncate text-[14px] font-semibold text-[var(--text-primary)]" title={summary.title || ref}>{summary.title || ref || '未命名作品'}</h3>
+          <button type="button" className="min-w-0 max-w-full truncate text-left text-[14px] font-semibold text-[var(--text-primary)] hover:text-[var(--info)]" title="进入故事制作详情" onClick={()=>ref&&onOpenStory(ref,summary.title)}>{summary.title || ref || '未命名作品'}</button>
           <span className={'shrink-0 rounded-[3px] border px-2 py-0.5 text-[11px] '+(
             progress.state === 'blocked' ? 'border-[var(--danger)] text-[var(--danger)]' :
             progress.state === 'verified_generating' ? 'border-[var(--info)] text-[var(--info)]' :
@@ -111,7 +113,7 @@ function ProductionProgressCard({ entry, onOpenEpisode, thumbnailUrl, thumbnailI
   </article>;
 }
 
-export const LiveProductionBoard: React.FC<Props> = ({ episodes, onOpenEpisode }) => {
+export const LiveProductionBoard: React.FC<Props> = ({ episodes, onOpenEpisode, onOpenStory }) => {
   const { findEpisode } = useLocalApprovedMedia();
   const { findByRuntimeRef } = useLocalCandidateMedia();
   const [entries, setEntries] = useState<ObservedEpisode[]>([]);
@@ -196,7 +198,7 @@ export const LiveProductionBoard: React.FC<Props> = ({ episodes, onOpenEpisode }
             const thumbnailIsCandidate = Boolean(candidate?.preview.url);
             const thumbnailUrl = candidate?.preview.url ||
               (approved?.episode_ref === row.episode_ref ? approved.frames[0]?.url : undefined);
-            return <ProductionProgressCard key={row.episode_ref || row.episode_id} entry={entry} onOpenEpisode={onOpenEpisode}
+            return <ProductionProgressCard key={row.episode_ref || row.episode_id} entry={entry} onOpenEpisode={onOpenEpisode} onOpenStory={onOpenStory}
               thumbnailUrl={thumbnailUrl} thumbnailIsCandidate={thumbnailIsCandidate}
               synopsis={synopsis} synopsisSource={synopsisSource}/>;
           })}

@@ -16,6 +16,7 @@ interface Props {
   onSelectEpisode: (episode: Episode) => void;
   onNavigate: (tab: NavigationTab) => void;
   onOpenRuntimeEpisode: (episodeRef:string)=>void;
+  onOpenRuntimeWorkbench: (episodeRef:string,title:string)=>void;
 }
 
 const STAGES: Record<string, string> = {
@@ -36,7 +37,7 @@ const readableDate = (raw?: string) => {
   return value ? new Date(value).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) : '未知';
 };
 
-export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelectEpisode, onNavigate, onOpenRuntimeEpisode }) => {
+export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelectEpisode, onNavigate, onOpenRuntimeEpisode, onOpenRuntimeWorkbench }) => {
   const { findEpisode } = useLocalApprovedMedia();
   const { findByRuntimeRef } = useLocalCandidateMedia();
   // No generated placeholder image can pass this contract: the image is from the approved-only media catalog.
@@ -99,7 +100,7 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
       updatedSort: Math.max(timeValue(candidate?.preview.updated_at), timeValue(row.updated_at)),
       progressLabel: candidate ? candidate.candidate_count + ' 张真实候选文件（非已通过帧数）' :
         historical ? approvedFrames(historical).length + ' 张已批准' : '请到监控查看当前节点',
-      open: () => onOpenRuntimeEpisode(ref),
+      open: () => onOpenRuntimeWorkbench(ref,row.title),
     };
   }).sort((a,b)=>b.updatedSort-a.updatedSort);
   const recentGallery = runtimeGallery.length ? runtimeGallery.slice(0,4) :
@@ -174,7 +175,7 @@ export const HomeOverviewView: React.FC<Props> = ({ episodes, projects, onSelect
       </div> : <div className="flex items-center gap-3 border-y border-[var(--border-subtle)] py-4 text-[12px] text-[var(--text-secondary)]"><ImageIcon size={19}/>暂无可核验的作品目录。</div>}
       <p className="text-[11px] text-[var(--text-tertiary)]">已批准图片与未审核候选图分开标记；候选图仅供查看，不作为最终素材、发布或生产执行证据。</p>
     </section>
-    <LiveProductionBoard episodes={episodes} onOpenEpisode={onOpenRuntimeEpisode}/>
+    <LiveProductionBoard episodes={episodes} onOpenEpisode={onOpenRuntimeEpisode} onOpenStory={onOpenRuntimeWorkbench}/>
 
     <details aria-label="工作台完整管理与数据核对" className="group border-t border-[var(--border-subtle)] pt-2">
       <summary className="flex cursor-pointer items-center justify-between gap-3 py-2 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]">

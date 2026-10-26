@@ -12,6 +12,7 @@ import { ContextPanel } from './components/ContextPanel';
 const ActivityStream = React.lazy(() => import('./components/ActivityStream').then(m => ({ default: m.ActivityStream })));
 const ProductionMonitorView = React.lazy(() => import('./components/views/ProductionMonitorView').then(m => ({ default: m.ProductionMonitorView })));
 const HomeOverviewView = React.lazy(() => import('./components/views/HomeOverviewView').then(m=>({default:m.HomeOverviewView})));
+const RuntimeStoryWorkbench = React.lazy(() => import('./components/views/RuntimeStoryWorkbench').then(m=>({default:m.RuntimeStoryWorkbench})));
 const AntdSurface = React.lazy(() => import('./components/AntdSurface'));
 const WorkflowWorkspaceView = React.lazy(() => import('./components/views/WorkflowWorkspaceView').then(m => ({ default: m.WorkflowWorkspaceView })));
 const AgentWorkspaceView = React.lazy(() => import('./components/views/AgentWorkspaceView').then(m => ({ default: m.AgentWorkspaceView })));
@@ -103,6 +104,20 @@ export default function App() {
   const [currentTab, setCurrentTab] = useState<NavigationTab>('overview');
   const [settingsSection,setSettingsSection] = useState<SettingsSection>('appearance');
   const [runtimeFocus,setRuntimeFocus] = useState<string|null>(null);
+  const [runtimeWorkbenchRef,setRuntimeWorkbenchRef] = useState<string|null>(null);
+  const [runtimeWorkbenchTitle,setRuntimeWorkbenchTitle] = useState<string|null>(null);
+  const openRuntimeWorkbench = (ref:string,title?:string) => {
+    if(!/^LOCAL_[a-f0-9]{24}$/.test(ref))return;
+    setRuntimeWorkbenchTitle(title || '正式制作作品');
+    setRuntimeWorkbenchRef(ref);
+    setCurrentTab('workbench');
+  };
+  const selectStoryForWorkbench = (episode:Episode) => {
+    setRuntimeWorkbenchTitle(null);
+    setRuntimeWorkbenchRef(null);
+    setActiveEpisode(episode);
+    setCurrentTab('workbench');
+  };
   const openRuntimeEpisode = (ref:string) => {
     if(!/^LOCAL_[a-f0-9]{24}$/.test(ref))return;
     setRuntimeFocus(ref);
@@ -113,7 +128,7 @@ export default function App() {
   const detailGeneration = useRef(0);
   // 目录索引不包含真实审核/分镜证据，进入制作台才按 Episode 身份加载详情。
   useEffect(() => {
-    if (currentTab !== 'workbench' || !isHistoricalEpisodeIndex(activeEpisode)) {
+    if (currentTab !== 'workbench' || runtimeWorkbenchRef || !isHistoricalEpisodeIndex(activeEpisode)) {
       setDetailError(null);
       return;
     }
@@ -129,7 +144,7 @@ export default function App() {
       if (detailGeneration.current === generation) setDetailError(error instanceof Error ? error.message : '历史证据未能加载');
     });
     return () => { ++detailGeneration.current; };
-  }, [currentTab, activeEpisode.id, activeEpisode.runtimeRequest.sourceBadge, detailRetry]);
+  }, [currentTab, runtimeWorkbenchRef, activeEpisode.id, activeEpisode.runtimeRequest.sourceBadge, detailRetry]);
   const [isGeneratingBatch] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   // Prioritise the creator canvas; the evidence rail stays one click away.
@@ -268,6 +283,7 @@ export default function App() {
         : p
     );
     saveProjects(updatedProjects);
+    setRuntimeWorkbenchRef(null);
     setActiveEpisode(newEpisode);
     setCurrentTab('workbench');
     showToast('已在本机项目中保存故事草稿，尚未提交生产 Runtime');
@@ -285,6 +301,7 @@ export default function App() {
     // 自动归入项目同级的“最近故事”中，排在首位
     const nextRecent = [newEpId, ...recentStoryIds.filter(id => id !== newEpId)];
     saveRecentStories(nextRecent);
+    setRuntimeWorkbenchRef(null);
     setActiveEpisode(newEpisode);
     setCurrentTab('workbench');
     showToast('已在本机保存故事草稿，尚未提交生产 Runtime');
@@ -447,7 +464,7 @@ export default function App() {
         onSelectTab={(tab) => {if(tab==='settings')setSettingsSection('appearance');setCurrentTab(tab);}}
         activeEpisode={activeEpisode}
         allEpisodes={episodes}
-        onSelectEpisode={(ep) => setActiveEpisode(ep)}
+        onSelectEpisode={(ep) => {setRuntimeWorkbenchRef(null);setActiveEpisode(ep);}}
         projects={projects}
         onCreateProject={handleCreateProject}
         onRenameProject={handleRenameProject}
@@ -479,8 +496,9 @@ export default function App() {
         {/* 顶部极简标题栏 */}
         <HeaderBar
           activeEpisode={activeEpisode}
+          runtimeStoryTitle={currentTab === 'workbench' && runtimeWorkbenchRef ? runtimeWorkbenchTitle : null}
           allEpisodes={episodes}
-          onSelectEpisode={(ep) => setActiveEpisode(ep)}
+          onSelectEpisode={(ep) => {setRuntimeWorkbenchRef(null);setActiveEpisode(ep);}}
           onToggleContextPanel={() => setContextPanelOpen(!contextPanelOpen)}
           contextPanelOpen={contextPanelOpen}
           currentTab={currentTab}
@@ -498,7 +516,7 @@ export default function App() {
           )}
 
           <Suspense fallback={<div role="status" className="py-10 text-center text-[13px] text-[var(--text-secondary)]">正在载入工作区…</div>}>
-          {currentTab === 'overview' && <AntdSurface><HomeOverviewView episodes={episodes} projects={projects} onSelectEpisode={(ep) => { setActiveEpisode(ep); setCurrentTab('workbench'); }} onNavigate={setCurrentTab} onOpenRuntimeEpisode={openRuntimeEpisode} /></AntdSurface>}
+          {currentTab === 'overview' && <AntdSurface><HomeOverviewView episodes={episodes} projects={projects} onSelectEpisode={selectStoryForWorkbench} onNavigate={setCurrentTab} onOpenRuntimeEpisode={openRuntimeEpisode} onOpenRuntimeWorkbench={openRuntimeWorkbench} /></AntdSurface>}
 
           {/* 生产监控台主控页 (StoryOS 生产监控台 V1.0 - Dense Operations Console) */}
           {currentTab === 'production_monitor' && (
@@ -509,6 +527,7 @@ export default function App() {
                 onSelectStoryRun={(run) => {
                   const matched = matchRunEpisodeByTitle(episodes, run.storyName);
                   if (matched.kind === 'unique') {
+                    setRuntimeWorkbenchRef(null);
                     setActiveEpisode(matched.episode);
                     setCurrentTab('workbench');
                   } else if (matched.kind === 'ambiguous') {
@@ -532,10 +551,7 @@ export default function App() {
               <AntdSurface><SeriesLibraryView
                 episodes={episodes}
                 activeEpisode={activeEpisode}
-                onSelectEpisode={(ep) => {
-                  setActiveEpisode(ep);
-                  setCurrentTab('workbench');
-                }}
+                onSelectEpisode={selectStoryForWorkbench}
                 onGoToWorkbench={() => setCurrentTab('workbench')}
                 onGoToMonitor={openRuntimeEpisode}
                 projects={projects}
@@ -578,7 +594,7 @@ export default function App() {
           {/* 核心工作流：呼吸感单主轴 */}
           {currentTab === 'workbench' && (
             <div className="w-full min-w-0 space-y-4 pb-8">
-              {isHistoricalEpisodeIndex(activeEpisode) ? (
+              {runtimeWorkbenchRef ? <RuntimeStoryWorkbench key={runtimeWorkbenchRef} episodeRef={runtimeWorkbenchRef} onBack={()=>setCurrentTab('overview')} onOpenMonitor={openRuntimeEpisode}/> : isHistoricalEpisodeIndex(activeEpisode) ? (
                 <section role={detailError ? 'alert' : 'status'} className="border border-[var(--border-normal)] p-5 text-[13px] text-[var(--text-secondary)]">
                   {detailError ? <>
                     <p>历史作品详细证据加载失败：{detailError}。不能据此判断审核或阶段结果。</p>
@@ -615,7 +631,7 @@ export default function App() {
         </main>
 
         {/* 3. 悬浮极简输入坞（纯黑底白字） */}
-        {currentTab === 'workbench' && !isHistoricalEpisodeIndex(activeEpisode) && (
+        {currentTab === 'workbench' && !runtimeWorkbenchRef && !isHistoricalEpisodeIndex(activeEpisode) && (
           <CommandDock
             key={activeEpisode.id}
             onSendMessage={handleCommandSubmit}
@@ -625,7 +641,7 @@ export default function App() {
       </div>
 
       {/* 4. 纯净右侧上下文与资产账本栏 (日志与大盘下自动让出全屏) */}
-      {contextPanelOpen && currentTab === 'workbench' && !isHistoricalEpisodeIndex(activeEpisode) && (
+      {contextPanelOpen && currentTab === 'workbench' && !runtimeWorkbenchRef && !isHistoricalEpisodeIndex(activeEpisode) && (
         <ContextPanel
           activeEpisode={activeEpisode}
           onClose={() => setContextPanelOpen(false)}
@@ -671,6 +687,7 @@ export default function App() {
                     key={ep.id}
                     type="button"
                     onClick={() => {
+                      setRuntimeWorkbenchRef(null);
                       setActiveEpisode(ep);
                       setCurrentTab('workbench');
                       setSearchModalOpen(false);
