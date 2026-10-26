@@ -112,7 +112,7 @@ def _normalize_once(src: Path, dst: Path, width: int, height: int) -> dict:
     }
 
 
-def normalize_provider_crop_exception(src: Path, dst: Path, width: int, height: int, *, reason: str) -> dict:
+def normalize_provider_crop_exception(src: Path, dst: Path, width: int, height: int, *, reason: str, exception_crop_ratio_max: float | None = None) -> dict:
     """Explicit provider-size compatibility path; never used by default normalize().
 
     This preserves the provider RAW and only permits a small center crop when the
@@ -132,8 +132,12 @@ def normalize_provider_crop_exception(src: Path, dst: Path, width: int, height: 
         source_ratio = source_size[0] / source_size[1]
         target_ratio = width / height
         ratio_delta = abs(source_ratio - target_ratio) / target_ratio
-        if ratio_delta > EXCEPTION_CROP_RATIO_DELTA_MAX:
-            raise NormalizeError('ASPECT_RATIO_MISMATCH', f'provider exception refused: source={source_size[0]}x{source_size[1]}, target={width}x{height}, ratio_delta={ratio_delta:.6f} > exception_max={EXCEPTION_CROP_RATIO_DELTA_MAX:.6f}')
+        maximum = (EXCEPTION_CROP_RATIO_DELTA_MAX if exception_crop_ratio_max is None
+                   else float(exception_crop_ratio_max))
+        if not EXCEPTION_CROP_RATIO_DELTA_MAX <= maximum <= 0.065:
+            raise NormalizeError('ASPECT_RATIO_MISMATCH', 'unsupported exception crop upper bound')
+        if ratio_delta > maximum:
+            raise NormalizeError('ASPECT_RATIO_MISMATCH', f'provider exception refused: source={source_size[0]}x{source_size[1]}, target={width}x{height}, ratio_delta={ratio_delta:.6f} > exception_max={maximum:.6f}')
         if source_ratio < target_ratio:
             crop_h = max(1, round(source_size[0] / target_ratio))
             top = max(0, (source_size[1] - crop_h) // 2)
@@ -163,7 +167,7 @@ def normalize_provider_crop_exception(src: Path, dst: Path, width: int, height: 
         'crop_box': list(box),
         'policy': 'NP01_PROVIDER_EXCEPTION',
         'exception_reason': str(reason),
-        'exception_ratio_delta_max': EXCEPTION_CROP_RATIO_DELTA_MAX,
+        'exception_ratio_delta_max': maximum,
         'local_attempts': 1,
     }
 

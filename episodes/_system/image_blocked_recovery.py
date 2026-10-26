@@ -84,7 +84,7 @@ def _latest_attempt(ledger: dict, frame: int) -> dict:
     return attempts[-1] if attempts and isinstance(attempts[-1], dict) else {}
 
 
-def inspect_item(ep: Path, item: dict) -> dict:
+def inspect_item(ep: Path, item: dict, *, exception_crop_ratio_max: float | None = None) -> dict:
     """Return a deterministic recovery plan for one unresolved blocked item."""
     ep = Path(ep).resolve()
     frame = int(item.get("frame") or 0)
@@ -158,7 +158,9 @@ def inspect_item(ep: Path, item: dict) -> dict:
     delta = float(receipt.get("ratio_delta") or 0.0)
     if delta <= canvas_normalize.REVIEW_RATIO_DELTA_MAX:
         return {**base, "reason": "ratio_should_use_normal_normalization_path", "ratio_delta": delta}
-    if delta > canvas_normalize.EXCEPTION_CROP_RATIO_DELTA_MAX:
+    maximum = (canvas_normalize.EXCEPTION_CROP_RATIO_DELTA_MAX
+               if exception_crop_ratio_max is None else float(exception_crop_ratio_max))
+    if delta > maximum:
         return {**base, "reason": "provider_crop_exception_limit_exceeded", "ratio_delta": delta}
     if bool(receipt.get("exact_raw_canvas_guaranteed")):
         return {**base, "reason": "provider_claimed_exact_canvas_but_returned_mismatch", "ratio_delta": delta}
