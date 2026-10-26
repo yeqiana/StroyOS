@@ -58,6 +58,7 @@ SLOTS = {
         "tests/system/test_native_network_failure_rearm.py",
         "tests/system/test_ep14_tls_terminal_audit.py",
         "tests/system/test_ep14_provider_safety_terminal.py",
+        "tests/system/test_native_provider_safety_classification.py",
         "tests/system/test_runner_host_loop_v262.py::NextActionAutonomousBatchTests::test_preserved_native_raw_precedes_unknown_backend_block_without_retry",
         "tests/system/test_runner_host_loop_v262.py::NextActionAutonomousBatchTests::test_verified_first_batch_succeeded_unblocks_history_via_machine_action",
         "tests/system/test_runner_host_loop_v262.py::NextActionAutonomousBatchTests::test_native_frame02_proof_preempts_other_capability_blocks_only_when_valid",
