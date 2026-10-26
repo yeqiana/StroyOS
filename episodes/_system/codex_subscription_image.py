@@ -92,6 +92,25 @@ def provider_raw_candidate_viable(path: Path) -> bool:
         return False
 
 
+def confirmed_provider_safety_refusal_log(raw_log_text: str) -> bool:
+    """Provider-owned 400/moderation signal, never agent narration or prompt text.
+
+    This classifier is useful only when NO viable full-size image exists. It
+    does not prove zero charge, grant a retry or terminalize MySQL Attempt;
+    native Runner + original CLI evidence must still be reconciled separately.
+    """
+    low = str(raw_log_text or "").lower()
+    return bool(
+        "error codex_core::tools::router: error=image generation failed:"
+        in low
+        and "http 400 bad request" in low
+        and "image_generation_user_error" in low
+        and "moderation_blocked" in low
+        and "your request was rejected by the safety system" in low
+        and '"type":"turn.completed"' in low
+    )
+
+
 def logged_backend_failure(raw_log_text: str, *, returncode: int,
                            candidate_valid: bool, candidate_viable: bool) -> str | None:
     """Prefer the invocation's technical root cause before a degenerate RAW error.
@@ -104,6 +123,8 @@ def logged_backend_failure(raw_log_text: str, *, returncode: int,
     """
     if int(returncode) == 0 and candidate_valid and candidate_viable:
         return None
+    if confirmed_provider_safety_refusal_log(raw_log_text):
+        return "IMAGE_PROVIDER_SAFETY_REJECTED"
     relevant = runtime_log_policy.provider_relevant_codex_text(str(raw_log_text or ""))
     # The compact provider projection intentionally drops some generic transport
     # wording. Keep the original bounded tail as a fallback so a real network
