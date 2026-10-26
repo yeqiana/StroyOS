@@ -187,9 +187,59 @@ def _canonical_controller_request(ep: Path, item: dict, package: dict,
         raise ValueError("IMAGE_PAYLOAD_REQUEST_INVALID:" + ",".join(errors))
     return {**request_result, "reference_paths": refs}
 
+def _content_revision_dispatch_denied(ep, item) -> bool:
+    """Keep Provider-safety-refused originals out of all direct paid workers.
+
+    Production dispatch must consult the current canonical queue, not merely a
+    stale Worker copy. Only this exact Episode14 safety-refusal campaign is
+    scoped until a verified content-revision transition is implemented.
+    """
+    ep=Path(ep).resolve()
+    if not production_native_batch_followon._is_ep14(ep):
+        return False
+    frame=int(item.get("frame") or 0)
+    if frame not in {9,29,48}:
+        return False
+    if (item.get("no_automatic_original_prompt_retry") is True
+            or item.get("requires_content_revision") is True):
+        return True
+    try:
+        import scheduler_core
+        q=scheduler_core.load_queue(ep)
+        matching=[r for r in q.get("items",[]) if (
+            r.get("scope")=="batch"
+            and int(r.get("frame") or 0)==frame
+            and r.get("id")==item.get("id"))]
+        if (len(matching)!=1
+                or matching[0].get("no_automatic_original_prompt_retry") is True
+                or matching[0].get("requires_content_revision") is True
+                or matching[0].get("status")=="external_blocked"):
+            return True
+        # Clearing two queue flags is not a replacement for formal content
+        # revision. The immutable first paid Attempt still proves refusal.
+        import generation_attempt_authority as ga
+        import logical_asset_identity
+        first=ga.load_attempt(
+            ep,logical_asset_identity.frame_asset_key(ep,frame),1) or {}
+        return (first.get("status")=="FAILED_AFTER_DISPATCH"
+                and first.get("failure_class")=="IMAGE_PROVIDER_SAFETY_REJECTED")
+    except Exception:
+        # No detached image generation if canonical safety authority vanished.
+        return True
+
+
 # Every canonical image worker shares five machine-wide Provider slots.
 # ContextDecorator acquires before this function can reserve any Attempt.
 def execute(ep,item,timeout,codex):
+    if _content_revision_dispatch_denied(ep,item):
+        return {
+            "returncode":93,
+            "stdout":"CONTENT_REVISION_REVIEW_REQUIRED: refused original prompt cannot be resubmitted",
+            "payload":None,"output":None,"log":None,
+            "attempt":max(1,int(item.get("attempts") or 1)),
+            "image_attempt_reserve_called":False,
+            "worker_pool":{"mode":MODE,"codex_session_reuse":False},
+        }
     # Claim before Controller/Provider execution and MySQL Attempt reserve.
     with global_image_capacity.image_permits(1):
         resource_library.ensure_fresh(ep)
