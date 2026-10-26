@@ -295,3 +295,61 @@ def test_second_attempt_cas_denies_stale_runner_identity(tmp_path):
         with pytest.raises(recovery.PreservedRawDenied,match="UNKNOWN_GENERATION_FENCE_CHANGED"):
             recovery._mysql_reconcile(ep,plan,out,recovery.sha(out))
         assert db.writes==0
+
+def test_ep14_surgical_near_portrait_only(tmp_path,monkeypatch):
+    root=tmp_path
+    monkeypatch.setattr(recovery,"ROOT",root)
+    ep=root/"episodes"/"00_独立篇"/"14_深渊疗愈所_第一集_净土生命还原"
+    assert [i for i in range(1,49) if recovery._near_portrait_scope(ep,i)]==[24,25,28]
+    assert not recovery._near_portrait_scope(root/"episodes"/"00_独立篇"/"13_失物归还的那扇门",24)
+
+
+def test_near_portrait_requires_exact_preserved_sha(tmp_path,monkeypatch):
+    ep,raw,rpath,key,gen,receipt,row,plan,old,state,loaded=evidence(tmp_path)
+    ep=tmp_path/"episodes"/"00_独立篇"/"14_深渊疗愈所_第一集_净土生命还原"
+    raw=ep/"media/raw/24-native.png"
+    raw.parent.mkdir(parents=True,exist_ok=True)
+    raw.write_bytes(b"observed-image")
+    rpath=ep/"meta/provider-receipts/24.json"
+    rpath.parent.mkdir(parents=True,exist_ok=True)
+    plan.update({"raw_path":str(raw),"provider_receipt":str(rpath),"ratio_delta":0.0625})
+    receipt.update({"frame":"24","raw_sha256":recovery.sha(raw)})
+    row["frame"]=24
+    monkeypatch.setattr(recovery,"ROOT",tmp_path)
+    monkeypatch.setitem(recovery._EP14_NEAR_PORTRAIT_RAW,24,recovery.sha(raw))
+    from unittest.mock import Mock
+    inspect=Mock(return_value=plan)
+    with (patch.object(recovery.legacy,"inspect_item",inspect),
+          patch.object(recovery.provider_receipt_persistence,"load_by_path",return_value=loaded),
+          patch.object(recovery.logical_asset_identity,"frame_asset_key",return_value=key),
+          patch.object(recovery.logical_asset_identity,"episode_id",return_value="episode"),
+          patch.object(recovery.authority,"stable_generation_key",return_value=gen),
+          patch.object(recovery.authority,"load_asset_state",return_value=state),
+          patch.object(recovery.authority,"load_attempt",return_value=old)):
+        assert recovery.eligible(ep,row) is not None
+        assert inspect.call_args.kwargs["exception_crop_ratio_max"]==0.065
+        receipt["raw_sha256"]="0"*64
+        assert recovery.eligible(ep,row) is None
+
+
+def test_surgical_crop_max_keeps_landscape_and_other_episodes_blocked(tmp_path):
+    from PIL import Image
+    import canvas_normalize as canvas
+    raw=tmp_path/"native.png"
+    portrait_out=tmp_path/"portrait.png"
+    Image.new("RGB",(1086,1448),"white").save(raw)
+    with pytest.raises(canvas.NormalizeError,match="exception refused"):
+        canvas.normalize_provider_crop_exception(raw,portrait_out,1080,1350,reason="test")
+    result=canvas.normalize_provider_crop_exception(
+        raw,portrait_out,1080,1350,reason="verified three frames",exception_crop_ratio_max=0.065)
+    assert result["crop_applied"] is True
+    assert result["exception_ratio_delta_max"]==0.065
+    assert Image.open(portrait_out).size==(1080,1350)
+    landscape=tmp_path/"landscape.png"
+    Image.new("RGB",(1448,1086),"white").save(landscape)
+    with pytest.raises(canvas.NormalizeError,match="exception refused"):
+        canvas.normalize_provider_crop_exception(
+            landscape,tmp_path/"no-landscape.png",1080,1350,reason="test",exception_crop_ratio_max=0.065)
+    with pytest.raises(canvas.NormalizeError,match="unsupported exception crop upper bound"):
+        canvas.normalize_provider_crop_exception(
+            landscape,tmp_path/"no-oversize.png",1080,1350,reason="test",exception_crop_ratio_max=0.07)

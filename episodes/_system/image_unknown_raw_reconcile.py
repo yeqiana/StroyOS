@@ -31,6 +31,21 @@ ROOT=Path(__file__).resolve().parents[2]
 FAILURE="ASPECT_RATIO_MISMATCH"
 SHA64=re.compile(r"[0-9a-f]{64}\Z")
 HEX32=re.compile(r"[0-9a-f]{32}\Z")
+# Only three observed portrait RAWs from Episode14: source ~3:4 vs target 4:5.
+# All original SHA-bound MySQL receipt and first Attempt checks still apply.
+_EP14_NEAR_PORTRAIT_RAW = {
+    24: "ba1733a07f55e8787a64768f3b97ed1c38ac966e5ecd1180fb7512b8d548dca6",
+    25: "ec325e5ca2b17a2f0a28e437335ccc2416c9565d36f36eeeeda048ee7243f524",
+    28: "d5bcf1b45697c53bdfc6055e2fcaab0fb86c06a0b8018dcd87197f4ea72d6f7f",
+}
+_EP14_NEAR_PORTRAIT_MAX = 0.065
+
+def _near_portrait_scope(ep, frame):
+    return (Path(ep).resolve() ==
+            (ROOT/"episodes"/"00_独立篇"/
+             "14_深渊疗愈所_第一集_净土生命还原").resolve()
+            and int(frame) in _EP14_NEAR_PORTRAIT_RAW)
+
 
 class PreservedRawDenied(RuntimeError):
     pass
@@ -72,11 +87,18 @@ def eligible(ep,item):
                 or item.get("kind")!="original" or item.get("technical_failure_code")!=FAILURE
                 or item.get("output_path") or item.get("candidate_output_path")):
             return None
-        plan=legacy.inspect_item(ep,item)
+        frame=int(item["frame"])
+        near_portrait=_near_portrait_scope(ep,frame)
+        plan=legacy.inspect_item(
+            ep,item,exception_crop_ratio_max=(
+                _EP14_NEAR_PORTRAIT_MAX if near_portrait else None))
         if not plan.get("auto_resolvable") or plan.get("code")!=FAILURE:
             return None
         receipt_path,receipt,loaded=_receipt(ep,item,plan)
-        frame=int(item["frame"])
+        if near_portrait and (str(loaded.get("source"))!="mysql"
+                or str(receipt.get("raw_sha256"))!=_EP14_NEAR_PORTRAIT_RAW[frame]
+                or not 0.06<float(plan.get("ratio_delta") or 0)<=_EP14_NEAR_PORTRAIT_MAX):
+            return None
         key=logical_asset_identity.frame_asset_key(ep,frame)
         state=authority.load_asset_state(ep,key)
         idx=int(receipt.get("attempt_index") or 0)
@@ -244,9 +266,14 @@ def recover_one(ep,frame):
             if output.exists():
                 return {"status":"BLOCKED","reason":"CANDIDATE_ALREADY_EXISTS_REQUIRES_RECONCILIATION"}
             width,height,_=canvas_normalize.read_canvas(ep)
+            scope=_near_portrait_scope(ep,frame)
             normalization=canvas_normalize.normalize_provider_crop_exception(
                 Path(plan["raw_path"]),output,width,height,
-                reason="verified original native RAW, deterministic ratio exception only; no regeneration")
+                reason="verified original native RAW, deterministic ratio exception only; no regeneration",
+                exception_crop_ratio_max=(
+                    _EP14_NEAR_PORTRAIT_MAX if scope and
+                    plan.get("raw_sha256")==_EP14_NEAR_PORTRAIT_RAW.get(int(frame))
+                    else None))
             with Image.open(output) as image:
                 if image.format!="PNG" or image.size!=(width,height):
                     _deny("NORMALIZED_CANVAS_INVALID")
