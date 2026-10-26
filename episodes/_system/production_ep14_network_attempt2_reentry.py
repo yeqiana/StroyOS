@@ -6,12 +6,22 @@ Attempt or release the three unrelated safety-refused frames.
 from __future__ import annotations
 import sys
 from pathlib import Path
-
-# This script is spawned as a standalone CLI by storyos_production_env.py.
-# The script directory is episodes/_system, not the repository root. Install
-# canonical package paths BEFORE imports can resolve Python's stdlib
-# `platform` in place of StoryOS's platform.repository package.
+# Resolve the Python stdlib platform module BEFORE adding this repository's
+# identically named platform/ package to sys.path. The read-only production
+# probe needs both stdlib platform.system() (on Linux) AND the repository's
+# platform.repository.mysql code. This local process-only package search path
+# makes both visible without modifying the repository or global interpreter.
+import platform as _stdlib_platform
 ROOT=Path(__file__).resolve().parents[2]
+_storyos_platform_package=ROOT/"platform"
+if _storyos_platform_package.is_dir():
+    # Two valid callers: a standalone interpreter with stdlib platform
+    # (extend its subpackage search path), or an already initialized StoryOS
+    # test interpreter with the repository's `platform` package. Never
+    # replace sys.modules["platform"] or discard a functioning stdlib API.
+    locations=list(getattr(_stdlib_platform,"__path__",[]))
+    if str(_storyos_platform_package) not in locations:
+        _stdlib_platform.__path__=[*locations,str(_storyos_platform_package)]
 for package_dir in (ROOT/"scripts", ROOT):
     if str(package_dir) not in sys.path:
         sys.path.insert(0,str(package_dir))
