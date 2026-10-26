@@ -34,6 +34,55 @@ NETWORK_WORDING = frozenset({
 HEX32 = re.compile(r"[a-fA-F0-9]{32}\Z")
 HEX64 = re.compile(r"[a-fA-F0-9]{64}\Z")
 
+# SHA-locked actual Episode14 native Codex TLS failures. These are *not*
+# authorizations for another paid Attempt and not claims about upstream billing.
+EP14_TLS_TERMINAL = {
+    20: {"log_sha256":"e7c478265214ede8a83917169e61dae7c4312e287c553131fd4981e5f12110ca",
+         "receipt_sha256":"a61a1c28a394a63ff60eae1c1e6f9a39b36360d8bbe61a52f8c9eaa6bcbdc452",
+         "request_id":"9d8190e93e9e40e5bd339a152b49845f"},
+    27: {"log_sha256":"c93d944fcccca247c2e94592f3d74b2f9db7b64f211e57ff4bc3eb2b9d623271",
+         "receipt_sha256":"8926f4e5647bad7076020c6ef5f3678bcd7e4b69221f5de41772d17f932985a7",
+         "request_id":"77e1eb0ae30b40c3b0d61571768a3a02"},
+}
+
+def _ep14_tls_scope(ep: Path, frame: int) -> bool:
+    return (Path(ep).resolve() ==
+            (ROOT / "episodes" / "00_独立篇" /
+             "14_深渊疗愈所_第一集_净土生命还原").resolve()
+            and int(frame) in EP14_TLS_TERMINAL)
+
+
+def _ep14_tls_terminal_log(log: bytes, frame: int) -> bool:
+    """Reject unknown TLS logs, incomplete turns and forged model narration."""
+    expected = EP14_TLS_TERMINAL.get(int(frame))
+    if not expected or _hash(log) != expected["log_sha256"] or len(log)>10000:
+        return False
+    try:
+        lines=log.decode("utf-8-sig").splitlines()
+        events=[json.loads(x) for x in lines if x.startswith("{")]
+    except (ValueError,UnicodeError):
+        return False
+    terminal=[x for x in events if x.get("type")=="turn.completed"]
+    messages=[(x.get("item") or {}).get("text") for x in events
+              if x.get("type")=="item.completed"
+              and (x.get("item") or {}).get("type")=="agent_message"]
+    return bool(
+        len(terminal)==1 and len(messages)==1
+        and messages[0] in {
+            "Image generation failed because the connection could not be established.",
+            "Image generation failed because the request could not connect. No image was produced.",
+        }
+        and sum("ERROR codex_core::tools::router: error=image generation failed: connection failed: error sending request" in x
+                for x in lines)==1
+        and sum("ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: tls handshake eof" in x
+                for x in lines)==6
+        and any((x.get("type")=="error" and "Reconnecting... waiting for network" in str(x.get("message"))) for x in events)
+        and not any((x.get("type")=="item.completed"
+                     and (x.get("item") or {}).get("type") not in {"agent_message","error"})
+                    for x in events)
+        and len(lines)<=25
+    )
+
 
 class EvidenceDenied(RuntimeError):
     pass
@@ -162,7 +211,8 @@ def _log_and_queue(ep: Path, row: dict) -> tuple[Path, bytes]:
     if not path.is_relative_to(ep.resolve()):
         raise EvidenceDenied("ORIGINAL_LOG_OUTSIDE_EPISODE")
     content = path.read_bytes()
-    if not _network_failed_log(content):
+    if not (_ep14_tls_terminal_log(content, n) if _ep14_tls_scope(ep, n)
+            else _network_failed_log(content)):
         raise EvidenceDenied("NATIVE_RUNNER_TERMINAL_NETWORK_FAILURE_NOT_PROVEN")
     return path, content
 
@@ -172,7 +222,7 @@ def inspect(ep: Path, row: dict) -> dict:
     ep = Path(ep).resolve()
     frame = int(row.get("frame") or 0)
     if (row.get("scope") != "batch" or row.get("kind") != "original"
-            or frame not in (5, 10, 15)  # narrow historical campaign only
+            or (frame not in (5, 10, 15) and not _ep14_tls_scope(ep, frame))
             or row.get("status") != "external_blocked"
             or row.get("technical_failure_code") != "IMAGE_BACKEND_ERROR"
             or not str(row.get("last_error") or "").startswith("NETWORK_ERROR:")
@@ -183,6 +233,11 @@ def inspect(ep: Path, row: dict) -> dict:
         raise EvidenceDenied("RAW_IMAGE_MUST_BE_RECONCILED_INSTEAD")
     logpath, output = _log_and_queue(ep, row)
     proof = _matched_receipt(output)
+    if _ep14_tls_scope(ep, frame):
+        expected=EP14_TLS_TERMINAL[frame]
+        if any(proof.get(field)!=expected[field] for field in
+               ("request_id","receipt_sha256","log_sha256")):
+            raise EvidenceDenied("EP14_EXACT_RUNNER_RECEIPT_CHANGED")
     key = logical_asset_identity.frame_asset_key(ep, frame)
     state = authority.load_asset_state(ep, key)
     attempt = authority.load_attempt(ep, key, 1) or {}
@@ -305,11 +360,56 @@ def _commit_terminal(ep: Path, proof: dict) -> None:
             conn.close()
 
 
+def reconcile_ep14_terminal_only(ep: Path, frame: int) -> dict:
+    """Persist proven local TLS failure WITHOUT queue release or new paid dispatch.
+
+    Upstream billing remains UNKNOWN. The original external_blocked queue is
+    deliberately left intact, even on success.
+    """
+    ep=Path(ep).resolve()
+    if not _ep14_tls_scope(ep, frame):
+        return {"status":"BLOCKED","reason":"NOT_EP14_BOUND_NETWORK_FRAME"}
+    try:
+        import runtime_driver
+        driver=runtime_driver.status(ep)
+        if (driver.get("driver_state")!="EXITED" or driver.get("liveness")!="DEAD"
+                or int(driver.get("pid") or 0)!=0):
+            return {"status":"BLOCKED","reason":"DRIVER_NOT_STOPPED"}
+        with scheduler_core.queue_transaction(ep):
+            q=scheduler_core.load_queue(ep)
+            row=next((x for x in q.get("items",[]) if x.get("scope")=="batch"
+                      and int(x.get("frame") or 0)==int(frame)),None)
+            if row is None:
+                return {"status":"BLOCKED","reason":"FRAME_NOT_IN_BATCH"}
+            proof=inspect(ep,row)
+            _commit_terminal(ep,proof)
+            if (row.get("native_network_terminal_only_receipt_sha256") not in
+                    (None,proof["receipt_sha256"])):
+                raise EvidenceDenied("EXISTING_TERMINAL_AUDIT_CHANGED")
+            row["native_network_terminal_only_receipt_sha256"]=proof["receipt_sha256"]
+            row["native_network_terminal_only_log_sha256"]=proof["log_sha256"]
+            row["upstream_billing_outcome_unverified"]=True
+            # Deliberately *not* setting native_network_terminal_rearm_count,
+            # not altering status/attempts, not creating a retry entitlement.
+            scheduler_core.save_queue(ep,q)
+            return {"status":"PASS","frame":int(frame),
+                    "first_attempt":"FAILED_AFTER_DISPATCH",
+                    "queue_status":"external_blocked",
+                    "provider_calls":0,"attempts_reserved":0,
+                    "upstream_billing_outcome_unverified":True}
+    except scheduler_core.QueueMutationBusy:
+        return {"status":"BLOCKED","reason":"QUEUE_MUTATION_BUSY"}
+    except EvidenceDenied as exc:
+        return {"status":"BLOCKED","reason":str(exc)}
+
+
 def rearm_one(ep: Path, frame: int, *, acknowledged: bool = False) -> dict:
     """Terminalize original local network failure, then queue only Attempt 2."""
     if not acknowledged:
         return {"status": "BLOCKED", "reason": "DUPLICATE_UPSTREAM_COST_RISK_ACK_REQUIRED"}
     ep = Path(ep).resolve()
+    if _ep14_tls_scope(ep, frame):
+        return {"status": "BLOCKED", "reason": "EP14_TERMINAL_AUDIT_ONLY_NO_PAID_REARM"}
     try:
         with scheduler_core.queue_transaction(ep):
             q = scheduler_core.load_queue(ep)
@@ -456,10 +556,16 @@ def main() -> int:
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("episode_dir", type=Path)
-    ap.add_argument("--frame", type=int, choices=(5,10,15), required=True)
+    ap.add_argument("--frame", type=int, choices=(5,10,15,20,27), required=True)
     ap.add_argument("--ack-duplicate-upstream-cost-risk", action="store_true")
+    ap.add_argument("--terminal-audit-only", action="store_true")
     a=ap.parse_args()
-    result=rearm_one(a.episode_dir,a.frame,acknowledged=a.ack_duplicate_upstream_cost_risk)
+    if a.terminal_audit_only:
+        if a.ack_duplicate_upstream_cost_risk:
+            ap.error("terminal audit forbids paid retry acknowledgement")
+        result=reconcile_ep14_terminal_only(a.episode_dir,a.frame)
+    else:
+        result=rearm_one(a.episode_dir,a.frame,acknowledged=a.ack_duplicate_upstream_cost_risk)
     print(json.dumps(result,ensure_ascii=False))
     return 0 if result["status"]=="PASS" else 2
 
