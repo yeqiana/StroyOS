@@ -90,6 +90,9 @@ def test_terminal_only_requires_dead_driver_and_no_queue_release(ep,monkeypatch)
     assert recovery.reconcile_ep14_terminal_only(ep,27)['reason']=='DRIVER_NOT_STOPPED'
 
 
-def test_ep14_rearm_cannot_spend_second_attempt(ep):
-    assert recovery.rearm_one(ep,20,acknowledged=True)=={
-        'status':'BLOCKED','reason':'EP14_TERMINAL_AUDIT_ONLY_NO_PAID_REARM'}
+def test_ep14_rearm_requires_explicit_risk_ack_and_stopped_driver(ep, monkeypatch):
+    import runtime_driver
+    assert recovery.rearm_one(ep,20)['reason']=="DUPLICATE_UPSTREAM_COST_RISK_ACK_REQUIRED"
+    monkeypatch.setattr(runtime_driver,"status",lambda *_:{
+        "driver_state":"RUNNING","liveness":"ALIVE","pid":800,"exit_code":None})
+    assert recovery.rearm_one(ep,20,acknowledged=True)['reason']=="EP14_RC24_STOPPED_DRIVER_REQUIRED"

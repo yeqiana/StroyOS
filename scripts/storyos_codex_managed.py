@@ -657,6 +657,35 @@ def preflight(env: dict[str, str], *, episode: Path | None = None) -> dict:
                     "recovery_action":"RECONCILE_43_NATIVE_BATCH_AFTER_F002_SUCCESS",
                     "read_only":True,"production_authorization":False,
                 }
+        if (not restartable and rc==0
+                and driver.get("driver_state")=="EXITED"
+                and str(driver.get("exit_code"))=="24"
+                and driver.get("pid")==0 and driver.get("liveness")=="DEAD"
+                and stage.get("status")=="STAGE_ELIGIBLE"
+                and attempts.get("status")=="ATTEMPT_HISTORY_READ_ONLY"
+                and not attempts.get("outcome_unknown_assets")
+                and not attempts.get("active_attempt_assets")):
+            # SHA-bound old rc24 after explicit duplicate-billing acknowledgement
+            # on BOTH F020/F027. Three unrelated safety rejects remain blocked.
+            # No third paid Attempt or generic rc24 watchdog restart.
+            two_rc,two=_probe(
+                env,"episodes/_system/production_ep14_network_attempt2_reentry.py",
+                ["--episode",rel,"--verify-rearmed"])
+            if (two_rc==0
+                    and two.get("status")==
+                        "EP14_RC24_F020_F027_ATTEMPT2_AUTHORIZED_REENTRY"
+                    and two.get("driver_record_sha256")==
+                        exit_remediation.canonical_sha(driver.get("record") or {})):
+                restartable=True
+                driver_recovery={
+                    "status":two["status"],
+                    "driver_record_sha256":two["driver_record_sha256"],
+                    "driver_log_sha256":two["driver_log_sha256"],
+                    "frames":two["frames"],
+                    "safety_refusals_still_blocked":two["safety_refusals_still_blocked"],
+                    "recovery_action":"CANONICAL_NETWORK_ATTEMPT_2_ONLY",
+                    "read_only":True,"production_authorization":False,
+                }
         if not restartable:
             blockers.append("EPISODE_DRIVER_OWNER_NOT_IDLE_OR_UNVERIFIED")
         if driver.get("driver_state") == "EXITED" and not restartable:

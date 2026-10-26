@@ -187,7 +187,10 @@ def test_operator_ack_and_queue_save_only_after_mysql_cas(tmp_path):
     item={"scope":"batch","kind":"original","frame":5,"status":"external_blocked",
           "attempts":2,"technical_failure_code":"IMAGE_BACKEND_ERROR","last_error":"NETWORK_ERROR"}
     queue={"items":[item]}
-    proof={"receipt_sha256":"a"*64,"log_sha256":"b"*64}
+    old_log=ep/"meta/image-workers/05-original.jsonl"
+    old_log.parent.mkdir(parents=True)
+    old_log.write_bytes(b"original native runner output")
+    proof={"receipt_sha256":"a"*64,"log_sha256":"b"*64,"log":old_log}
     assert n.rearm_one(ep,5)["reason"]=="DUPLICATE_UPSTREAM_COST_RISK_ACK_REQUIRED"
     with (patch.object(n.scheduler_core,"queue_transaction",return_value=nullcontext()),
           patch.object(n.scheduler_core,"load_queue",return_value=queue),

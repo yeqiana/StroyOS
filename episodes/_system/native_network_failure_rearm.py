@@ -403,13 +403,71 @@ def reconcile_ep14_terminal_only(ep: Path, frame: int) -> dict:
         return {"status":"BLOCKED","reason":str(exc)}
 
 
+def _rearm_ep14_one(ep: Path, frame: int) -> dict:
+    """After explicit duplicate-billing ACK, release only proved Attempt #2.
+
+    This function never invokes a provider or reserves an Attempt. Old original
+    MySQL Attempt and Runner log/receipt are immutable; the 2-attempt cap is
+    still enforced by the same canonical claim at worker dispatch.
+    """
+    import runtime_driver
+    driver=runtime_driver.status(ep)
+    if (driver.get("driver_state")!="EXITED"
+            or driver.get("liveness")!="DEAD"
+            or int(driver.get("pid") or 0)!=0
+            or str(driver.get("exit_code"))!="24"):
+        return {"status":"BLOCKED","reason":"EP14_RC24_STOPPED_DRIVER_REQUIRED"}
+    try:
+        with scheduler_core.queue_transaction(ep):
+            q=scheduler_core.load_queue(ep)
+            candidates=[x for x in q.get("items",[])
+                        if x.get("scope")=="batch" and int(x.get("frame") or 0)==frame]
+            if len(candidates)!=1:
+                raise EvidenceDenied("EP14_NETWORK_QUEUE_NOT_UNIQUE")
+            row=candidates[0]
+            proof=inspect(ep,row)
+            if (not proof["already_terminal"]
+                    or row.get("native_network_terminal_only_receipt_sha256")!=proof["receipt_sha256"]
+                    or row.get("native_network_terminal_only_log_sha256")!=proof["log_sha256"]
+                    or row.get("upstream_billing_outcome_unverified") is not True
+                    or row.get("native_batch_verified_followon") is not True
+                    or row.get("no_automatic_original_prompt_retry") is True
+                    or int(row.get(RECOVERY_KEY) or 0)!=0):
+                raise EvidenceDenied("EP14_FIRST_TERMINAL_AUDIT_OR_FOLLOWON_UNVERIFIED")
+            _commit_terminal(ep,proof)  # idempotent, never refunds prior Attempt
+            row[RECOVERY_KEY]=1
+            row["native_network_source_technical_attempts"]=int(row.get("attempts") or 0)
+            row["native_network_terminal_receipt_sha256"]=proof["receipt_sha256"]
+            row["native_network_terminal_original_log_sha256"]=proof["log_sha256"]
+            row["native_network_original_log_path"]=proof["log"].relative_to(ep).as_posix()
+            row["native_network_duplicate_billing_risk_ack"]=True
+            row["upstream_billing_outcome_unverified"]=True
+            row["status"]="queued"
+            row["attempts"]=0
+            row["last_error"]=None
+            row.pop("external_block",None)
+            row.pop("technical_failure_code",None)
+            row.pop("completed_at",None)
+            row.pop("execution",None)
+            scheduler_core.save_queue(ep,q)
+            return {"status":"PASS","frame":frame,"queued_for_attempt_index":2,
+                    "provider_calls":0,"new_attempts_reserved":0,
+                    "remaining_paid_attempt_budget":1,
+                    "first_attempt_receipt_sha256":proof["receipt_sha256"],
+                    "upstream_billing_outcome_unverified":True}
+    except scheduler_core.QueueMutationBusy:
+        return {"status":"BLOCKED","reason":"QUEUE_MUTATION_BUSY"}
+    except EvidenceDenied as exc:
+        return {"status":"BLOCKED","reason":str(exc)}
+
+
 def rearm_one(ep: Path, frame: int, *, acknowledged: bool = False) -> dict:
     """Terminalize original local network failure, then queue only Attempt 2."""
     if not acknowledged:
         return {"status": "BLOCKED", "reason": "DUPLICATE_UPSTREAM_COST_RISK_ACK_REQUIRED"}
     ep = Path(ep).resolve()
     if _ep14_tls_scope(ep, frame):
-        return {"status": "BLOCKED", "reason": "EP14_TERMINAL_AUDIT_ONLY_NO_PAID_REARM"}
+        return _rearm_ep14_one(ep,frame)
     try:
         with scheduler_core.queue_transaction(ep):
             q = scheduler_core.load_queue(ep)
@@ -423,6 +481,7 @@ def rearm_one(ep: Path, frame: int, *, acknowledged: bool = False) -> dict:
             row["native_network_source_technical_attempts"] = int(row.get("attempts") or 0)
             row["native_network_terminal_receipt_sha256"] = proof["receipt_sha256"]
             row["native_network_terminal_original_log_sha256"] = proof["log_sha256"]
+            row["native_network_original_log_path"] = proof["log"].relative_to(ep).as_posix()
             row["attempts"] = 0
             row["status"] = "queued"
             row["last_error"] = None
@@ -451,15 +510,24 @@ def remaining_second_attempt(ep: Path, row: dict) -> bool:
     try:
         ep = Path(ep).resolve()
         frame = int(row.get("frame") or 0)
-        if (ep.name != "13_失物归还的那扇门"
-                or ep.parent.name != "00_独立篇"
-                or not ep.is_relative_to(ROOT / "episodes")
-                or frame not in (5, 10, 15)
+        ep14=_ep14_tls_scope(ep,frame)
+        ep13=(ep.name=="13_失物归还的那扇门"
+              and ep.parent.name=="00_独立篇"
+              and ep.is_relative_to(ROOT / "episodes")
+              and frame in (5,10,15))
+        if (not (ep13 or ep14)
                 or row.get("scope") != "batch" or row.get("kind") != "original"
                 or row.get("status") not in {"blocked","queued","running","generating"}
                 or row.get("native_batch_verified_followon") is not True
                 or int(row.get(RECOVERY_KEY) or 0) != 1
                 or int(row.get("native_network_capability_requeue_count") or 0) > 1
+                or (ep14 and (
+                    row.get("native_network_duplicate_billing_risk_ack") is not True
+                    or row.get("upstream_billing_outcome_unverified") is not True
+                    or row.get("native_network_terminal_only_receipt_sha256") !=
+                       row.get("native_network_terminal_receipt_sha256")
+                    or row.get("native_network_terminal_only_log_sha256") !=
+                       row.get("native_network_terminal_original_log_sha256")))
                 or row.get("output_path") or row.get("candidate_output_path")):
             return False
         receipt_sha = str(row.get("native_network_terminal_receipt_sha256") or "")
@@ -468,11 +536,35 @@ def remaining_second_attempt(ep: Path, row: dict) -> bool:
             return False
         if list((ep / "media/raw").glob(f"{frame:02d}-*.png")):
             return False
-        _, original_output = _log_and_queue(ep, row)
-        if _hash(original_output) != log_sha:
+        # Source evidence is independent of current queue state: a successfully
+        # rearmed row is no longer external_blocked/IMAGE_BACKEND_ERROR.
+        log_rel=str(row.get("native_network_original_log_path") or "")
+        if log_rel:
+            original_log=(ep/log_rel).resolve()
+            if (not original_log.is_relative_to(ep/"meta/image-workers")
+                    or not original_log.name.startswith(f"{frame:02d}-")
+                    or original_log.suffix!=".jsonl"
+                    or not original_log.is_file()):
+                return False
+        else:
+            # Backward-compatible historical Episode13 admission only.
+            # New Episode14 MUST pin its original log path at rearm.
+            if ep14:
+                return False
+            original_logs=list((ep / "meta/image-workers").glob(f"{frame:02d}-*.jsonl"))
+            if len(original_logs)!=1 or not original_logs[0].is_file():
+                return False
+            original_log=original_logs[0]
+        original_output=original_log.read_bytes()
+        if (_hash(original_output)!=log_sha
+                or not (_ep14_tls_terminal_log(original_output,frame)
+                        if ep14 else _network_failed_log(original_output))):
             return False
-        original_runner = _matched_receipt(original_output)
-        if original_runner["receipt_sha256"] != receipt_sha:
+        original_runner=_matched_receipt(original_output)
+        if original_runner["receipt_sha256"]!=receipt_sha:
+            return False
+        if ep14 and any(original_runner.get(k)!=EP14_TLS_TERMINAL[frame][k]
+                        for k in ("request_id","receipt_sha256","log_sha256")):
             return False
         key = logical_asset_identity.frame_asset_key(ep, frame)
         state = authority.load_asset_state(ep, key) or {}
@@ -510,6 +602,13 @@ def remaining_second_attempt(ep: Path, row: dict) -> bool:
             and context.get("network_failure_runner_receipt_sha256") == receipt_sha
             and context.get("network_failure_original_log_sha256") == log_sha
             and context.get("upstream_billing_outcome_unverified") is True
+            and (not ep14 or (
+                context.get("network_failure_original_transaction_id")
+                and context.get("frame_contract_sha256")==
+                    (row.get("frame_contract") or {}).get("contract_sha256")
+                and context.get("prompt_package_sha256")==
+                    (row.get("prompt_package") or {}).get("package_sha256")
+            ))
         )
     except Exception:
         return False
