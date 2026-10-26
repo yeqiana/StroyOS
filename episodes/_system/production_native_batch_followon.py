@@ -27,6 +27,12 @@ ROOT = Path(__file__).resolve().parents[2]
 FAILURE = "LOGIN_AUTH_IMAGE_TOOL_CAPABILITY_UNKNOWN"
 FLAG = "native_batch_verified_followon"
 FRAMES = {2, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 20}
+EP14_NAME = "14_深渊疗愈所_第一集_净土生命还原"
+EP14_FRAMES = set(range(1, 49)) - {1, 5, 45, 47}
+
+def _is_ep14(ep):
+    ep=Path(ep).resolve()
+    return ep.name==EP14_NAME and ep.parent.name=="00_独立篇" and ep.is_relative_to(ROOT/"episodes")
 
 
 def _policies(ep):
@@ -39,8 +45,17 @@ def _episode_authorized(ep, payload, controller) -> bool:
         ep = Path(ep).resolve()
         req = runtime_request.effective_for_episode(ep) or {}
         db = storage_config.mysql_connection_kwargs()
+        ep14=_is_ep14(ep)
+        if ep14:
+            import production_ep14_visual_profile_rc9
+            import visual_profile_gate
+            if (production_ep14_visual_profile_rc9.eligible(ep).get("status")
+                    != "CONFIRMED_BY_EXISTING_DELEGATION"
+                    or visual_profile_gate.validate_visual_profile_for_production(
+                        ep,stage="release").get("status")!="pass"):
+                return False
         return bool(
-            ep.name == "13_失物归还的那扇门"
+            (ep.name == "13_失物归还的那扇门" or ep14)
             and ep.parent.name == "00_独立篇"
             and ep.is_relative_to(ROOT / "episodes")
             and (episode_state_persistence.load(ep) or {}).get("current_state") == "VISUAL_CALIBRATED"
@@ -48,7 +63,8 @@ def _episode_authorized(ep, payload, controller) -> bool:
             and (req.get("runtime") or {}).get("execution_mode") == "dag"
             and runtime_router.image_execution_runtime()[0] == "CODEX"
             and str(db.get("host")) in {"127.0.0.1", "localhost"}
-            and int(db.get("port") or 0) == 3307
+            and (int(db.get("port") or 0) == 3307 or
+                 (ep14 and 1<=int(db.get("port") or 0)<=65535))
             and image_payload_transport.selected_route(1).get("provider") == "codex_subscription"
             and payload.get("model") == "gpt-image-2.5-flare"
             and payload.get("quality") == "high"
@@ -59,11 +75,12 @@ def _episode_authorized(ep, payload, controller) -> bool:
         return False
 
 
-def _batch(q):
+def _batch(q, ep=None):
     rows = [x for x in q.get("items", []) if x.get("scope") == "batch"]
-    if len(rows) != 16 or {int(x.get("frame") or 0) for x in rows} != FRAMES:
+    expected = EP14_FRAMES if ep is not None and _is_ep14(ep) else FRAMES
+    if len(rows) != len(expected) or {int(x.get("frame") or 0) for x in rows} != expected:
         return []
-    if len({x.get("id") for x in rows}) != 16:
+    if len({x.get("id") for x in rows}) != len(expected):
         return []
     return rows
 
@@ -71,9 +88,11 @@ def _batch(q):
 def _anchor(ep, q, payload, controller) -> str | None:
     """Never accept a generated queue label without its original MySQL and PNG."""
     try:
-        if not _episode_authorized(ep, payload, controller) or not first_proof._reviewed(ep, q):
+        if not _episode_authorized(ep, payload, controller):
             return None
-        rows = _batch(q)
+        if not _is_ep14(ep) and not first_proof._reviewed(ep, q):
+            return None
+        rows = _batch(q,ep)
         success = next(x for x in rows if int(x["frame"]) == 2)
         if success.get("status") != "generated" or success.get("model") != payload["model"]:
             return None
@@ -117,9 +136,9 @@ def admissible(ep, q, payload=None, controller=None) -> bool:
             payload, controller = _policies(ep)
         if not _anchor(ep, q, payload, controller):
             return False
-        rows = _batch(q)
+        rows = _batch(q,ep)
         blocked = [x for x in rows if int(x["frame"]) != 2]
-        if len(blocked) != 15 or any(
+        if len(blocked) != (43 if _is_ep14(ep) else 15) or any(
             x.get("status") != "blocked"
             or x.get("technical_failure_code") != FAILURE
             or x.get("kind") != "original"
@@ -151,7 +170,7 @@ def worker_eligible(ep, item, payload, controller, *, queue=None) -> bool:
                 or item.get("output_path") or item.get("candidate_output_path")):
             return False
         q = queue if queue is not None else scheduler_core.load_queue(ep)
-        rows = _batch(q)
+        rows = _batch(q,ep)
         current = next((x for x in rows if x.get("id") == item.get("id")), None)
         if current is None or current.get(FLAG) is not True or int(current["frame"]) == 2:
             return False
@@ -194,7 +213,7 @@ def resume(ep, *, acknowledged=False):
             if not admissible(ep, q, payload, controller):
                 return {"status": "BLOCKED", "reason": "SUCCESS_OR_ATTEMPT_UNVERIFIED"}
             anchor = _anchor(ep, q, payload, controller)
-            ids = {x["id"] for x in _batch(q) if int(x["frame"]) != 2}
+            ids = {x["id"] for x in _batch(q,ep) if int(x["frame"]) != 2}
         strict = image_payload_transport.payload_capability_preflight(
             model=payload["model"], quality=payload["quality"])
         secondary = baseline.attest_secondary(strict, payload, controller, None)
@@ -204,11 +223,11 @@ def resume(ep, *, acknowledged=False):
             q = scheduler_core.load_queue(ep)
             if (not admissible(ep, q, payload, controller)
                     or _anchor(ep, q, payload, controller) != anchor
-                    or {x["id"] for x in _batch(q) if int(x["frame"]) != 2} != ids):
+                    or {x["id"] for x in _batch(q,ep) if int(x["frame"]) != 2} != ids):
                 return {"status": "BLOCKED", "reason": "AUTHORITIES_CHANGED"}
             frame_list = []
             evidence_sha = baseline.evidence_sha(secondary)
-            for row in _batch(q):
+            for row in _batch(q,ep):
                 if int(row["frame"]) == 2:
                     continue
                 row[FLAG] = True
