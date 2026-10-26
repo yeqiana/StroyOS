@@ -196,3 +196,23 @@ def test_rc24_proof_only_after_exact_two_acks_and_safety_frames_preserved(ep,mon
     good.return_value=True
     d["record"]["log"]=str(ep/"different-driver.log")
     assert retry.verify_rearmed(ep)["status"]=="BLOCKED"
+
+
+
+def test_proof_cli_standalone_python_import_without_repo_pythonpath(tmp_path):
+    import os
+    import subprocess
+    env=os.environ.copy()
+    env.pop("PYTHONPATH",None)
+    entry=ROOT/"episodes/_system/production_ep14_network_attempt2_reentry.py"
+    result=subprocess.run(
+        [sys.executable,str(entry),"--episode",str(tmp_path),"--verify-rearmed"],
+        cwd=tmp_path,env=env,capture_output=True,text=True,
+        encoding="utf8",errors="replace",timeout=35,
+    )
+    assert result.returncode==2
+    assert result.stderr==""
+    data=json.loads(result.stdout)
+    assert data["status"]=="BLOCKED"
+    assert data["reason"]=="EPISODE_NOT_IN_EXACT_SCOPE"
+    assert data["model_calls"]==data["sql_writes"]==0

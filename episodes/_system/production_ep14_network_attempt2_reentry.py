@@ -4,9 +4,20 @@ ONLY Episode14 F020/F027. Does not generate, restart, grant extra
 Attempt or release the three unrelated safety-refused frames.
 """
 from __future__ import annotations
+import sys
+from pathlib import Path
+
+# This script is spawned as a standalone CLI by storyos_production_env.py.
+# The script directory is episodes/_system, not the repository root. Install
+# canonical package paths BEFORE imports can resolve Python's stdlib
+# `platform` in place of StoryOS's platform.repository package.
+ROOT=Path(__file__).resolve().parents[2]
+for package_dir in (ROOT/"scripts", ROOT):
+    if str(package_dir) not in sys.path:
+        sys.path.insert(0,str(package_dir))
+
 import hashlib
 import json
-from pathlib import Path
 
 import generation_attempt_authority as attempts
 import logical_asset_identity
@@ -15,7 +26,6 @@ import runtime_driver
 import scheduler_core
 import storyos_driver_exit_remediation as exit_remediation
 
-ROOT=Path(__file__).resolve().parents[2]
 EP=ROOT/"episodes"/"00_独立篇"/"14_深渊疗愈所_第一集_净土生命还原"
 OLD_DRIVER_SHA="1ff8f3103600802d7dfb40041142f3937bc1f9973cf3fb08dae4fe9d809c7620"
 OLD_LOG_SHA="3e92fd6f78bfb4d4ede6733fcbcfa839f185e0469e383cff611cb8fc80e9cf33"
