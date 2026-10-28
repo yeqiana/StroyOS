@@ -112,6 +112,7 @@ def inspect_episode(ep:Path)->dict:
     if d.get("liveness")!="DEAD" or int(d.get("pid") or 0)!=0:
         raise ValueError("DRIVER_MUST_BE_STOPPED_FOR_REVIEW")
     materials=[]
+    staged_rows=[]
     for frame in sorted(FRAMES):
         row=next(x for x in rows if int(x.get("frame") or 0)==frame)
         key=logical_asset_identity.frame_asset_key(ep,frame)
@@ -125,10 +126,15 @@ def inspect_episode(ep:Path)->dict:
             or old.get("status")!="FAILED_AFTER_DISPATCH"
             or old.get("failure_class")!="IMAGE_PROVIDER_SAFETY_REJECTED"):
             raise ValueError("SAFETY_REVIEW_OR_ATTEMPT_HISTORY_DRIFT")
-        materials.append(draft_binding(staging.stage(ep,frame)))
+        staged=staging.stage(ep,frame)
+        staged_rows.append(staged)
+        materials.append(draft_binding(staged))
+    import production_ep14_independent_review_evidence as evidence
+    reviewed=evidence.inspect(ep,staged_rows)
     return {
         "schema_version":SCHEMA,
         "status":"REVIEW_HANDOFF_READY_NOT_PRODUCTION_READY",
+        "independent_text_review_evidence":reviewed,
         "frames":materials,
         "bundle_sha256":_json_sha({str(x["frame"]):x["binding_proposal_sha256"] for x in materials}),
         "historical_generated_frames_preserved":45,
