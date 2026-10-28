@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -16,7 +17,7 @@ TRACKED_CACHE_MARKERS = (
 )
 NON_LIVE_DIRS = {
     "archive", ".git", "node_modules", "__pycache__", ".pytest_cache",
-    ".mypy_cache", ".ruff_cache", ".storyos_cache", ".codex-run",
+    ".mypy_cache", ".ruff_cache", ".storyos_cache", ".codex-run", ".storyos-tmp", ".storyos",
 }
 
 
@@ -26,16 +27,19 @@ def _is_non_live(path: Path) -> bool:
 
 def test_live_executable_and_config_files_have_no_utf8_bom():
     bad = []
-    for path in ROOT.rglob("*"):
-        if not path.is_file() or path.suffix.lower() not in LIVE_BOM_EXTENSIONS or _is_non_live(path):
-            continue
-        if "__pycache__" in path.parts:
-            continue
-        try:
-            if path.read_bytes()[:3] == b"\xef\xbb\xbf":
-                bad.append(path.relative_to(ROOT).as_posix())
-        except OSError:
-            continue
+    for folder, dirs, files in os.walk(ROOT):
+        # Prune generated and historical worktrees before descending. A Path.rglob
+        # traversal inspects their descendants even if later skipped.
+        dirs[:] = [item for item in dirs if item not in NON_LIVE_DIRS]
+        for name in files:
+            path = Path(folder) / name
+            if path.suffix.lower() not in LIVE_BOM_EXTENSIONS:
+                continue
+            try:
+                if path.read_bytes()[:3] == b"\xef\xbb\xbf":
+                    bad.append(path.relative_to(ROOT).as_posix())
+            except OSError:
+                continue
     assert bad == []
 
 

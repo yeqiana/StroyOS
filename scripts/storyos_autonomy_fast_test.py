@@ -66,7 +66,6 @@ SLOTS = {
         "tests/system/test_native_provider_safety_classification.py",
         "tests/system/test_runner_host_loop_v262.py::NextActionAutonomousBatchTests::test_preserved_native_raw_precedes_unknown_backend_block_without_retry",
         "tests/system/test_runner_host_loop_v262.py::NextActionAutonomousBatchTests::test_verified_first_batch_succeeded_unblocks_history_via_machine_action",
-        "tests/system/test_runner_host_loop_v262.py::NextActionAutonomousBatchTests::test_native_frame02_proof_preempts_other_capability_blocks_only_when_valid",
         "tests/system/test_native_driver_carrier_timeout.py",
         "tests/system/test_image_capability_preflight_failure_taxonomy.py",
         "tests/system/test_login_auth_payload_transport.py",

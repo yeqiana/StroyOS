@@ -67,6 +67,15 @@ def _stage_entry(ep:Path,entry:dict,*,reference_names:tuple[str,...]=(),
         raise ValueError("REJECTED_ORIGINAL_STORYBOARD_LEAK_IN_WORKER_PROMPT")
     if "NOT YET AUTHORIZED" not in rendered:
         raise ValueError("UNAPPROVED_RENDER_CONTRACT_MUST_REMAIN_VISIBLE")
+    overlay=entry.get("editorial_overlay_contract")
+    timing=entry.get("editorial_timing_cue")
+    if overlay is not None:
+        if (not isinstance(overlay,dict) or overlay.get("render_in_image_model") is not False
+                or not isinstance(overlay.get("lines"),list)
+                or any(not isinstance(line,str) or not line.strip() for line in overlay["lines"])):
+            raise ValueError("REVIEW_EDITORIAL_OVERLAY_INVALID")
+    if timing is not None and not isinstance(timing,dict):
+        raise ValueError("REVIEW_EDITORIAL_TIMING_INVALID")
     material={
         "schema_version":SCHEMA,
         "frame":int(frame),
@@ -79,6 +88,8 @@ def _stage_entry(ep:Path,entry:dict,*,reference_names:tuple[str,...]=(),
         "model":model,"quality":quality,"canvas":CANVAS,
         "strict_model":bool(model_policy.get("strict_model")),
         "reference_names":[x.name for x in refs],
+        "editorial_overlay_contract_sha256":canonical_sha(overlay) if overlay is not None else None,
+        "editorial_timing_cue_sha256":canonical_sha(timing) if timing is not None else None,
     }
     return {
         **material,
@@ -90,6 +101,8 @@ def _stage_entry(ep:Path,entry:dict,*,reference_names:tuple[str,...]=(),
         "scene_prompt":entry["proposed_scene_prompt"],
         "full_native_worker_prompt":rendered,
         "story_beats_to_preserve":entry["preserved_story_beats"],
+        "editorial_overlay_contract":overlay,
+        "editorial_timing_cue":timing,
         "independent_review_requirements":[
             "verify_original_episode_story_semantics_and_role_consistency",
             "verify_provider_content_policy_for_entire_native_prompt",

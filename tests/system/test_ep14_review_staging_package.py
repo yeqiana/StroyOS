@@ -125,3 +125,51 @@ def test_offline_saved_snapshot_sha_bound_and_non_authoritative(fixture,monkeypa
     path.write_bytes(payload+b"tampered")
     with pytest.raises(ValueError,match="IMMUTABLE_REVIEW_SNAPSHOT"):
         staged.stage_all_offline(ep)
+
+def test_review_packet_includes_sha_bound_editorial_overlays_and_timing(fixture, monkeypatch):
+    ep,_ = fixture
+    original = staged.treatment.compile_candidate
+    overlay = {
+        "render_in_image_model": False,
+        "source": "docs/storyboard.md Frame 48",
+        "lines": [
+            "福主林岚，骨重八斤七两。",
+            "堪作中堂主梁，名录已入。",
+            "明日下元醮子时，受戒入桩。",
+        ],
+    }
+    def with_editorial(path, frame):
+        result = original(path, frame)
+        if frame == 48:
+            result["editorial_overlay_contract"] = copy.deepcopy(overlay)
+        if frame == 29:
+            result["editorial_timing_cue"] = {
+                "subjective_insert_intended_duration_ms": 100,
+                "production_format": "image_and_text_not_video",
+            }
+        return result
+    monkeypatch.setattr(staged.treatment, "compile_candidate", with_editorial)
+    a = staged.stage_all(ep)
+    row48 = next(r for r in a["frames"] if r["frame"] == 48)
+    row29 = next(r for r in a["frames"] if r["frame"] == 29)
+    assert row48["editorial_overlay_contract"]["lines"] == overlay["lines"]
+    assert row48["editorial_overlay_contract_sha256"] == staged.canonical_sha(overlay)
+    assert row29["editorial_timing_cue"]["subjective_insert_intended_duration_ms"] == 100
+    assert not a["production_dispatch_authorized"]
+    assert a["paid_generation_calls"] == a["mysql_writes"] == 0
+    overlay["lines"][1] += "。"
+    b = staged.stage_all(ep)
+    assert a["bundle_sha256"] != b["bundle_sha256"]  # exact editorial bytes are SHA-bound
+
+def test_unsafe_overlay_cannot_be_staged(fixture, monkeypatch):
+    ep,_ = fixture
+    original = staged.treatment.compile_candidate
+    def unsafe(path, frame):
+        entry = original(path, frame)
+        entry["editorial_overlay_contract"] = {
+            "render_in_image_model": True, "lines": ["不要用模型绘制文字"]
+        }
+        return entry
+    monkeypatch.setattr(staged.treatment, "compile_candidate", unsafe)
+    with pytest.raises(ValueError, match="REVIEW_EDITORIAL_OVERLAY_INVALID"):
+        staged.stage(ep, 48)
