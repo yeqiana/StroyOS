@@ -192,3 +192,125 @@ def test_staged_metadata_never_overrides_image_worker_safety_refusal(live, monke
                         "_is_ep14", lambda path: True)
     for item in data["q"]["items"][:3]:
         assert image_worker_pool._content_revision_dispatch_denied(ep, item) is True
+
+
+def _mock_bundle_for_worker(live, monkeypatch):
+    ep, data, report, initial = live
+    report["noncanonical_controller_output_review_evidence"] = {"status":"VERIFIED_NONCANONICAL_CONTROLLER_REVIEW_NOT_PRODUCTION_ADMISSION","frames":[{"frame":f} for f in (9,29,48)]}
+    import production_ep14_render_package as render_pkg
+    import production_ep14_review_staging_package as candidate_stage
+    monkeypatch.setattr(candidate_stage, "stage", lambda episode, frame: {"frame": frame})
+    def bundle(episode, stages, variants, controller_review):
+        assert [x["frame"] for x in stages] == [9, 29, 48]
+        return {
+            "bundle_sha256": report["reviewed_render_prompt_package_bundle_sha256"],
+            "frames": [
+                {
+                    "frame": f"{f:02d}",
+                    "package_sha256": sh(f"new-pkg-{f}"),
+                    "scene_prompt": f"revised safe scene {f}",
+                    "frame_prompt_contract": "NOT YET AUTHORIZED",
+                    "canonical_activation": False,
+                    "production_dispatch_authorized": False,
+                    "storyboard_source": {"render_original_text_injected": False},
+                }
+                for f in (9, 29, 48)
+            ],
+        }
+    monkeypatch.setattr(render_pkg, "compile_bundle", bundle)
+    return ep, data, report, initial
+
+
+@pytest.mark.parametrize("frame", [9, 29, 48])
+def test_worker_reads_exact_staged_render_package_but_no_dispatch(live, monkeypatch, frame):
+    ep, data, _, _ = _mock_bundle_for_worker(live, monkeypatch)
+    stage_once(ep)
+    item = next(x for x in data["q"]["items"] if x.get("frame") == frame)
+    preview = staging.preview_worker_source(ep, item)
+    assert preview["status"] == "STAGED_BLOCKED_RENDER_PACKAGE_VERIFIED"
+    assert preview["frame"] == frame
+    assert preview["source"]["scene_prompt"] == f"revised safe scene {frame}"
+    assert preview["source"]["package_sha256"] == sh(f"new-pkg-{frame}")
+    assert preview["source"]["storyboard_source"]["render_original_text_injected"] is False
+    assert preview["production_dispatch_authorized"] is False
+    assert not preview["canonical_render_activated"]
+    assert data["saves"] == 1
+    with pytest.raises(staging.StageDenied, match="CANONICAL_RENDER_ACTIVATION"):
+        staging.load_for_dispatch(ep, item)
+    assert data["saves"] == 1
+
+
+@pytest.mark.parametrize("drift", [
+    "queue_bundle_changed", "row_stage_changed", "stale_worker_snapshot",
+    "old_package_changed", "frame_status_forged", "stage_authority_forged",
+    "whole_bundle_changed", "per_frame_package_changed", "missing_staged_frame",
+])
+def test_worker_rejects_stale_or_forged_new_render_version(live, monkeypatch, drift):
+    ep, data, report, _ = _mock_bundle_for_worker(live, monkeypatch)
+    stage_once(ep)
+    item = deepcopy(data["q"]["items"][0])
+    if drift == "queue_bundle_changed":
+        data["q"][staging.QUEUE_KEY]["bundle_sha256"] = "a" * 64
+    elif drift == "row_stage_changed":
+        data["q"]["items"][0][staging.ROW_KEY]["render_package_sha256"] = "0" * 64
+    elif drift == "stale_worker_snapshot":
+        item["id"] = "stale-id"
+    elif drift == "old_package_changed":
+        item["prompt_package"]["package_sha256"] = "0" * 64
+    elif drift == "frame_status_forged":
+        item["status"] = "queued"
+    elif drift == "stage_authority_forged":
+        data["q"][staging.QUEUE_KEY]["production_dispatch_authorized"] = True
+    elif drift == "whole_bundle_changed":
+        report["reviewed_render_prompt_package_bundle_sha256"] = "b" * 64
+    elif drift == "per_frame_package_changed":
+        report["frames"][0]["reviewed_render_prompt_package_proposal_sha256"] = "c" * 64
+    elif drift == "missing_staged_frame":
+        del data["q"]["items"][1][staging.ROW_KEY]
+    with pytest.raises(staging.StageDenied):
+        staging.preview_worker_source(ep, item)
+    assert data["saves"] == 1
+
+
+def test_image_worker_never_falls_back_to_original_package_for_ep14(live, monkeypatch):
+    ep, data, _, _ = _mock_bundle_for_worker(live, monkeypatch)
+    stage_once(ep)
+    import image_worker_pool as worker
+    monkeypatch.setattr(worker.production_native_batch_followon,
+                        "_is_ep14", lambda _: True)
+    monkeypatch.setattr(worker.prompt_package, "compile_frame",
+                        lambda *a, **kw: pytest.fail("OLD_FRAME_CONTRACT_FALLBACK"))
+    for item in data["q"]["items"][:3]:
+        with pytest.raises(staging.StageDenied, match="CANONICAL_RENDER_ACTIVATION"):
+            worker._worker_prompt_package(ep, item, Path(item["prompt_file"]))
+
+
+def test_non_ep14_worker_still_uses_standard_prompt_package(live, monkeypatch):
+    ep, data, _, _ = live
+    import image_worker_pool as worker
+    monkeypatch.setattr(worker.production_native_batch_followon,
+                        "_is_ep14", lambda _: False)
+    seen = []
+    def compile_frame(*args, **kwargs):
+        seen.append((args, kwargs))
+        return {"package_sha256": sh("regular")}
+    monkeypatch.setattr(worker.prompt_package, "compile_frame", compile_frame)
+    row = data["q"]["items"][0]
+    result = worker._worker_prompt_package(ep, row, Path(row["prompt_file"]))
+    assert result["package_sha256"] == sh("regular")
+    assert seen[0][1] == {"write": True}
+
+
+def test_live_refused_worker_cannot_reserve_attempt_with_staged_metadata(live, monkeypatch):
+    ep, data, _, _ = _mock_bundle_for_worker(live, monkeypatch)
+    stage_once(ep)
+    import image_worker_pool as worker
+    monkeypatch.setattr(worker.production_native_batch_followon,
+                        "_is_ep14", lambda _: True)
+    def should_not_be_called(*args, **kwargs):
+        pytest.fail("PROVIDER_OR_PAID_ATTEMPT_CALLED")
+    monkeypatch.setattr(worker.global_image_capacity, "image_permits", should_not_be_called)
+    for item in data["q"]["items"][:3]:
+        result = worker.execute(ep, item, timeout=1, codex=None)
+        assert result["returncode"] == 93
+        assert result["image_attempt_reserve_called"] is False

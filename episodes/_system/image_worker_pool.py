@@ -38,6 +38,7 @@ import production_native_baseline_proof
 import production_native_batch_reentry
 import production_native_batch_followon
 import production_native_repair_pilot
+import production_ep14_render_queue_stage as ep14_render_stage
 
 MODE="python_warm_pool_codex_ephemeral"
 CODEX_SESSION_REUSE=False
@@ -228,6 +229,22 @@ def _content_revision_dispatch_denied(ep, item) -> bool:
         return True
 
 
+def _worker_prompt_package(ep, item, prompt_path):
+    """Select only the canonical Worker package; no fallback for EP14 repairs.
+
+    Once the three-frame render variant is activated, its validated package
+    must be loaded here instead of recompiling the safety-refused original.
+    Preview-only or unverified versions raise before Controller/Provider calls.
+    """
+    ep=Path(ep).resolve()
+    frame=int(item.get("frame") or 0)
+    if (production_native_batch_followon._is_ep14(ep)
+            and frame in {9,29,48}):
+        import production_ep14_render_queue_stage as revisions
+        return revisions.load_for_dispatch(ep,item)
+    return prompt_package.compile_frame(ep,frame,prompt_path,write=True)
+
+
 # Every canonical image worker shares five machine-wide Provider slots.
 # ContextDecorator acquires before this function can reserve any Attempt.
 def execute(ep,item,timeout,codex):
@@ -267,7 +284,16 @@ def execute(ep,item,timeout,codex):
         effective_model_policy=model_policy_for_item(ep,item)
         model=str(effective_model_policy["model"])
         quality=str(effective_model_policy["quality"])
-        package=prompt_package.compile_frame(ep,frame,prompt,write=True)
+        try:
+            package=_worker_prompt_package(ep,item,prompt)
+        except ep14_render_stage.StageDenied as exc:
+            message="EP14_RENDER_PACKAGE_NOT_CANONICAL: "+str(exc)
+            result={"returncode":93,"stdout":message,"payload":None,"output":None,
+                    "log":log,"attempt":attempt,"scout":None,
+                    "image_attempt_reserve_called":False}
+            production_recovery.write_lifecycle(
+                ep,item,"BLOCKED",worker_pid=os.getpid(),error=message,result=result)
+            return result
         visual=backend.compile_prompt_contract(ep)
         blocked=runtime_circuit_breaker.blocking(ep,"image")
         if blocked:
