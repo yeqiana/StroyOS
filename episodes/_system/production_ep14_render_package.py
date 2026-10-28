@@ -99,7 +99,15 @@ def compile_preview(ep: Path, staged: dict, variant: dict,
         "schema_version": 1, "frame": f"{frame:02d}",
         "scene_prompt": candidate_scene,
         "scene_prompt_sha256": _hash_bytes(candidate_scene.encode("utf8")),
-        "storyboard_source": storyboard,
+        # The original storyboard text may contain the provider-refused
+        # instruction. Only its immutable identity survives into Controller
+        # input; the historical authored source remains untouched on disk.
+        "storyboard_source": {
+            "sha256": original_frame_sha,
+            "frame": f"{frame:02d}",
+            "authority": "LOCKED_ORIGINAL_STORYBOARD_HASH_ONLY",
+            "render_original_text_injected": False,
+        },
         "frame_contract_sha256": original_sha,
         "frame_prompt_contract": render_text,
         "image_model": model,

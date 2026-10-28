@@ -101,6 +101,10 @@ def test_package_is_derived_without_original_storyboard_render_leak(sample):
         assert "NOT YET AUTHORIZED" in pkg["frame_prompt_contract"]
         assert "ALTERNATIVE VISUAL TREATMENT" in pkg["frame_prompt_contract"]
         assert pkg["storyboard_source"]["sha256"] == s["original_storyboard_excerpt_sha256"]
+        assert "text" not in pkg["storyboard_source"]
+        assert pkg["storyboard_source"]["render_original_text_injected"] is False
+        assert pkg["storyboard_source"]["authority"] == "LOCKED_ORIGINAL_STORYBOARD_HASH_ONLY"
+        assert "LOCKED ORIGINAL STORYBOARD FRAME" not in str(pkg["storyboard_source"])
         assert pkg["source_prompt"] == "EP14_DERIVED_RENDER_VARIANT_NONCANONICAL"
         assert pkg["status"] == "REVIEWED_PROPOSED_PACKAGE_NOT_ACTIVATED"
         assert pkg["canonical_activation"] is False
