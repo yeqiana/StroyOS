@@ -157,3 +157,65 @@ def test_missing_stale_or_rejected_native_review_cannot_mark_text_step():
         result = relock.attach_verified_review_evidence(materials, sources)
         assert all("verified_text_review_receipt" not in m for m in result)
         assert all(not m["production_dispatch_authorized"] for m in result)
+
+
+def test_noncanonical_controller_receipt_attaches_per_version_without_authorization():
+    materials = [relock.draft_binding(preview(frame)) for frame in (9, 29, 48)]
+    rows = []
+    for m in materials:
+        rows.append({
+            "frame": m["frame"],
+            "scope": "PREVIEW_ONLY_NOT_CANONICAL",
+            "subject_full_native_worker_prompt_sha256": m["producer_preview_prompt_sha256"],
+            "controller_draft_scene_sha256": "1" * 64,
+            "controller_draft_runner_log_sha256": "2" * 64,
+            "independent_review_request_sha256": "3" * 64,
+            "independent_review_runner_log_sha256": "4" * 64,
+        })
+    receipt = {
+        "status": "VERIFIED_NONCANONICAL_CONTROLLER_REVIEW_NOT_PRODUCTION_ADMISSION",
+        "reviewed_frame_count": 3,
+        "production_dispatch_authorized": False,
+        "frames": rows,
+    }
+    bound = relock.attach_verified_controller_draft_receipts(materials, receipt)
+    for item in bound:
+        row = item["verified_noncanonical_controller_draft_receipt"]
+        assert row["render_variant_sha256"] == item["render_variant_sha256"]
+        assert row["reviewed_native_worker_prompt_sha256"] == item["producer_preview_prompt_sha256"]
+        assert len(row["binding_sha256"]) == 64
+        assert not row["production_dispatch_authorized"]
+        assert not item["production_dispatch_authorized"]
+        assert not item["required_independent_review"]["approved"]
+
+
+@pytest.mark.parametrize("drift", ["sha", "scope", "status", "review_count", "authority", "roster"])
+def test_controller_preview_drift_does_not_bind_to_render_variant(drift):
+    materials = [relock.draft_binding(preview(frame)) for frame in (9, 29, 48)]
+    rows = [{
+        "frame": m["frame"], "scope": "PREVIEW_ONLY_NOT_CANONICAL",
+        "subject_full_native_worker_prompt_sha256": m["producer_preview_prompt_sha256"],
+        "controller_draft_scene_sha256": "1" * 64,
+        "controller_draft_runner_log_sha256": "2" * 64,
+        "independent_review_request_sha256": "3" * 64,
+        "independent_review_runner_log_sha256": "4" * 64,
+    } for m in materials]
+    review = {
+        "status": "VERIFIED_NONCANONICAL_CONTROLLER_REVIEW_NOT_PRODUCTION_ADMISSION",
+        "reviewed_frame_count": 3, "production_dispatch_authorized": False, "frames": rows,
+    }
+    if drift == "sha":
+        rows[2]["controller_draft_runner_log_sha256"] = "0" * 63
+    elif drift == "scope":
+        rows[0]["scope"] = "CANONICAL"
+    elif drift == "status":
+        review["status"] = "BLOCKED"
+    elif drift == "review_count":
+        review["reviewed_frame_count"] = 2
+    elif drift == "authority":
+        review["production_dispatch_authorized"] = True
+    elif drift == "roster":
+        rows[2]["frame"] = 47
+    result = relock.attach_verified_controller_draft_receipts(materials, review)
+    assert all("verified_noncanonical_controller_draft_receipt" not in m for m in result)
+    assert all(not m["production_dispatch_authorized"] for m in result)

@@ -148,6 +148,58 @@ def attach_verified_review_evidence(materials: list[dict], reviewed: dict) -> li
     return materials
 
 
+def attach_verified_controller_draft_receipts(materials: list[dict], reviewed: dict) -> list[dict]:
+    """Bind preview Controller receipts to candidate variants without production approval."""
+    for material in materials:
+        material.pop("verified_noncanonical_controller_draft_receipt", None)
+    if (not isinstance(reviewed, dict)
+            or reviewed.get("status") !=
+            "VERIFIED_NONCANONICAL_CONTROLLER_REVIEW_NOT_PRODUCTION_ADMISSION"
+            or reviewed.get("reviewed_frame_count") != len(FRAMES)
+            or reviewed.get("production_dispatch_authorized") is not False):
+        return materials
+    rows = reviewed.get("frames")
+    if (not isinstance(rows, list) or len(rows) != len(FRAMES)
+            or {row.get("frame") for row in rows} != FRAMES):
+        return materials
+    by_frame = {row["frame"]: row for row in rows}
+    for material in materials:
+        row = by_frame[material["frame"]]
+        if (row.get("subject_full_native_worker_prompt_sha256") !=
+                material.get("producer_preview_prompt_sha256")
+                or row.get("scope") != "PREVIEW_ONLY_NOT_CANONICAL"
+                or not all(isinstance(row.get(k), str) and
+                           len(row[k]) == 64 and
+                           all(c in "0123456789abcdef" for c in row[k])
+                           for k in (
+                               "controller_draft_scene_sha256",
+                               "controller_draft_runner_log_sha256",
+                               "independent_review_runner_log_sha256",
+                               "independent_review_request_sha256"))):
+            return materials
+    for material in materials:
+        row = by_frame[material["frame"]]
+        payload = {
+            "render_variant_sha256": material["render_variant_sha256"],
+            "reviewed_native_worker_prompt_sha256": row[
+                "subject_full_native_worker_prompt_sha256"],
+            "controller_scene_sha256": row["controller_draft_scene_sha256"],
+            "controller_runner_log_sha256": row[
+                "controller_draft_runner_log_sha256"],
+            "independent_review_request_sha256": row[
+                "independent_review_request_sha256"],
+            "independent_review_log_sha256": row[
+                "independent_review_runner_log_sha256"],
+        }
+        material["verified_noncanonical_controller_draft_receipt"] = {
+            **payload,
+            "binding_sha256": _json_sha(payload),
+            "status": "REVIEWED_PREVIEW_ONLY_NOT_CANONICAL",
+            "production_dispatch_authorized": False,
+        }
+    return materials
+
+
 def inspect_episode(ep:Path)->dict:
     ep=Path(ep).resolve()
     if ep!=treatment.EP.resolve():
@@ -187,10 +239,18 @@ def inspect_episode(ep:Path)->dict:
     import production_ep14_independent_review_evidence as evidence
     reviewed=evidence.inspect(ep,staged_rows)
     materials=attach_verified_review_evidence(materials,reviewed)
+    import production_ep14_controller_output_evidence as controller_evidence
+    draft_controller_review=controller_evidence.inspect(ep,staged_rows)
+    materials=attach_verified_controller_draft_receipts(materials,draft_controller_review)
     return {
         "schema_version":SCHEMA,
         "status":"REVIEW_HANDOFF_READY_NOT_PRODUCTION_READY",
         "independent_text_review_evidence":reviewed,
+        "noncanonical_controller_output_review_evidence":draft_controller_review,
+        "noncanonical_controller_output_review_verified":(
+            draft_controller_review.get("status")==
+            "VERIFIED_NONCANONICAL_CONTROLLER_REVIEW_NOT_PRODUCTION_ADMISSION"
+            and draft_controller_review.get("reviewed_frame_count")==len(FRAMES)),
         "independent_text_review_verified":(
             len(materials)==len(FRAMES) and all(
                 item.get("verified_text_review_receipt",{}).get("status")==
