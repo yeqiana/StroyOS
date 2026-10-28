@@ -54,8 +54,8 @@ VISUAL={
         }
     },
     48:{
-        "treatment":"[REC] 阿泽从客房窗边猛地拉上窗帘、转身，保持阿泽肩高度持机的第一人称视角（不可出现阿泽自己的肩部）。晓雨仍守在昏迷的林岚身边，握着收拢状态的折叠工兵铲并指向没有机械锁孔的白色移门。镜头下移对焦于从门底塞进来的巴掌大黄色硬纸签，纸上留有三行工整朱砂色小楷的清晰排版位置，交由后期按锁定原文叠字，不让生成模型臆造汉字。人物和动作仍清晰可辨而证物更锐利；夜间客房暖暗光、4:5竖幅。",
-        "scene":"[REC] 阿泽从窗边拉上窗帘后转身拍摄的第一人称肩高度持机视角（不可出现阿泽自己的肩部）；守在昏迷林岚身边的晓雨，手握折叠工兵铲、指向白色无锁孔移门；门底露出巴掌大黄色硬纸签，纸签上预留三行朱砂色小楷书写的精确排版区域，正文交由后期叠字，避免伪造文字。纸签锐利、人物与工兵铲仍清楚可辨，真实客房暖暗光，4:5。",
+        "treatment":"[REC] 阿泽从客房窗边猛地拉合窗帘、转身（窗外景色不入画），保持阿泽肩高度持机的第一人称视角（不可出现阿泽自己的肩部）。晓雨仍守在昏迷的林岚身边，握着收拢状态的折叠工兵铲并指向没有机械锁孔的白色移门。镜头下移对焦于从门底塞进来的巴掌大黄色硬纸签，纸签本体是平整连续的纯空白黄纸，无字、无横线、无框、无三行占位符或排版标记；实际三行朱砂小楷仅由后期按锁定原文叠加，不让生成模型造字。人物和动作仍清晰可辨而证物更锐利；夜间客房暖暗光、4:5竖幅。",
+        "scene":"[REC] 阿泽从窗边完全拉合窗帘后转身拍摄的第一人称肩高度持机视角（窗帘遮蔽窗外，雾景不可见）（不可出现阿泽自己的肩部）；守在昏迷林岚身边的晓雨，手握折叠工兵铲、指向白色无锁孔移门；门底露出巴掌大黄色硬纸签，纸签为整块平整连续的空白黄色硬纸，无字、无横线、无框、无三行占位符及排版标记；保留足够纸面供后期按锁定原文叠加三行朱砂字。纸签锐利、人物与工兵铲仍清楚可辨，真实客房暖暗光，4:5。",
         "preserve":["阿泽从窗边转身的[REC]第一人称","晓雨守在林岚身边","折叠工兵铲指向门","无机械锁孔的白色移门","黄色纸签三行朱砂小楷、准确正文由后期叠加"],
         "medium":"photographic first-person evidence close-up",
         "postproduction_text_overlay":{
@@ -482,6 +482,15 @@ def _review_v4_remaining_conflicts(text: str, ep: Path, frame: int) -> str:
             d["props"]["P03"] = "折叠工兵铲；指向没有机械锁孔的白色移门"
             return d
         text = _rebind_section(text, "PERSISTENT WORLD STATE", world)
+        def closed_curtain(d):
+            d["physical_cues"] = [
+                "closed curtain fully occludes outside fog/courtyard; no exterior is visible",
+                "interior practical lights remain the source",
+                "blank unmarked yellow paper slip lies beneath the closed white sliding door",
+            ]
+            d["visibility"] = "clear interior view only; closed curtain blocks outside sightline"
+            return d
+        text = _rebind_section(text, "ENVIRONMENT PHYSICS", closed_curtain)
         def shot(d):
             d.update(
                 camera_position="阿泽客房窗边转身后肩高度持 Sony A7S3 的第一人称，无摄影者肩部",
@@ -520,7 +529,7 @@ def _review_v4_remaining_conflicts(text: str, ep: Path, frame: int) -> str:
         def directive(d):
             d["required_visual_cues"] = [
                 "white sliding door without mechanical keyhole",
-                "yellow hard-paper slip beneath door with THREE BLANK layout rows; no model-rendered glyphs",
+                "yellow hard-paper slip beneath door has one continuous completely blank face; NO letters, no rules, no boxes, no three-row placeholder or typography marks; postproduction overlays exact three lines later",
                 "Xiaoyu holds recognizable folding entrenching shovel pointed toward white door while guarding unconscious Lin Lan",
                 "first-person Sony A7S3 REC from Ah Ze after turning from window, without Ah Ze's shoulder",
                 "exact red text exists ONLY in editorial postproduction, not image generation",

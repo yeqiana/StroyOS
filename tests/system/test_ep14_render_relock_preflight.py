@@ -97,7 +97,9 @@ def test_sha_bound_native_text_receipt_marks_only_text_step():
             {
                 "frame": m["frame"],
                 "scope": ("EP14_INDEPENDENT_NATIVE_REVIEW_V7_F029"
-                          if m["frame"] == 29 else "EP14_INDEPENDENT_NATIVE_REVIEW_V4"),
+                          if m["frame"] == 29 else
+                          "EP14_F048_V8_FULL_NATIVE_WORKER_INDEPENDENT_REVIEW"
+                          if m["frame"] == 48 else "EP14_INDEPENDENT_NATIVE_REVIEW_V4"),
                 "subject_full_native_worker_prompt_sha256": m["producer_preview_prompt_sha256"],
                 "request_sha256": str(m["frame"]) * 64 if len(str(m["frame"])) == 1 else "a" * 64,
                 "runner_log_sha256": "f" * 64,
@@ -128,7 +130,9 @@ def test_missing_stale_or_rejected_native_review_cannot_mark_text_step():
                 {
                     "frame": m["frame"],
                     "scope": ("EP14_INDEPENDENT_NATIVE_REVIEW_V7_F029"
-                          if m["frame"] == 29 else "EP14_INDEPENDENT_NATIVE_REVIEW_V4"),
+                          if m["frame"] == 29 else
+                          "EP14_F048_V8_FULL_NATIVE_WORKER_INDEPENDENT_REVIEW"
+                          if m["frame"] == 48 else "EP14_INDEPENDENT_NATIVE_REVIEW_V4"),
                     "subject_full_native_worker_prompt_sha256": m["producer_preview_prompt_sha256"],
                     "request_sha256": "a" * 64,
                     "runner_log_sha256": "f" * 64,

@@ -280,3 +280,21 @@ def test_f029_nonrec_visual_scope_hand_and_static_match_only(local_fixture):
     assert timing["production_format"] == "image_and_text_not_video"
     assert timing["still_image_cannot_encode_duration"] is True
     assert row["production_dispatch_authorized"] is False
+
+
+def test_f048_closed_curtain_visibility_and_postproduction_blank_slip(local_fixture):
+    ep, _, _ = local_fixture
+    row = visual.compile_candidate(ep, 48)
+    contract = row["proposed_render_contract_text"]
+    scene = row["proposed_scene_prompt"]
+    assert "窗帘遮蔽窗外" in scene
+    assert "无横线、无框、无三行占位符" in scene
+    assert "closed curtain fully occludes outside fog/courtyard" in contract
+    assert "closed curtain blocks outside sightline" in contract
+    assert "one continuous completely blank face" in contract
+    assert "NO letters, no rules, no boxes" in contract
+    assert "THREE BLANK layout rows" not in contract
+    assert "foggy courtyard remains outside the window" not in contract
+    assert row["editorial_overlay_contract"]["render_in_image_model"] is False
+    assert row["review_approved"] is False
+    assert row["production_dispatch_authorized"] is False

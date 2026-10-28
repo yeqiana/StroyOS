@@ -114,7 +114,9 @@ def attach_verified_review_evidence(materials: list[dict], reviewed: dict) -> li
     for material in materials:
         row = by_frame[material["frame"]]
         expected_scope = ("EP14_INDEPENDENT_NATIVE_REVIEW_V7_F029"
-                          if material["frame"] == 29 else "EP14_INDEPENDENT_NATIVE_REVIEW_V4")
+                          if material["frame"] == 29 else
+                          "EP14_F048_V8_FULL_NATIVE_WORKER_INDEPENDENT_REVIEW"
+                          if material["frame"] == 48 else "EP14_INDEPENDENT_NATIVE_REVIEW_V4")
         if (row.get("scope") != expected_scope
                 or not all(isinstance(row.get(k), str)
                            and len(row[k]) == 64

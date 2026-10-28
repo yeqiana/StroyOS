@@ -19,6 +19,10 @@ V7 = (
     "ep14_independent_native_content_review_v7_frame29_request_20261028.txt",
     "ep14_independent_native_content_review_v7_frame29_20261028.jsonl",
 )
+V8 = (
+    "ep14_independent_native_content_review_v8_frame48_request_20261028.txt",
+    "ep14_independent_native_content_review_v8_frame48_20261028.jsonl",
+)
 FRAME_FIELDS = (
     "frame", "full_native_worker_prompt_sha256",
     "original_frame_contract_sha256", "original_scene_prompt_sha256",
@@ -136,6 +140,7 @@ def inspect(ep: Path, staged: list[dict]) -> dict:
         for filenames, scope in (
             (V4, "EP14_INDEPENDENT_NATIVE_REVIEW_V4"),
             (V7, "EP14_INDEPENDENT_NATIVE_REVIEW_V7_F029"),
+            (V8, "EP14_F048_V8_FULL_NATIVE_WORKER_INDEPENDENT_REVIEW"),
         ):
             request_path, log_path = (base / name for name in filenames)
             request = request_path.read_bytes()
@@ -152,7 +157,7 @@ def inspect(ep: Path, staged: list[dict]) -> dict:
                 if (not isinstance(reviews, list) or
                         sorted(x.get("frame") for x in reviews) != list(FRAMES)):
                     raise ReviewEvidenceDenied("V4_REVIEW_ROSTER_INVALID")
-                for frame in (9, 48):
+                for frame in (9,):
                     matches = [x for x in originals if x.get("frame") == frame]
                     if len(matches) != 1:
                         raise ReviewEvidenceDenied("V4_REQUEST_FRAME_MISSING")
@@ -166,7 +171,7 @@ def inspect(ep: Path, staged: list[dict]) -> dict:
                         "subject_full_native_worker_prompt_sha256":
                             frame_map[frame]["full_native_worker_prompt_sha256"],
                     }
-            else:
+            elif scope.endswith("V7_F029"):
                 if source.get("frame") != 29 or decision.get("frame") != 29:
                     raise ReviewEvidenceDenied("V7_FRAME_SCOPE_INVALID")
                 _match_subject(frame_map[29], source)
@@ -177,6 +182,18 @@ def inspect(ep: Path, staged: list[dict]) -> dict:
                     "runner_log_sha256": _sha(log),
                     "subject_full_native_worker_prompt_sha256":
                         frame_map[29]["full_native_worker_prompt_sha256"],
+                }
+            else:
+                if source.get("frame") != 48 or decision.get("frame") != 48:
+                    raise ReviewEvidenceDenied("V8_FRAME_SCOPE_INVALID")
+                _match_subject(frame_map[48], source)
+                _require_approval(decision, frame_map[48], 48)
+                output[48] = {
+                    "scope": scope,
+                    "request_sha256": _sha(request),
+                    "runner_log_sha256": _sha(log),
+                    "subject_full_native_worker_prompt_sha256":
+                        frame_map[48]["full_native_worker_prompt_sha256"],
                 }
         return {
             "status": "VERIFIED_INDEPENDENT_TEXT_REVIEW_NOT_PRODUCTION_ADMISSION",

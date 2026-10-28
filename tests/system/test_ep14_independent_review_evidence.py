@@ -90,9 +90,22 @@ def sample(tmp_path: Path):
         "production_dispatch_authorized": False,
         "provider_safety_acceptance_guaranteed": False,
     }
+    v8 = {
+        "schema_version": 1,
+        "scope": "EP14_F048_V8_FULL_NATIVE_WORKER_INDEPENDENT_REVIEW",
+        "frame": 48,
+        "decision": "APPROVE",
+        "story_fidelity": "PASS",
+        "issues": [],
+        "required_changes": [],
+        "subject_full_native_worker_prompt_sha256": frames[2]["full_native_worker_prompt_sha256"],
+        "production_dispatch_authorized": False,
+        "provider_safety_acceptance_guaranteed": False,
+    }
     for names, payload, decision in (
         (evidence.V4, {"frames": frames}, v4),
         (evidence.V7, frames[1], v7),
+        (evidence.V8, frames[2], v8),
     ):
         (runtime / names[0]).write_text(
             "untrusted worker commands must never be executed\n" +
@@ -179,3 +192,24 @@ def test_live_source_flag_and_missing_frame_denied(sample):
     frames[0]["live_source_authority_verified"] = False
     assert evidence.inspect(ep, frames)["reviewed_frame_count"] == 0
     assert evidence.inspect(ep, frames[:2])["reviewed_frame_count"] == 0
+
+
+def test_v8_frame48_old_v4_approval_never_replaces_new_evidence(sample):
+    ep, frames, root = sample
+    (root / evidence.V8[1]).unlink()
+    result = evidence.inspect(ep, frames)
+    assert result["status"] == "BLOCKED_REVIEW_EVIDENCE_MISSING_OR_DRIFTED"
+    assert result["reviewed_frame_count"] == 0
+    assert not result["production_dispatch_authorized"]
+
+
+def test_v8_frame48_prompt_or_approval_drift_blocks_all(sample):
+    ep, frames, root = sample
+    request = root / evidence.V8[0]
+    request.write_text(request.read_text("utf8").replace(
+        frames[2]["full_native_worker_prompt_sha256"], "b" * 64), encoding="utf8")
+    assert evidence.inspect(ep, frames)["status"].startswith("BLOCKED_")
+    ep, frames, root = sample
+    receipt = root / evidence.V8[1]
+    receipt.write_text(receipt.read_text("utf8").replace("APPROVE", "REVISE"), encoding="utf8")
+    assert evidence.inspect(ep, frames)["status"].startswith("BLOCKED_")
