@@ -85,3 +85,71 @@ def test_wrong_frame_never_enters_binding():
     src=preview(9);src["frame"]=20
     with pytest.raises(ValueError,match="LIVE_UNAPPROVED_SOURCE"):
         relock.draft_binding(src)
+
+
+def test_sha_bound_native_text_receipt_marks_only_text_step():
+    materials = [relock.draft_binding(preview(frame)) for frame in (9, 29, 48)]
+    sources = {
+        "status": "VERIFIED_INDEPENDENT_TEXT_REVIEW_NOT_PRODUCTION_ADMISSION",
+        "reviewed_frame_count": 3,
+        "production_dispatch_authorized": False,
+        "frames": [
+            {
+                "frame": m["frame"],
+                "scope": ("EP14_INDEPENDENT_NATIVE_REVIEW_V7_F029"
+                          if m["frame"] == 29 else "EP14_INDEPENDENT_NATIVE_REVIEW_V4"),
+                "subject_full_native_worker_prompt_sha256": m["producer_preview_prompt_sha256"],
+                "request_sha256": str(m["frame"]) * 64 if len(str(m["frame"])) == 1 else "a" * 64,
+                "runner_log_sha256": "f" * 64,
+            }
+            for m in materials
+        ],
+    }
+    result = relock.attach_verified_review_evidence(materials, sources)
+    for material in result:
+        receipt = material["verified_text_review_receipt"]
+        assert receipt["render_variant_sha256"] == material["render_variant_sha256"]
+        assert receipt["reviewed_worker_prompt_sha256"] == material["producer_preview_prompt_sha256"]
+        assert len(receipt["text_review_binding_sha256"]) == 64
+        assert receipt["status"] == "TEXT_REVIEW_VERIFIED_NOT_FINAL_CONTROLLER_APPROVAL"
+        assert material["required_independent_review"]["approved"] is False
+        assert material["production_dispatch_authorized"] is False
+    assert relock.attach_verified_review_evidence(result, sources) == result
+
+
+def test_missing_stale_or_rejected_native_review_cannot_mark_text_step():
+    for problem in ("missing", "wrong_sha", "bad_count", "wrong_authority", "wrong_roster", "bad_receipt_hash", "bad_scope"):
+        materials = [relock.draft_binding(preview(frame)) for frame in (9, 29, 48)]
+        sources = {
+            "status": "VERIFIED_INDEPENDENT_TEXT_REVIEW_NOT_PRODUCTION_ADMISSION",
+            "reviewed_frame_count": 3,
+            "production_dispatch_authorized": False,
+            "frames": [
+                {
+                    "frame": m["frame"],
+                    "scope": ("EP14_INDEPENDENT_NATIVE_REVIEW_V7_F029"
+                          if m["frame"] == 29 else "EP14_INDEPENDENT_NATIVE_REVIEW_V4"),
+                    "subject_full_native_worker_prompt_sha256": m["producer_preview_prompt_sha256"],
+                    "request_sha256": "a" * 64,
+                    "runner_log_sha256": "f" * 64,
+                }
+                for m in materials
+            ],
+        }
+        if problem == "missing":
+            sources["status"] = "BLOCKED_REVIEW_EVIDENCE_MISSING_OR_DRIFTED"
+        if problem == "wrong_sha":
+            sources["frames"][1]["subject_full_native_worker_prompt_sha256"] = "0" * 64
+        if problem == "bad_count":
+            sources["reviewed_frame_count"] = 2
+        if problem == "wrong_authority":
+            sources["production_dispatch_authorized"] = True
+        if problem == "wrong_roster":
+            sources["frames"][1]["frame"] = 28
+        if problem == "bad_receipt_hash":
+            sources["frames"][1]["runner_log_sha256"] = "x" * 64
+        if problem == "bad_scope":
+            sources["frames"][1]["scope"] = "WRONG_SCOPE"
+        result = relock.attach_verified_review_evidence(materials, sources)
+        assert all("verified_text_review_receipt" not in m for m in result)
+        assert all(not m["production_dispatch_authorized"] for m in result)

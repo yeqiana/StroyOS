@@ -93,6 +93,59 @@ def draft_binding(staged:dict)->dict:
     }
 
 
+def attach_verified_review_evidence(materials: list[dict], reviewed: dict) -> list[dict]:
+    """Read-only, SHA-bound per-variant text-review evidence; never production approval."""
+    for material in materials:
+        material.pop("verified_text_review_receipt", None)
+    if not isinstance(reviewed,dict):
+        return materials
+    if (reviewed.get("status") !=
+            "VERIFIED_INDEPENDENT_TEXT_REVIEW_NOT_PRODUCTION_ADMISSION"
+            or reviewed.get("reviewed_frame_count") != len(FRAMES)
+            or reviewed.get("production_dispatch_authorized") is not False):
+        return materials
+    records = reviewed.get("frames") or []
+    if not isinstance(records,list):
+        return materials
+    if (len(records) != len(FRAMES)
+            or {x.get("frame") for x in records} != FRAMES):
+        return materials
+    by_frame = {x["frame"]: x for x in records}
+    for material in materials:
+        row = by_frame[material["frame"]]
+        expected_scope = ("EP14_INDEPENDENT_NATIVE_REVIEW_V7_F029"
+                          if material["frame"] == 29 else "EP14_INDEPENDENT_NATIVE_REVIEW_V4")
+        if (row.get("scope") != expected_scope
+                or not all(isinstance(row.get(k), str)
+                           and len(row[k]) == 64
+                           and all(c in "0123456789abcdef" for c in row[k])
+                           for k in ("request_sha256", "runner_log_sha256"))):
+            return materials
+        if (row.get("subject_full_native_worker_prompt_sha256") !=
+                material["producer_preview_prompt_sha256"]
+                or not all(len(str(row.get(x) or "")) == 64
+                           for x in ("request_sha256", "runner_log_sha256"))
+                or material["production_dispatch_authorized"] is not False):
+            return materials
+    for material in materials:
+        row = by_frame[material["frame"]]
+        binding = {
+            "render_variant_sha256": material["render_variant_sha256"],
+            "review_request_sha256": row["request_sha256"],
+            "native_runner_log_sha256": row["runner_log_sha256"],
+            "reviewed_worker_prompt_sha256": row[
+                "subject_full_native_worker_prompt_sha256"],
+            "scope": row["scope"],
+        }
+        material["verified_text_review_receipt"] = {
+            **binding,
+            "text_review_binding_sha256": _json_sha(binding),
+            "status": "TEXT_REVIEW_VERIFIED_NOT_FINAL_CONTROLLER_APPROVAL",
+            "production_dispatch_authorized": False,
+        }
+    return materials
+
+
 def inspect_episode(ep:Path)->dict:
     ep=Path(ep).resolve()
     if ep!=treatment.EP.resolve():
@@ -131,10 +184,22 @@ def inspect_episode(ep:Path)->dict:
         materials.append(draft_binding(staged))
     import production_ep14_independent_review_evidence as evidence
     reviewed=evidence.inspect(ep,staged_rows)
+    materials=attach_verified_review_evidence(materials,reviewed)
     return {
         "schema_version":SCHEMA,
         "status":"REVIEW_HANDOFF_READY_NOT_PRODUCTION_READY",
         "independent_text_review_evidence":reviewed,
+        "independent_text_review_verified":(
+            len(materials)==len(FRAMES) and all(
+                item.get("verified_text_review_receipt",{}).get("status")==
+                "TEXT_REVIEW_VERIFIED_NOT_FINAL_CONTROLLER_APPROVAL"
+                for item in materials)),
+        "remaining_production_gates":[
+            "FINAL_MODEL_CONTROLLER_OUTPUT_INDEPENDENT_APPROVAL",
+            "CANONICAL_RENDER_VARIANT_AND_PROMPT_PACKAGE_ATOMIC_ACTIVATION",
+            "ACTUAL_IMAGE_REFERENCES_AND_PROVIDER_ENTITLEMENT",
+            "DRIVER_RC24_RECOVERY_AND_ATTEMPT2_AUTHORIZATION",
+        ],
         "frames":materials,
         "bundle_sha256":_json_sha({str(x["frame"]):x["binding_proposal_sha256"] for x in materials}),
         "historical_generated_frames_preserved":45,
