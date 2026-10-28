@@ -64,6 +64,7 @@ SLOTS = {
         "tests/system/test_ep14_review_staging_package.py",
         "tests/system/test_ep14_render_relock_preflight.py",
         "tests/system/test_ep14_controller_output_evidence.py",
+        "tests/system/test_ep14_render_package.py",
     "tests/system/test_ep14_independent_review_evidence.py",
         "tests/system/test_native_provider_safety_classification.py",
         "tests/system/test_runner_host_loop_v262.py::NextActionAutonomousBatchTests::test_preserved_native_raw_precedes_unknown_backend_block_without_retry",

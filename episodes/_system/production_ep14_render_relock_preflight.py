@@ -242,11 +242,31 @@ def inspect_episode(ep:Path)->dict:
     import production_ep14_controller_output_evidence as controller_evidence
     draft_controller_review=controller_evidence.inspect(ep,staged_rows)
     materials=attach_verified_controller_draft_receipts(materials,draft_controller_review)
+    import production_ep14_render_package as render_package
+    try:
+        proposed_packages=render_package.compile_bundle(
+            ep,staged_rows,materials,draft_controller_review)
+    except ValueError as exc:
+        proposed_packages={
+            "status":"BLOCKED_DERIVED_RENDER_PROMPT_PACKAGE_NOT_READY",
+            "reason":str(exc)[:200],
+            "frames":[],
+            "canonical_prompt_packages_written":False,
+            "production_dispatch_authorized":False,
+        }
+    if proposed_packages["status"] == "THREE_FRAME_REVIEWED_PACKAGE_PROPOSAL_NOT_CANONICAL":
+        for material,package in zip(materials,proposed_packages["frames"]):
+            if material["frame"] != int(package["frame"]):
+                raise ValueError("EP14_RENDER_PACKAGE_VARIANT_FRAME_DRIFT")
+            material["reviewed_render_prompt_package_proposal_sha256"]=package["package_sha256"]
     return {
         "schema_version":SCHEMA,
         "status":"REVIEW_HANDOFF_READY_NOT_PRODUCTION_READY",
         "independent_text_review_evidence":reviewed,
         "noncanonical_controller_output_review_evidence":draft_controller_review,
+        "reviewed_render_prompt_package_proposal_status":proposed_packages["status"],
+        "reviewed_render_prompt_package_bundle_sha256":proposed_packages.get("bundle_sha256"),
+        "canonical_render_prompt_packages_activated":False,
         "noncanonical_controller_output_review_verified":(
             draft_controller_review.get("status")==
             "VERIFIED_NONCANONICAL_CONTROLLER_REVIEW_NOT_PRODUCTION_ADMISSION"
