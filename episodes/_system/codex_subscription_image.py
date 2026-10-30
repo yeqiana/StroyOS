@@ -1851,6 +1851,60 @@ def common_validate(args: argparse.Namespace) -> tuple[Path, list[Path], Path, P
         raise BackendError(f'output exists: {output}')
     return prompt_path, refs, output, log
 
+def _effective_frame_prompt_package(ep: Path, args: argparse.Namespace, prompt_path: Path) -> dict:
+    """Resolve an image request's actual frame package before any Provider call.
+
+    The three EP14 safety-refused originals cannot be rebuilt through the
+    legacy prompt compiler. Even if an external caller provides forged private
+    args, authoritative queue state and the canonical render activation must
+    agree with the Controller request. Other Episodes use the existing path.
+    """
+    import prompt_package
+    import production_native_batch_followon
+
+    frame = int(args.frame)
+    if not (production_native_batch_followon._is_ep14(ep)
+            and frame in {9, 29, 48}):
+        return prompt_package.compile_frame(ep, frame, prompt_path)
+    import production_ep14_render_queue_stage as stage
+    import scheduler_core
+
+    item_id = str(getattr(args, "_queue_item_id", "") or "")
+    supplied = getattr(args, "_activated_render_package", None)
+    canonical = getattr(args, "_canonical_payload_request", None)
+    if (not item_id or not isinstance(supplied, dict)
+            or not isinstance(canonical, dict)):
+        raise BackendError("EP14_BACKEND_ACTIVE_QUEUE_PACKAGE_AND_CONTROLLER_REQUEST_REQUIRED")
+    queue = scheduler_core.load_queue(ep)
+    matches = [row for row in queue.get("items") or [] if
+               row.get("id") == item_id
+               and row.get("scope") == "batch"
+               and int(row.get("frame") or 0) == frame]
+    if len(matches) != 1:
+        raise BackendError("EP14_BACKEND_QUEUE_ITEM_IDENTITY_DRIFT")
+    item = matches[0]
+    try:
+        authorized = stage.load_for_dispatch(ep, item)
+    except stage.StageDenied as exc:
+        raise BackendError("EP14_BACKEND_CANONICAL_RENDER_NOT_ACTIVATED") from exc
+    if (not isinstance(authorized, dict)
+            or authorized.get("canonical_activation") is not True
+            or authorized.get("production_dispatch_authorized") is not True
+            or authorized.get("package_sha256") != supplied.get("package_sha256")
+            or authorized.get("frame_contract_sha256") != supplied.get("frame_contract_sha256")
+            or authorized.get("scene_prompt_sha256") != supplied.get("scene_prompt_sha256")
+            or authorized.get("frame_prompt_contract") != supplied.get("frame_prompt_contract")
+            or authorized.get("scene_prompt") != supplied.get("scene_prompt")
+            or canonical.get("frame_contract_sha256") != authorized.get("frame_contract_sha256")
+            or canonical.get("logical_asset_key") !=
+                __import__("logical_asset_identity").frame_asset_key(ep, frame)
+            or not isinstance(authorized.get("storyboard_source"), dict)
+            or authorized["storyboard_source"].get("render_original_text_injected") is not False
+            or "text" in authorized["storyboard_source"]):
+        raise BackendError("EP14_BACKEND_REVIEWED_RENDER_PACKAGE_OR_REQUEST_DRIFT")
+    return authorized
+
+
 def generate_for_frame(args: argparse.Namespace) -> dict:
     prompt_path, refs, output, log = common_validate(args)
     ep = args.episode_dir.expanduser().resolve()
@@ -1858,9 +1912,11 @@ def generate_for_frame(args: argparse.Namespace) -> dict:
     visual = compile_prompt_contract(ep)
     frame_contract = None
     scene_text = None
-    if resolved_frame_contract.required(ep):
-        import prompt_package
-        package = prompt_package.compile_frame(ep, int(args.frame), prompt_path)
+    import production_native_batch_followon
+    ep14_revision_required = (production_native_batch_followon._is_ep14(ep)
+                              and int(args.frame) in {9, 29, 48})
+    if ep14_revision_required or resolved_frame_contract.required(ep):
+        package = _effective_frame_prompt_package(ep, args, prompt_path)
         scene_text = package['scene_prompt']
         frame_contract = {'contract_sha256': package['frame_contract_sha256'], 'prompt_contract': package['frame_prompt_contract']}
     size = provider_size(width, height)

@@ -49,13 +49,16 @@ def model_policy_for_item(ep,item):
     quality=str(item.get("quality") or episode_model_policy["quality"])
     return {**episode_model_policy,"model":model,"quality":quality,"strict_model":bool(item.get("strict_model",episode_model_policy.get("strict_model")))}
 
-def generation_attempt_context(ep, item, payload_policy):
+def generation_attempt_context(ep, item, payload_policy, effective_package=None):
     """Capture the Episode-bound execution request before reserving an Attempt.
 
     These values describe the requested/bound execution context; they are not
     Provider confirmation.  The Attempt Authority persists this mapping in the
     durable row's CONTEXT before the Gateway can commit dispatch.
     """
+    # Bind MySQL Attempt to the exact package selected for this Controller.
+    # Queue may still retain the old immutable Prompt Package as history.
+    package = effective_package if effective_package is not None else (item.get("prompt_package") or {})
     controller = model_policy.resolve("image.controller", episode=ep)
     payload = model_policy.resolve("image.payload", episode=ep)
     provider_candidate = str(item.get("provider_candidate") or item.get("provider") or "codex_subscription")
@@ -65,8 +68,10 @@ def generation_attempt_context(ep, item, payload_policy):
         "queue_item_id": item.get("id"),
         "capture_id": item.get("capture_id"),
         "production_revision_id": item.get("production_revision_id"),
-        "frame_contract_sha256": (item.get("prompt_package") or {}).get("frame_contract_sha256"),
-        "prompt_package_sha256": (item.get("prompt_package") or {}).get("package_sha256"),
+        "frame_contract_sha256": package.get("frame_contract_sha256"),
+        "prompt_package_sha256": package.get("package_sha256"),
+        **({"render_variant_sha256": package["render_variant_sha256"]}
+           if package.get("render_variant_sha256") else {}),
         "generation_attempt_reason": item.get("generation_attempt_reason") or "PRIMARY_GENERATION",
         "technical_retry_source_code": item.get("technical_retry_source_code"),
         "model_role": "image.controller",
@@ -449,7 +454,7 @@ def execute(ep,item,timeout,codex):
                 else "python-openai-images-http" if selected_provider == "openai_images_api"
                 else selected_provider)
         )
-        attempt_context = generation_attempt_context(ep, item, effective_model_policy)
+        attempt_context = generation_attempt_context(ep, item, effective_model_policy, effective_package=package)
         attempt_context.update({
             "provider": selected_provider,
             "provider_candidate": selected_provider,
@@ -547,6 +552,8 @@ def execute(ep,item,timeout,codex):
             _generation_attempt_lease=generation_lease,
             _runner_request_id=runner_request_id,
             _canonical_payload_request=canonical_request,
+            _activated_render_package=package,
+            _queue_item_id=str(item.get("id") or ""),
             _payload_reference_paths=refs,
             _payload_provider_route=selected_provider,
             _payload_transport_model=payload_preflight.get("transport_model"),
