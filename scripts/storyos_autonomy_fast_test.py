@@ -73,6 +73,7 @@ SLOTS = {
         "tests/system/test_ep14_independent_final_controller_evidence.py",
         "tests/system/test_ep14_preimage_text_review_evidence.py",
         "tests/system/test_ep14_reviewed_final_mysql_stage.py",
+        "tests/system/test_ep14_canonical_activation.py",
     "tests/system/test_ep14_independent_review_evidence.py",
         "tests/system/test_native_provider_safety_classification.py",
         "tests/system/test_runner_host_loop_v262.py::NextActionAutonomousBatchTests::test_preserved_native_raw_precedes_unknown_backend_block_without_retry",

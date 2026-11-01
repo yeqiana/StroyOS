@@ -206,6 +206,15 @@ def _content_revision_dispatch_denied(ep, item) -> bool:
     frame=int(item.get("frame") or 0)
     if frame not in {9,29,48}:
         return False
+    # An independently approved NEW repair ID is not the historically refused
+    # original. Reload the canonical queue and immutable MySQL active package.
+    if item.get("kind") == "repair" and item.get("scope") == "batch":
+        try:
+            import production_ep14_canonical_activation as active
+            active.load_for_dispatch(ep, item)
+            return False
+        except Exception:
+            return True
     if (item.get("no_automatic_original_prompt_retry") is True
             or item.get("requires_content_revision") is True):
         return True

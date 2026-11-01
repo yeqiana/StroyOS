@@ -283,5 +283,11 @@ def load_for_dispatch(ep: Path, item: dict) -> dict:
     is the only EP14 entrypoint allowed to return a render package to the
     image Controller. Until then it must not fall through to old Frame Contract.
     """
+    if item.get("kind") == "repair":
+        import production_ep14_canonical_activation as active
+        try:
+            return active.load_for_dispatch(ep, item)
+        except active.ActivationDenied as exc:
+            raise StageDenied(str(exc)) from exc
     preview_worker_source(ep, item)
     raise StageDenied("EP14_CANONICAL_RENDER_ACTIVATION_AND_PROVIDER_ADMISSION_REQUIRED")
