@@ -158,11 +158,23 @@ def plan(ep):
     }
 
 
-def _require_live_provider_proof():
+def _require_live_provider_proof(ep=None):
     # Never accept caller-provided JSON, login-only proof or a visibility
     # assertion. Only the real installed native preflight is authoritative.
     proof = backend.payload_capability_preflight(
         model="gpt-image-2.5-flare", quality="high")
+    if (proof.get("status") == "BLOCKED"
+            and proof.get("failure_class") == "LOGIN_AUTH_IMAGE_TOOL_CAPABILITY_UNKNOWN"):
+        # Distinct from a PASS: live native capability RPC + authenticated
+        # secondary visibility allow only ONE exactly reviewed F009 Attempt.
+        import model_policy
+        import production_ep14_native_pilot_proof as pilot
+        payload = model_policy.resolve("image.payload", episode=ep)
+        controller = model_policy.resolve("image.controller", episode=ep)
+        try:
+            return pilot.attest_one_frame(proof, payload, controller)
+        except pilot.PilotDenied as exc:
+            raise ActivationDenied(str(exc)) from exc
     if (proof.get("status") != "PASS"
             or proof.get("tool_capability_state") != "EXPLICIT_SUPPORTED"
             or proof.get("tool_visibility_evidence_level") == "SECONDARY_ATTESTATION"
@@ -191,13 +203,13 @@ def _verify_row(repo, ep, record):
         raise ActivationDenied("EP14_ACTIVE_PAYLOAD_DOCUMENT_SHA_DRIFT")
 
 
-def _new_repair_row(original, record):
+def _new_repair_row(original, record, *, pilot_only=False):
     row = deepcopy(original)
     row.update({
         "id": item_id(record["frame"]),
         "kind": "repair",
         "scope": "batch",
-        "status": "queued",
+        "status": ("pilot_hold" if pilot_only and record["frame"] != 9 else "queued"),
         "attempts": 1,
         "output_path": None,
         "log_path": None,
@@ -225,7 +237,8 @@ def activate(ep, *, expected_queue_sha256, expected_final_render_bundle_sha256):
     initial = _plan(ep)
     if initial["queue_sha256"] != expected_queue_sha256:
         raise ActivationDenied("EP14_ACTIVATION_STALE_QUEUE")
-    _require_live_provider_proof()
+    admission = _require_live_provider_proof(ep)
+    pilot_mode = admission.get("trial_scope") == "PILOT_FRAME_09_ONLY_REAL_PROVIDER_PROOF"
     with scheduler_core.queue_transaction(ep):
         q = scheduler_core.load_queue(ep)
         if staged._sha(q) != expected_queue_sha256 or QUEUE_KEY in q:
@@ -263,7 +276,7 @@ def activate(ep, *, expected_queue_sha256, expected_final_render_bundle_sha256):
             new_queue = deepcopy(q)
             for record in initial["records"]:
                 new_queue["items"].append(
-                    _new_repair_row(originals[record["frame"]], record))
+                    _new_repair_row(originals[record["frame"]], record, pilot_only=pilot_mode))
             new_queue[QUEUE_KEY] = {
                 "state": "ACTIVE_THREE_REVIEWED_CONTENT_REVISIONS",
                 "final_render_bundle_sha256": BUNDLE,
@@ -276,6 +289,10 @@ def activate(ep, *, expected_queue_sha256, expected_final_render_bundle_sha256):
                     for r in initial["records"]
                 ],
                 "historical_safety_refusals_preserved": True,
+                "pilot_mode": ("PILOT_FRAME_09_ONLY_REAL_PROVIDER_PROOF" if pilot_mode else None),
+                "pilot_frame": (9 if pilot_mode else None),
+                "native_provider_capability_sha256": (
+                    admission.get("native_provider_capability_sha256") if pilot_mode else None),
                 "postimage_pixel_review_required": True,
                 "production_dispatch_authorized": True,
             }
@@ -290,6 +307,9 @@ def activate(ep, *, expected_queue_sha256, expected_final_render_bundle_sha256):
                 "production_dispatch_authorized": True,
                 "image_generation_called": False,
                 "attempts_reserved": 0,
+                "provider_trial_only": pilot_mode,
+                "pilot_frame": (9 if pilot_mode else None),
+                "held_frames": ([29,48] if pilot_mode else []),
             }
         finally:
             db.close()

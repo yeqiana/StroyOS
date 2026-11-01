@@ -429,6 +429,22 @@ def execute(ep,item,timeout,codex):
                 payload_preflight = native_repair_probe
             else:
                 native_repair_probe = None
+        # Only the immutable reviewed EP14 F009 repair ID may trial the native
+        # image capability. Other new frames remain pilot-held.
+        ep14_native_pilot_probe = None
+        if (phase5a_grant_evidence is None
+                and native_baseline_probe is None and native_followon_probe is None
+                and native_content_probe is None and native_batch_probe is None
+                and native_success_followon_probe is None and native_repair_probe is None):
+            import production_ep14_native_pilot_proof as ep14_pilot
+            if ep14_pilot.eligible(ep, item, payload_policy, controller_policy):
+                try:
+                    ep14_native_pilot_probe = ep14_pilot.attest_one_frame(
+                        payload_preflight, payload_policy, controller_policy, codex)
+                except ep14_pilot.PilotDenied:
+                    ep14_native_pilot_probe = None
+                if ep14_native_pilot_probe is not None:
+                    payload_preflight = ep14_native_pilot_probe
         payload_preflight_status = str(payload_preflight.get("status") or "")
         payload_gate_pass = (
             payload_preflight_status == "PASS"
@@ -440,7 +456,8 @@ def execute(ep,item,timeout,codex):
             or ((native_baseline_probe is not None or native_followon_probe is not None
                  or native_content_probe is not None or native_batch_probe is not None
                  or native_success_followon_probe is not None
-                 or native_repair_probe is not None)
+                 or native_repair_probe is not None
+                 or ep14_native_pilot_probe is not None)
                 and payload_preflight_status == "READY_FOR_REAL_CAPABILITY_PROOF"
                 and payload_preflight.get("image_generation_called") is False
                 and payload_preflight.get("image_attempt_authority_called") is False)
@@ -521,6 +538,14 @@ def execute(ep,item,timeout,codex):
                 "native_visibility_evidence_sha256":
                     production_native_baseline_proof.evidence_sha(native_repair_probe),
                 "tool_capability_claim": "UNKNOWN_SINGLE_REPAIR_FRAME_NATIVE_PROOF_ONLY",
+            })
+        if ep14_native_pilot_probe is not None:
+            attempt_context.update({
+                "image_capability_proof_purpose": "EP14_REVIEWED_FINAL_FRAME09_NATIVE_SINGLE_TRIAL",
+                "native_provider_capability_sha256": ep14_native_pilot_probe[
+                    "native_provider_capability_sha256"],
+                "tool_capability_claim": "UNKNOWN_SINGLE_REVIEWED_FRAME_TRIAL",
+                "postimage_pixel_review_required": True,
             })
         budget_ok,budget_row=raw_candidate_budget.claim(ep,frame,budget_kind,reason=f"formal_generation_entrypoint scope={item.get('scope')} attempt={attempt}",token=budget_token,semantic_key=budget_semantic_key,
             generation_context=attempt_context)

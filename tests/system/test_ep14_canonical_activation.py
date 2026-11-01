@@ -78,10 +78,21 @@ def state(monkeypatch, tmp_path):
     monkeypatch.setattr(act.runtime_workspace,"write_json",
                         lambda ep,rel,value:state["files"].__setitem__(str(rel),deepcopy(value)))
     monkeypatch.setattr(act.backend,"payload_capability_preflight",lambda **kwargs:{
-        "status":state["provider_status"],
+        "status":("BLOCKED" if state["provider_status"] == "TRIAL_UNKNOWN" else state["provider_status"]),
+        "failure_class":("LOGIN_AUTH_IMAGE_TOOL_CAPABILITY_UNKNOWN" if state["provider_status"] == "TRIAL_UNKNOWN" else None),
         "tool_capability_state":"EXPLICIT_SUPPORTED" if state["provider_status"]=="PASS" else "UNKNOWN",
         "tool_visibility_evidence_level":None,
         "payload_model":"gpt-image-2.5-flare","payload_quality":"high",
+        "image_generation_called":False,"image_attempt_authority_called":False,
+    })
+    import model_policy
+    import production_ep14_native_pilot_proof as pilot
+    monkeypatch.setattr(model_policy,"resolve",lambda role,episode=None: (
+        {"model":"gpt-image-2.5-flare","quality":"high"} if role=="image.payload" else
+        {"model":"gpt-6-luna","reasoning_effort":"high"}))
+    monkeypatch.setattr(pilot,"attest_one_frame",lambda strict,payload,controller,codex=None:{
+        "trial_scope":pilot.PILOT_STATUS,
+        "native_provider_capability_sha256":"f"*64,
         "image_generation_called":False,"image_attempt_authority_called":False,
     })
     class Connection:
@@ -292,3 +303,24 @@ def test_real_backend_consumes_exact_activated_render_not_old_prompt(state,monke
     args._activated_render_package={**source,"scene_prompt":"original denied prompt"}
     with pytest.raises(image.BackendError):
         image._effective_frame_prompt_package(ep,args,ep/"prompts/old.txt")
+
+
+def test_native_unknown_capability_may_only_queue_f009_after_dual_native_attestation(state):
+    ep,data=state
+    data["provider_status"]="TRIAL_UNKNOWN"
+    original=deepcopy(data["queue"]["items"])
+    result=_commit(ep)
+    assert result["provider_trial_only"] is True
+    assert result["pilot_frame"]==9
+    assert result["held_frames"]==[29,48]
+    assert data["queue"]["items"][:3]==original
+    repaired={x["frame"]:x for x in data["queue"]["items"][3:]}
+    assert repaired[9]["status"]=="queued"
+    assert repaired[29]["status"]=="pilot_hold"
+    assert repaired[48]["status"]=="pilot_hold"
+    assert data["queue"][act.QUEUE_KEY]["pilot_mode"]=="PILOT_FRAME_09_ONLY_REAL_PROVIDER_PROOF"
+    assert len(data["sql"])==3
+    assert result["attempts_reserved"]==0
+    with pytest.raises(act.ActivationDenied):
+        act.load_for_dispatch(ep,repaired[29])
+    assert act.load_for_dispatch(ep,repaired[9])["canonical_activation"] is True
