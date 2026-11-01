@@ -49,15 +49,17 @@ def begin(
     batch_id: str | None = None,
     transaction_id: str | None = None,
     production_revision_id: str | None = None,
+    reviewed_scene_prompt: str | None = None,
 ) -> tuple[bool, str]:
     """Mirror ``production_ledger.py begin`` for a scheduler queue item."""
     namespace = SimpleNamespace(
         episode_dir=str(Path(ep).resolve()),
         frame=f"{int(frame):02d}",
         kind=kind,
-        prompt=None,
-        prompt_file=str(Path(prompt_file).resolve()),
-        allow_long_prompt=False,
+        prompt=reviewed_scene_prompt,
+        prompt_file=(None if reviewed_scene_prompt is not None
+                     else str(Path(prompt_file).resolve())),
+        allow_long_prompt=reviewed_scene_prompt is not None,
         capture_id=capture_id,
         model=model,
         quality=quality,

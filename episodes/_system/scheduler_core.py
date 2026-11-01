@@ -396,7 +396,20 @@ def ledger_begin(ep: Path, item: dict, *, notes: str | None = None,
     import frame_contract
     import prompt_package
 
-    if frame_contract.required(ep):
+    approved_scene = None
+    if item.get("ep14_active_package_id"):
+        try:
+            import hashlib
+            import production_ep14_canonical_activation as active
+            approved = active.load_for_dispatch(ep, item)
+            approved_scene = approved.get("scene_prompt")
+            expected = (item.get("prompt_package") or {}).get("scene_prompt_sha256")
+            if (not isinstance(approved_scene, str) or not approved_scene.strip()
+                    or hashlib.sha256(approved_scene.encode("utf-8")).hexdigest() != expected):
+                return False, "EP14_REVIEWED_LEDGER_SCENE_SHA_NOT_AUTHORIZED"
+        except Exception as exc:
+            return False, "EP14_REVIEWED_LEDGER_BINDING_DENIED: " + type(exc).__name__
+    elif frame_contract.required(ep):
         try:
             package = prompt_package.compile_frame(ep, int(item["frame"]), _prompt_path(item))
             queued_sha = (item.get("frame_contract") or {}).get("contract_sha256")
@@ -427,6 +440,7 @@ def ledger_begin(ep: Path, item: dict, *, notes: str | None = None,
         transaction_id=str((item.get("execution") or {}).get("transaction_id") or "")
         or None,
         production_revision_id=item.get("production_revision_id"),
+        reviewed_scene_prompt=approved_scene,
     )
 
 
