@@ -315,13 +315,16 @@ def activate(ep, *, expected_queue_sha256, expected_final_render_bundle_sha256):
             db.close()
 
 
-def load_for_dispatch(ep, item, *, for_ledger_rearm=False, for_raw_recovery=False):
+def load_for_dispatch(ep, item, *, for_ledger_rearm=False, for_raw_recovery=False, for_followon=False):
     ep = Path(ep).resolve()
     frame = int(item.get("frame") or 0)
-    if for_ledger_rearm and for_raw_recovery:
-        raise ActivationDenied("EP14_RECOVERY_AND_REARM_MODES_MUTUALLY_EXCLUSIVE")
-    allowed_status = ({"external_blocked"} if for_raw_recovery else
+    if sum(bool(x) for x in (for_ledger_rearm, for_raw_recovery, for_followon)) > 1:
+        raise ActivationDenied("EP14_RECOVERY_MODES_MUTUALLY_EXCLUSIVE")
+    allowed_status = ({"pilot_hold"} if for_followon else
+                      {"external_blocked"} if for_raw_recovery else
                       {"blocked"} if for_ledger_rearm else {"queued", "running"})
+    if for_followon and frame not in (29, 48):
+        raise ActivationDenied("EP14_FOLLOWON_ONLY_REVIEWED_F029_F048")
     if for_raw_recovery and (frame != 9 or
             item.get("technical_failure_code") != "ASPECT_RATIO_MISMATCH" or
             "ASPECT_RATIO_MISMATCH" not in str(item.get("last_error") or "")):

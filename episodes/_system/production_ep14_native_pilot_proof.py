@@ -104,8 +104,10 @@ def _provider_capabilities_read(*, timeout: float = 18) -> dict:
 
 
 def attest_one_frame(strict: dict, payload: dict, controller: dict,
-                     codex: str | None = None) -> dict:
+                     codex: str | None = None, *, frame: int = 9) -> dict:
     """Explicitly scoped trial, never represented as explicit tool-registry PASS."""
+    if frame not in (9, 29, 48):
+        raise PilotDenied("EP14_UNKNOWN_FRAME_NOT_IN_REVIEWED_SET")
     if (strict.get("status") != "BLOCKED"
             or strict.get("failure_class") != "LOGIN_AUTH_IMAGE_TOOL_CAPABILITY_UNKNOWN"
             or strict.get("image_generation_called") is not False
@@ -137,7 +139,7 @@ def attest_one_frame(strict: dict, payload: dict, controller: dict,
         **secondary,
         "status": "READY_FOR_REAL_CAPABILITY_PROOF",
         "trial_scope": PILOT_STATUS,
-        "trial_frame": PILOT_FRAME,
+        "trial_frame": frame,
         "native_provider_capabilities_imageGeneration": True,
         "native_provider_capability_sha256": evidence_sha,
         "tool_capability_state": "UNKNOWN",
@@ -149,7 +151,8 @@ def attest_one_frame(strict: dict, payload: dict, controller: dict,
 
 def eligible(ep: Path, item: dict, payload: dict, controller: dict) -> bool:
     """Only the reviewed, activated F009 SHA may enter this proof path."""
-    if (int(item.get("frame") or 0) != PILOT_FRAME
+    frame = int(item.get("frame") or 0)
+    if (frame not in (9, 29, 48)
             or item.get("kind") != "repair"
             or item.get("scope") != "batch"
             or item.get("status") not in {"queued", "running"}
@@ -162,9 +165,14 @@ def eligible(ep: Path, item: dict, payload: dict, controller: dict) -> bool:
         import production_ep14_canonical_activation as active
         value = active.load_for_dispatch(ep, item)
         marker = active.scheduler_core.load_queue(ep).get(active.QUEUE_KEY) or {}
+        if frame == 9:
+            mode_ok = (marker.get("pilot_mode") == PILOT_STATUS
+                       and marker.get("pilot_frame") == PILOT_FRAME)
+        else:
+            import production_ep14_followon_release as followon
+            mode_ok = followon.dispatch_authorized(ep, frame, item, marker)
         return bool(
-            marker.get("pilot_mode") == PILOT_STATUS
-            and marker.get("pilot_frame") == PILOT_FRAME
+            mode_ok
             and marker.get("postimage_pixel_review_required") is True
             and value.get("render_content_sha256") ==
             item.get("prompt_package", {}).get("package_sha256")

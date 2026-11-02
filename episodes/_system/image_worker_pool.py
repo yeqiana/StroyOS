@@ -440,7 +440,8 @@ def execute(ep,item,timeout,codex):
             if ep14_pilot.eligible(ep, item, payload_policy, controller_policy):
                 try:
                     ep14_native_pilot_probe = ep14_pilot.attest_one_frame(
-                        payload_preflight, payload_policy, controller_policy, codex)
+                        payload_preflight, payload_policy, controller_policy, codex,
+                        frame=int(item.get("frame") or 0))
                 except ep14_pilot.PilotDenied:
                     ep14_native_pilot_probe = None
                 if ep14_native_pilot_probe is not None:
@@ -541,7 +542,7 @@ def execute(ep,item,timeout,codex):
             })
         if ep14_native_pilot_probe is not None:
             attempt_context.update({
-                "image_capability_proof_purpose": "EP14_REVIEWED_FINAL_FRAME09_NATIVE_SINGLE_TRIAL",
+                "image_capability_proof_purpose": "EP14_REVIEWED_FINAL_SINGLE_FRAME_NATIVE_TRIAL",
                 "native_provider_capability_sha256": ep14_native_pilot_probe[
                     "native_provider_capability_sha256"],
                 "tool_capability_claim": "UNKNOWN_SINGLE_REVIEWED_FRAME_TRIAL",
