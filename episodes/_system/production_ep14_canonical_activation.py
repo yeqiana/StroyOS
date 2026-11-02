@@ -315,10 +315,17 @@ def activate(ep, *, expected_queue_sha256, expected_final_render_bundle_sha256):
             db.close()
 
 
-def load_for_dispatch(ep, item, *, for_ledger_rearm=False):
+def load_for_dispatch(ep, item, *, for_ledger_rearm=False, for_raw_recovery=False):
     ep = Path(ep).resolve()
     frame = int(item.get("frame") or 0)
-    allowed_status = {"blocked"} if for_ledger_rearm else {"queued", "running"}
+    if for_ledger_rearm and for_raw_recovery:
+        raise ActivationDenied("EP14_RECOVERY_AND_REARM_MODES_MUTUALLY_EXCLUSIVE")
+    allowed_status = ({"external_blocked"} if for_raw_recovery else
+                      {"blocked"} if for_ledger_rearm else {"queued", "running"})
+    if for_raw_recovery and (frame != 9 or
+            item.get("technical_failure_code") != "ASPECT_RATIO_MISMATCH" or
+            "ASPECT_RATIO_MISMATCH" not in str(item.get("last_error") or "")):
+        raise ActivationDenied("EP14_RAW_RECOVERY_REQUIRES_F009_RATIO_MISMATCH")
     if (for_ledger_rearm
             and (frame != 9 or item.get("last_error") !=
                  "PROMPT_SOURCE_DRIFT: queue scene prompt changed after admission; rebuild queue item")):
