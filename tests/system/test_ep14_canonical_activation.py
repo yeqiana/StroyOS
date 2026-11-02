@@ -324,3 +324,27 @@ def test_native_unknown_capability_may_only_queue_f009_after_dual_native_attesta
     with pytest.raises(act.ActivationDenied):
         act.load_for_dispatch(ep,repaired[29])
     assert act.load_for_dispatch(ep,repaired[9])["canonical_activation"] is True
+
+
+def test_f009_superseded_only_with_real_pixel_proof_for_other_reviewed_frames(state,monkeypatch):
+    ep,data=state
+    data["provider_status"]="PASS"
+    _commit(ep)
+    import production_ep14_followon_release as followon
+    data["queue"]["items"][0]["status"]="superseded"
+    f29=deepcopy(data["queue"]["items"][4])
+    proofs=[]
+    def approve_previous(ep,rows):
+        proofs.append(sorted(rows))
+        return {"real_provider_frame":9,"native_attempt2_status":"SUCCEEDED"}
+    monkeypatch.setattr(followon,"_previous_provider_and_review",approve_previous)
+    assert act.load_for_dispatch(ep,f29)["canonical_activation"] is True
+    assert proofs and 9 in proofs[0]
+    # Never allow redispatch of the original or bypass without genuine proof.
+    with pytest.raises(act.ActivationDenied):
+        act.load_for_dispatch(ep,data["queue"]["items"][0])
+    def no_pixel_proof(*args):
+        raise followon.FollowonDenied("F009_SHA_MISMATCH")
+    monkeypatch.setattr(followon,"_previous_provider_and_review",no_pixel_proof)
+    with pytest.raises(act.ActivationDenied,match="SUPERSEDED_F009_REAL_PIXEL"):
+        act.load_for_dispatch(ep,f29)

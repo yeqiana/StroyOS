@@ -350,10 +350,27 @@ def load_for_dispatch(ep, item, *, for_ledger_rearm=False, for_raw_recovery=Fals
             and int(r.get("frame") or 0) in FRAMES]
     old = [r for r in rows if r.get("kind") == "original"]
     active = [r for r in rows if r.get("kind") == "repair"]
+    # The original F009 becomes superseded after its genuine second Attempt
+    # and independent pixel review. This is not a retry entitlement for that
+    # historical prompt. Accept only when the native Provider receipt and
+    # SHA-bound REPAIR_NOW review are independently verified.
+    superseded9 = [r for r in old if int(r["frame"]) == 9
+                   and r.get("status") == "superseded"]
+    if superseded9 and frame in (29, 48):
+        try:
+            import production_ep14_followon_release as followon
+            followon._previous_provider_and_review(ep, {
+                int(r["frame"]): r for r in active})
+        except Exception as exc:
+            raise ActivationDenied("EP14_SUPERSEDED_F009_REAL_PIXEL_PROOF_REQUIRED") from exc
+    elif superseded9:
+        raise ActivationDenied("EP14_SUPERSEDED_F009_CANNOT_DISPATCH_ORIGINAL")
     if (len(old) != 3 or len(active) != 3
             or {int(x["frame"]) for x in old} != set(FRAMES)
             or {int(x["frame"]) for x in active} != set(FRAMES)
-            or any(x.get("status") != "external_blocked"
+            or any((x.get("status") !=
+                    ("superseded" if superseded9 and int(x["frame"]) == 9
+                     else "external_blocked"))
                    or x.get("requires_content_revision") is not True
                    or x.get("no_automatic_original_prompt_retry") is not True
                    for x in old)):
