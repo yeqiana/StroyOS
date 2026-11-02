@@ -76,6 +76,7 @@ SLOTS = {
         "tests/system/test_ep14_canonical_activation.py",
         "tests/system/test_ep14_native_pilot_proof.py",
         "tests/system/test_ep14_ledger_repair_source.py",
+        "tests/system/test_ep14_reviewed_ledger_rearm.py",
     "tests/system/test_ep14_independent_review_evidence.py",
         "tests/system/test_native_provider_safety_classification.py",
         "tests/system/test_runner_host_loop_v262.py::NextActionAutonomousBatchTests::test_preserved_native_raw_precedes_unknown_backend_block_without_retry",

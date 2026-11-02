@@ -315,12 +315,17 @@ def activate(ep, *, expected_queue_sha256, expected_final_render_bundle_sha256):
             db.close()
 
 
-def load_for_dispatch(ep, item):
+def load_for_dispatch(ep, item, *, for_ledger_rearm=False):
     ep = Path(ep).resolve()
     frame = int(item.get("frame") or 0)
+    allowed_status = {"blocked"} if for_ledger_rearm else {"queued", "running"}
+    if (for_ledger_rearm
+            and (frame != 9 or item.get("last_error") !=
+                 "PROMPT_SOURCE_DRIFT: queue scene prompt changed after admission; rebuild queue item")):
+        raise ActivationDenied("EP14_LEDGER_REARM_REQUIRES_EXACT_FRAME09_SOURCE_DRIFT")
     if (frame not in FRAMES or item.get("kind") != "repair"
             or item.get("scope") != "batch"
-            or item.get("status") not in {"queued", "running"}):
+            or item.get("status") not in allowed_status):
         raise ActivationDenied("EP14_DISPATCH_REQUIRES_NEW_ACTIVATED_REPAIR_ROW")
     q = scheduler_core.load_queue(ep)
     marker = q.get(QUEUE_KEY) or {}
