@@ -1339,6 +1339,12 @@ def reviewable_frame_records(ep: Path, *, require_files: bool, only_frames: list
         elif candidate and status in production_ledger.READY_LEDGER_STATES:
             asset = candidate
             source_kind = "candidate"
+        elif (candidate and status == "NEEDS_USER"
+              and final_acceptance.allows(ep, "frame_semantic", key)):
+            # Direct user acceptance makes current SHA-bound failed pixels
+            # reviewable, without converting their Critic verdict into PASS.
+            asset = candidate
+            source_kind = "user_accepted_candidate"
         else:
             raise ValueError(f"frame {key} has no reviewable production asset: status={status!r}")
         raw_path = asset.get("path") or asset.get("asset_path")
