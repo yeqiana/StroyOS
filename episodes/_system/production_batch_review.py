@@ -448,18 +448,42 @@ def run_codex_review(ep: Path, batch_id: str, *, attempt: int = 1, codex_raw: st
             attachments.append(staged)
         codex = codex_critic_runner.resolve_codex(codex_raw)
         log = ep / "meta/runtime/batch-reviews" / f"{batch_id}-attempt-{attempt}.jsonl"
-        result = codex_critic_runner.launch(
-            prompt(ep, batch_id, rows, candidate, contracts=contracts),
-            codex=codex,
-            root=ROOT,
-            timeout=timeout,
-            output_path=response,
-            attachments=attachments,
-            model=runtime_router.vision_review_model(),
-            reasoning_effort=runtime_router.vision_review_effort("default"),
-            sandbox="workspace-write",
-            log_path=log,
-        )
+        try:
+            result = codex_critic_runner.launch(
+                prompt(ep, batch_id, rows, candidate, contracts=contracts),
+                codex=codex,
+                root=ROOT,
+                timeout=timeout,
+                output_path=response,
+                attachments=attachments,
+                model=runtime_router.vision_review_model(),
+                reasoning_effort=runtime_router.vision_review_effort("default"),
+                sandbox="workspace-write",
+                log_path=log,
+            )
+        except codex_user_runner.CodexUserRunnerTimeout:
+            # A completed SHA-bound critic answer can survive the transport
+            # timeout, independently of a missing terminal CLI event.
+            # Never infer a decision from timeout alone or reuse stale pixels.
+            if _complete_bound_candidate(ep, batch_id, rows, candidate) is None and response.is_file():
+                raw = _json_from_text(response.read_text(
+                    encoding="utf-8-sig", errors="replace"))
+                bound = _complete_bound_payload(ep, batch_id, rows, raw or {})
+                if bound is not None:
+                    write_json(candidate, bound)
+            if _complete_bound_candidate(ep, batch_id, rows, candidate) is None:
+                _recover_candidate_from_attempt_log(
+                    ep, batch_id, rows=rows, attempt=attempt, candidate=candidate)
+            if {f"{int(row['frame']):02d}": unit_binding(ep, row) for row in rows} != before:
+                raise RuntimeError("Codex Vision batch critic source bindings drifted")
+            recovered = _recover_complete_candidate(
+                ep, batch_id, rows=rows, candidate=candidate,
+                attempt=attempt, process_returncode=None,
+                basis="persisted_complete_candidate_after_transport_timeout",
+            )
+            if recovered is not None:
+                return recovered
+            raise
     finally:
         shutil.rmtree(staging, ignore_errors=True)
     if _complete_bound_candidate(ep, batch_id, rows, candidate) is None and response.is_file():
