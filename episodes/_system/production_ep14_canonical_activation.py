@@ -212,6 +212,9 @@ def _new_repair_row(original, record, *, pilot_only=False):
         "status": ("pilot_hold" if pilot_only and record["frame"] != 9 else "queued"),
         "attempts": 1,
         "output_path": None,
+        # Independently reviewed revisions must be discoverable by the pixel
+        # reviewer after generation, including releases from pilot_hold.
+        "batch_id": f"EP14_F{record['frame']:03d}_PIXELS_V1",
         "log_path": None,
         "last_error": None,
         "generation_attempt_reason": "REVIEWED_CONTENT_REVISION_AFTER_PROVIDER_REFUSAL",
@@ -315,7 +318,7 @@ def activate(ep, *, expected_queue_sha256, expected_final_render_bundle_sha256):
             db.close()
 
 
-def load_for_dispatch(ep, item, *, for_ledger_rearm=False, for_raw_recovery=False, for_followon=False):
+def load_for_dispatch(ep, item, *, for_ledger_rearm=False, for_raw_recovery=False, for_followon=False, queue_snapshot=None):
     ep = Path(ep).resolve()
     frame = int(item.get("frame") or 0)
     if sum(bool(x) for x in (for_ledger_rearm, for_raw_recovery, for_followon)) > 1:
@@ -337,7 +340,7 @@ def load_for_dispatch(ep, item, *, for_ledger_rearm=False, for_raw_recovery=Fals
             or item.get("scope") != "batch"
             or item.get("status") not in allowed_status):
         raise ActivationDenied("EP14_DISPATCH_REQUIRES_NEW_ACTIVATED_REPAIR_ROW")
-    q = scheduler_core.load_queue(ep)
+    q = deepcopy(queue_snapshot) if queue_snapshot is not None else scheduler_core.load_queue(ep)
     marker = q.get(QUEUE_KEY) or {}
     if (marker.get("state") != "ACTIVE_THREE_REVIEWED_CONTENT_REVISIONS"
             or marker.get("final_render_bundle_sha256") != BUNDLE
@@ -365,11 +368,27 @@ def load_for_dispatch(ep, item, *, for_ledger_rearm=False, for_raw_recovery=Fals
             raise ActivationDenied("EP14_SUPERSEDED_F009_REAL_PIXEL_PROOF_REQUIRED") from exc
     elif superseded9:
         raise ActivationDenied("EP14_SUPERSEDED_F009_CANNOT_DISPATCH_ORIGINAL")
+    # After F029 has genuinely succeeded its *historical original* refusal is
+    # superseded, not external_blocked. Do not weaken this for F009 or F029:
+    # only F048 may consume the next independently reviewed render, and only
+    # with the exact pixel SHA / Vision / Ledger / Provider proof.
+    superseded29 = [r for r in old if int(r["frame"]) == 29
+                    and r.get("status") == "superseded"]
+    if superseded29:
+        if frame != 48:
+            raise ActivationDenied("EP14_SUPERSEDED_F029_ONLY_F048_FOLLOWON")
+        try:
+            import production_ep14_f048_followon as f048
+            f048._source(ep, {int(r["frame"]): r for r in active}, marker)
+        except Exception as exc:
+            raise ActivationDenied("EP14_SUPERSEDED_F029_REAL_PIXEL_PROOF_REQUIRED") from exc
     if (len(old) != 3 or len(active) != 3
             or {int(x["frame"]) for x in old} != set(FRAMES)
             or {int(x["frame"]) for x in active} != set(FRAMES)
             or any((x.get("status") !=
-                    ("superseded" if superseded9 and int(x["frame"]) == 9
+                    ("superseded" if
+                     (superseded9 and int(x["frame"]) == 9)
+                     or (superseded29 and int(x["frame"]) == 29)
                      else "external_blocked"))
                    or x.get("requires_content_revision") is not True
                    or x.get("no_automatic_original_prompt_retry") is not True

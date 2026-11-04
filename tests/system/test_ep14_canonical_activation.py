@@ -168,6 +168,7 @@ def test_explicit_provider_ready_activates_three_new_rows_and_leaves_old_unchang
     for f in act.FRAMES:
         new=next(x for x in queue["items"] if x["kind"]=="repair" and x["frame"]==f)
         assert new["id"]==act.item_id(f)
+        assert new["batch_id"]==f"EP14_F{f:03d}_PIXELS_V1"
         assert new["status"]=="queued"
         assert "no_automatic_original_prompt_retry" not in new
         assert "requires_content_revision" not in new
