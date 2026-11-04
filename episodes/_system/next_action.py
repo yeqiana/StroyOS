@@ -287,10 +287,41 @@ def queue_summary(ep: Path) -> dict:
         unresolved_blocked.append(row)
     counts["blocked"] = len(unresolved_blocked)
 
+    # A refused historical original remains in the queue for audit, but must
+    # not block later, independently approved repair pixels for the same frame.
+    # Require newer committed pixels bound to the CURRENT ledger candidate,
+    # not just a matching frame number. A completed content FAIL changes the
+    # repair row to scout_repair but does not erase its genuine generated image.
+    unresolved_external = []
+    for idx, row in enumerate(items):
+        if row.get("status") != "external_blocked":
+            continue
+        frame_no = int(row.get("frame") or 0)
+        ledger_row = ledger.get(f"{frame_no:02d}") or ledger.get(str(frame_no)) or {}
+        candidate = ledger_row.get("current_candidate") if isinstance(ledger_row, dict) else None
+        current_path = str((candidate or {}).get("path") or
+                           (candidate or {}).get("asset_path") or "")
+        superseded_by_committed_pixels = (
+            isinstance(candidate, dict)
+            and bool(candidate.get("sha256"))
+            and bool(current_path)
+            and any(
+                int(other.get("frame") or 0) == frame_no
+                and other.get("status") in {"generated", "scout_repair", "review_pending"}
+                and str(other.get("output_path") or "") == current_path
+                for other in items[idx + 1:]
+            )
+        )
+        if superseded_by_committed_pixels:
+            continue
+        unresolved_external.append(row)
+    counts["external_blocked"] = len(unresolved_external)
+
     return {
         "counts": counts,
         "queued_frames": sorted(x for x in queued_frames if x > 0),
         "blocked_items": unresolved_blocked,
+        "external_blocked_items": unresolved_external,
         "raw": q,
     }
 
@@ -832,7 +863,7 @@ def derive(ep: Path) -> dict:
             # freshly refreshed baseline failed at the provider, retry that exact
             # attempt before considering dependent admissions.
             if qs["counts"].get("external_blocked"):
-                blocked_frames=sorted({int(x.get("frame") or 0) for x in q.get("items") or [] if x.get("status")=="external_blocked" and int(x.get("frame") or 0)>0})
+                blocked_frames=sorted({int(x.get("frame") or 0) for x in qs.get("external_blocked_items", []) if int(x.get("frame") or 0)>0})
                 return {**base, "action":"EXTERNAL_IMAGE_PROVIDER_BLOCKED", "executor":"EXTERNAL",
                         "blocking":True, "work_pending":True, "auto_recoverable":False, "hard_stop":True,
                         "frames":blocked_frames, "reason":"image provider technical retry epoch exhausted"}
@@ -982,7 +1013,7 @@ def derive(ep: Path) -> dict:
                     executor="CODEX_IMAGE" if image_runtime=="CODEX" else runtime,
                     reason="actual-pixel review authorized content repair")
         if qs["counts"].get("external_blocked"):
-            blocked_items=[x for x in q.get("items") or [] if x.get("status")=="external_blocked"]
+            blocked_items=list(qs.get("external_blocked_items") or [])
             # Recover SHA-verified RAW before any new image attempt; never
             # mix unproven IMAGE_BACKEND_ERROR with this machine-only path.
             try:
