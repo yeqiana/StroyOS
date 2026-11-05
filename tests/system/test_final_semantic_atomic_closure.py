@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import pytest
 import sys
 import tempfile
 import threading
@@ -432,7 +433,8 @@ def test_global_closure_fail_marks_only_affected_boundary_frames():
     assert out["summary"]["passed"] is False
 
 
-def test_completed_local_failure_shards_recover_after_parent_timeout(tmp_path):
+@pytest.mark.parametrize('no_auto_repair', [False, True])
+def test_completed_local_failure_shards_recover_after_parent_timeout(tmp_path, no_auto_repair):
     ep = tmp_path
     (ep / "meta").mkdir(parents=True)
     frames = [
@@ -484,10 +486,14 @@ def test_completed_local_failure_shards_recover_after_parent_timeout(tmp_path):
             patch.object(frame_semantic_review, "review_source_bindings", return_value={}), \
             patch.object(frame_semantic_review, "repo_rel", side_effect=lambda p: str(Path(p))), \
             patch.object(frame_semantic_review, "apply_pending_candidate", return_value=2) as apply:
-        rc = frame_semantic_review.recover_completed_shards_after_parent_timeout(ep, attempt=1)
+        rc = frame_semantic_review.recover_completed_shards_after_parent_timeout(
+            ep, attempt=1, no_auto_repair=no_auto_repair)
 
     assert rc == 2
-    apply.assert_called_once_with(ep.resolve(), attempt=1)
+    if no_auto_repair:
+        apply.assert_called_once_with(ep.resolve(), attempt=1, no_auto_repair=True)
+    else:
+        apply.assert_called_once_with(ep.resolve(), attempt=1)
     merged = json.loads((ep / frame_semantic_review.CANDIDATE_REL).read_text(encoding="utf-8"))
     assert merged["summary"]["passed"] is False
     evidence = json.loads((ep / "meta/frame-semantic-sharded-attempt-1.json").read_text(encoding="utf-8"))

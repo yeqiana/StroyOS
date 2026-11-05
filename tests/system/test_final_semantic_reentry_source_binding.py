@@ -12,7 +12,8 @@ import frame_semantic_review as fsr
 
 
 @pytest.mark.parametrize("sharded", [False, True])
-def test_completed_review_reentry_carries_verified_frozen_bindings(tmp_path, sharded):
+@pytest.mark.parametrize("no_auto_repair", [False, True])
+def test_completed_review_reentry_carries_verified_frozen_bindings(tmp_path, sharded, no_auto_repair):
     ep = tmp_path
     (ep / "meta").mkdir()
     frozen = {"schema_version": 1, "frames": {"01": {"sha256": "a" * 64}}}
@@ -48,7 +49,7 @@ def test_completed_review_reentry_carries_verified_frozen_bindings(tmp_path, sha
     captured = []
 
     def apply(_ep, *, data, reviewed, provenance, **_kwargs):
-        captured.append(provenance.get("review_source_bindings"))
+        captured.append((provenance.get("review_source_bindings"), _kwargs.get("no_auto_repair")))
         assert provenance.get("review_source_bindings") == frozen
         return 2  # model FAIL can be routed to the bounded Ledger repair lane.
 
@@ -59,6 +60,6 @@ def test_completed_review_reentry_carries_verified_frozen_bindings(tmp_path, sha
          patch.object(fsr, "review_source_bindings", return_value=frozen), \
          patch.object(fsr, "repo_path", side_effect=lambda raw, _label: Path(raw)), \
          patch.object(fsr, "_apply_candidate_gate", side_effect=apply):
-        rc = fsr.apply_pending_candidate(ep, attempt=1)
+        rc = fsr.apply_pending_candidate(ep, attempt=1, no_auto_repair=no_auto_repair)
     assert rc == 2
-    assert captured == [frozen]
+    assert captured == [(frozen, no_auto_repair)]

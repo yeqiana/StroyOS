@@ -1921,7 +1921,7 @@ def _pending_assets_match_exact_promotion(
     return True
 
 
-def apply_pending_candidate(ep: Path, *, attempt: int) -> int:
+def apply_pending_candidate(ep: Path, *, attempt: int, no_auto_repair: bool = False) -> int:
     """Resume a critic whose parent process vanished after the model wrote JSON."""
     request_path = pending_request_path(ep, attempt)
     candidate = ep / CANDIDATE_REL
@@ -2072,10 +2072,13 @@ def apply_pending_candidate(ep: Path, *, attempt: int) -> int:
         attempt=attempt,
         review_scope=review_scope,
         review_item=review_item,
+        no_auto_repair=no_auto_repair,
     )
 
 
-def recover_completed_shards_after_parent_timeout(ep: Path, *, attempt: int) -> int | None:
+def recover_completed_shards_after_parent_timeout(
+    ep: Path, *, attempt: int, no_auto_repair: bool = False,
+) -> int | None:
     """Recover completed local-failure shards without re-running Vision.
 
     The previous parent may have timed out after every shard wrote a valid
@@ -2187,7 +2190,10 @@ def recover_completed_shards_after_parent_timeout(ep: Path, *, attempt: int) -> 
             "log_path": result["log_path"],
         } for result in results],
     })
-    return apply_pending_candidate(ep, attempt=attempt)
+    return apply_pending_candidate(
+        ep, attempt=attempt,
+        **({"no_auto_repair": True} if no_auto_repair else {}),
+    )
 
 
 def validate_bound_review(data: dict, *, frame: dict, contexts: dict, version: str, metadata_only: bool, phase3_contexts: dict | None = None, directing_v3: bool = False, ep: Path | None = None) -> list[str]:
@@ -3599,7 +3605,10 @@ def _run_critic_uninstrumented(
                 raise RuntimeError(
                     "final semantic review pending request drift; refuse to overwrite "
                     "old shard evidence until independently reconciled")
-        recovered = recover_completed_shards_after_parent_timeout(ep, attempt=attempt)
+        recovered = recover_completed_shards_after_parent_timeout(
+            ep, attempt=attempt,
+            **({"no_auto_repair": True} if no_auto_repair else {}),
+        )
         if recovered is not None:
             print("FRAME SEMANTIC REVIEW RECOVERED: completed shards committed after parent timeout")
             return recovered
