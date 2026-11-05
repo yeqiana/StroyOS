@@ -2728,6 +2728,71 @@ def _sharded_critic_prompt(ep: Path, shard: dict, candidate: Path, attempt: int)
     return base_prompt.replace(original, replacement, 1)
 
 
+def _validated_cached_full_review_shard(
+    ep: Path, shard: dict, *, attempt: int,
+) -> dict | None:
+    """Reuse only candidate rows bound to the exact pending full review.
+
+    Cache reuse is conservative: both the pending request's assets and context
+    must still match the *complete* reviewable frame set, and the per-frame
+    generation bindings must be current.  A malformed cache fails closed.
+    """
+    request_path = pending_request_path(ep, attempt)
+    if not request_path.is_file():
+        return None
+    pending = read_json(request_path)
+    current = reviewable_frame_records(ep, require_files=True)
+    assets = [
+        {"frame": row["frame"], "path": row["path_rel"], "sha256": row["sha256"]}
+        for row in current
+    ]
+    if (pending.get("attempt") != attempt
+            or pending.get("review_scope") != "FULL_FRAME_SET"
+            or pending.get("assets") != assets
+            or pending.get("contexts") != context_hashes(ep)
+            or reviewable_phase4_binding_errors(ep, current)):
+        return None
+    expected = _full_review_shards(current)
+    index = int(shard["index"])
+    matched = next((row for row in expected if int(row["index"]) == index), None)
+    if matched is None or [r["frame"] for r in matched["selected"]] != [
+            r["frame"] for r in shard["selected"]]:
+        return None
+    candidate = ep / "meta" / f".frame-semantic-shard-{attempt}-{index}.candidate.json"
+    log = ep / "meta" / f"frame-semantic-critic-attempt-{attempt}-shard-{index}.jsonl"
+    if not candidate.is_file() or not log.is_file():
+        return None
+    try:
+        data = read_json(candidate)
+        errors = validate_candidate_gate_rows(
+            data.get("frames"), matched["selected"],
+            episode_contract_version(ep), directing_v3_required(ep))
+        codes = data.get("issue_codes")
+        if not isinstance(codes, list) or any(code not in ISSUE_CODES for code in codes):
+            errors.append("invalid global issue_codes")
+        decisions = [
+            str(row.get("decision") or "")
+            for row in (data.get("frames") or []) if isinstance(row, dict)
+        ]
+        expected_pass = bool(decisions) and all(x == "pass" for x in decisions)
+        if (data.get("summary") or {}).get("passed") is not expected_pass:
+            errors.append("summary.passed mismatch")
+        if errors:
+            return None
+        return {
+            "index": index,
+            "target_frames": list(matched["target_frames"]),
+            "context_frames": list(matched["context_frames"]),
+            "selected_frames": [row["frame"] for row in matched["selected"]],
+            "candidate_path": repo_rel(candidate),
+            "candidate_sha256": sha256_file(candidate),
+            "log_path": repo_rel(log),
+            "data": data,
+        }
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return None
+
+
 def _launch_full_review_shard(
     ep: Path,
     shard: dict,
@@ -2739,7 +2804,17 @@ def _launch_full_review_shard(
     index = int(shard["index"])
     candidate = ep / "meta" / f".frame-semantic-shard-{attempt}-{index}.candidate.json"
     log = ep / "meta" / f"frame-semantic-critic-attempt-{attempt}-shard-{index}.jsonl"
-    candidate.unlink(missing_ok=True)
+    # Only a matching frozen full-set request permits shard replay.  A shard
+    # candidate alone has no source binding and must never be trusted.
+    cached = _validated_cached_full_review_shard(ep, shard, attempt=attempt)
+    if cached is not None:
+        return cached
+    # The old file is retained for investigation, never silently overwritten.
+    if candidate.is_file():
+        archive = candidate.with_name(candidate.name + ".prior")
+        if not archive.exists():
+            archive.write_bytes(candidate.read_bytes())
+        candidate.unlink()
     completed = critic_runner.launch(
         _sharded_critic_prompt(ep, shard, candidate, attempt),
         codex=codex,
@@ -3032,6 +3107,12 @@ def _launch_global_closure(
 ) -> dict:
     candidate = ep / "meta" / f".frame-semantic-global-closure-{attempt}.candidate.json"
     log = ep / "meta" / f"frame-semantic-global-closure-attempt-{attempt}.jsonl"
+    # Preserve a prior candidate for forensic recovery; do not silently discard
+    # evidence when a Codex shard times out or is interrupted.
+    if candidate.is_file():
+        archive = candidate.with_name(candidate.name + ".prior")
+        if not archive.exists():
+            archive.write_bytes(candidate.read_bytes())
     candidate.unlink(missing_ok=True)
     completed = critic_runner.launch(
         _global_closure_prompt(ep, anchors, shard_results, candidate, attempt),
@@ -3480,6 +3561,23 @@ def _run_critic_uninstrumented(
     }
 
     if len(frames) >= FULL_REVIEW_FANOUT_MIN_FRAMES:
+        existing_pending = pending_request_path(ep, attempt)
+        if existing_pending.is_file():
+            try:
+                prior = read_json(existing_pending)
+            except (OSError, ValueError, TypeError):
+                prior = {}
+            expected_assets = [
+                {"frame": row["frame"], "path": row["path_rel"], "sha256": row["sha256"]}
+                for row in frames
+            ]
+            if (prior.get("attempt") != attempt
+                    or prior.get("review_scope") != review_scope
+                    or prior.get("assets") != expected_assets
+                    or prior.get("contexts") != contexts):
+                raise RuntimeError(
+                    "final semantic review pending request drift; refuse to overwrite "
+                    "old shard evidence until independently reconciled")
         recovered = recover_completed_shards_after_parent_timeout(ep, attempt=attempt)
         if recovered is not None:
             print("FRAME SEMANTIC REVIEW RECOVERED: completed shards committed after parent timeout")
