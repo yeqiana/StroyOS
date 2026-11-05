@@ -1623,6 +1623,7 @@ def _apply_candidate_gate(
     attempt: int,
     review_scope: str = "FULL_FRAME_SET",
     review_item: dict | None = None,
+    no_auto_repair: bool = False,
 ) -> int:
     """Let the final semantic critic close candidate -> PASS -> approved -> lock."""
     version = episode_contract_version(ep)
@@ -1696,10 +1697,15 @@ def _apply_candidate_gate(
         status = str(frame.get("status") or "")
         decision = str(review.get("decision") or "")
         if decision == "pass":
-            if status not in {"ORIGINAL_READY", "REPAIR_READY", "PASSED", "LOCKED"}:
-                preflight_errors.append(f"frame {key} cannot close PASS from status={status}")
-            else:
+            if status in {"ORIGINAL_READY", "REPAIR_READY", "PASSED", "LOCKED"}:
                 plan.append(("pass", source, review, status))
+            elif status in {"WEAK_PASS", "NEEDS_USER"}:
+                # A semantic PASS cannot upgrade a pre-existing weak/user-held
+                # Ledger state into LOCKED. Preserve the status and record this
+                # as unresolved rather than crashing the entire 48-frame review.
+                plan.append(("retain_unresolved_pass", source, review, status))
+            else:
+                preflight_errors.append(f"frame {key} cannot close PASS from status={status}")
             continue
         # A Final Semantic FAIL is authoritative review evidence, not the
         # ordinary image-content critic's retry-exhaustion acceptance policy.
@@ -1709,7 +1715,10 @@ def _apply_candidate_gate(
         elif status == "NEEDS_USER":
             plan.append(("retain_needs_user", source, review, status))
         elif status in {"ORIGINAL_READY", "REPAIR_READY"}:
-            plan.append(("review_failure", source, review, status))
+            # Explicit no-repair mode preserves the genuine FAIL verdict
+            # and asks for a user decision without authorizing generation.
+            operation = "review_needs_user" if no_auto_repair else "review_failure"
+            plan.append((operation, source, review, status))
         else:
             preflight_errors.append(f"frame {key} cannot close FAIL from status={status}")
     if preflight_errors:
@@ -1767,10 +1776,18 @@ def _apply_candidate_gate(
         key = source["frame"]
         notes = "Final semantic critic candidate review: " + str(review.get("notes") or review.get("issue_codes") or "")
         failures.append(key)
+        if operation == "retain_unresolved_pass":
+            # Do not alter the original WEAK_PASS / NEEDS_USER authority.
+            continue
         if operation == "escalate_needs_user":
             production_ledger.mark_review_needs_user(ep, key, reason=notes[:500])
             continue
         if operation == "retain_needs_user":
+            continue
+        if operation == "review_needs_user":
+            production_ledger.cmd_review(SimpleNamespace(
+                episode_dir=str(ep), frame=key, decision="needs_user",
+                notes=notes[:500]))
             continue
         if operation == "authorize_locked_repair":
             production_ledger.cmd_authorize_repair(SimpleNamespace(
@@ -3191,6 +3208,7 @@ def _run_sharded_full_critic(
     before: dict[str, str],
     stable_before: dict,
     phashes: list[dict],
+    no_auto_repair: bool = False,
 ) -> int:
     shards = _full_review_shards(frames)
     results, peak = _execute_full_review_shards(
@@ -3292,11 +3310,13 @@ def _run_sharded_full_critic(
         "global_closure_status": closure_evidence.get("status"),
         "global_closure_passed": closure_evidence.get("passed"),
         "global_closure_log": closure_evidence.get("log_path"),
+        "review_source_bindings": frozen_sources,
     })
     if candidate_gate:
         return _apply_candidate_gate(
             ep, data=merged, reviewed=current, contexts=contexts,
-            provenance=provenance, attempt=attempt)
+            provenance=provenance, attempt=attempt,
+            no_auto_repair=no_auto_repair)
     return _persist_candidate(
         ep, data=merged, current=current, contexts=contexts, phashes=phashes,
         provenance=provenance, frozen_sources=frozen_sources)
@@ -3486,6 +3506,7 @@ def _run_critic_uninstrumented(
     target_frames: list[int | str] | tuple[int | str, ...] | None = None,
     review_scope: str = "FULL_FRAME_SET",
     review_item: dict | None = None,
+    no_auto_repair: bool = False,
 ) -> int:
     if timeout is None:
         timeout = runtime_timeout_policy.seconds("deep_semantic_review")
@@ -3632,6 +3653,7 @@ def _run_critic_uninstrumented(
             before=before,
             stable_before=stable_before,
             phashes=phashes,
+            no_auto_repair=no_auto_repair,
         )
     log = ep / "meta" / f"frame-semantic-critic-attempt-{attempt}.jsonl"
     critic_binding = model_policy.resolve("vision.final", episode=ep)
@@ -3731,6 +3753,7 @@ def run_critic(
     target_frames: list[int | str] | tuple[int | str, ...] | None = None,
     review_scope: str = "FULL_FRAME_SET",
     review_item: dict | None = None,
+    no_auto_repair: bool = False,
 ) -> int:
     """Run a full review or explicit non-promotable Phase5A scoped review."""
     episode_performance.safe_begin_review_span(ep, "FULL", attempt)
@@ -3738,6 +3761,7 @@ def run_critic(
         result = _run_critic_uninstrumented(
             ep, attempt=attempt, codex_raw=codex_raw, timeout=timeout,
             target_frames=target_frames, review_scope=review_scope, review_item=review_item,
+            no_auto_repair=no_auto_repair,
         )
     except BaseException as exc:
         episode_performance.safe_end_review_span(
