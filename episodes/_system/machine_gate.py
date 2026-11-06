@@ -568,6 +568,7 @@ def check_story_semantic_trace(repo_root: Path, episode_dir: Path, gates: dict, 
         return
     enforced_from = str(marker.get("enforced_from") or "")
     frames = ledger.get("frames") if isinstance(ledger.get("frames"), dict) else {}
+    full_sha_bound_user_authority = None
     for key in sorted(frames):
         frame = frames.get(key)
         if not isinstance(frame, dict):
@@ -590,6 +591,23 @@ def check_story_semantic_trace(repo_root: Path, episode_dir: Path, gates: dict, 
                     "WARN", "story_semantic_trace_accepted",
                     f"frame {key}: {code}: {message} accepted as known defect "
                     "(meta/final-acceptance.json)"))
+            elif code == "story_semantic_trace_missing" and acceptance_allows(episode_dir, "story_semantic_trace"):
+                # The user accepted all final image bytes by SHA; a missing
+                # historical text-role trace remains a WARN, not a model PASS.
+                # The separate authority verifier checks every current frame,
+                # real successful attempt, and previously unaccepted defect.
+                if full_sha_bound_user_authority is None:
+                    import verified_review_authority
+                    full_sha_bound_user_authority = verified_review_authority.verify_episode_review_authority(
+                        episode_dir, metadata_only=False)
+                if (full_sha_bound_user_authority.get("status") == "USER_ACCEPTED"
+                        and key in full_sha_bound_user_authority.get("frames", [])):
+                    findings.append(Finding(
+                        "WARN", "story_semantic_trace_user_final_asset",
+                        f"frame {key}: {message}; direct user accepted all final pixels "
+                        "by SHA (not a model story-trace PASS)"))
+                else:
+                    findings.append(Finding("FAIL", code, f"frame {key}: {message}"))
             else:
                 findings.append(Finding("FAIL", code, f"frame {key}: {message}"))
 

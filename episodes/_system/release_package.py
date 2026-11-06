@@ -16,6 +16,8 @@ import frame_review_persistence
 import story_review
 import visual_profile_review_persistence
 import verified_review_authority
+import final_acceptance
+import approval_persistence
 
 ROOT = Path(__file__).resolve().parents[2]
 MANIFEST_REL = Path('meta/release-manifest.json')
@@ -103,6 +105,8 @@ def file_row(path: Path, role: str) -> dict:
 
 def build_payload(ep: Path) -> dict:
     verified_review_authority.require_verified_episode_review_authority(ep, metadata_only=False)
+    review_authority = verified_review_authority.verify_episode_review_authority(ep, metadata_only=False)
+    user_final_authority = review_authority.get('status') == 'USER_ACCEPTED'
     snapshot_sha=None
     if final_snapshot.required(ep) or (ep/final_snapshot.SNAPSHOT_REL).is_file():
         errors=final_snapshot.verify(ep)
@@ -162,11 +166,32 @@ def build_payload(ep: Path) -> dict:
         'final_candidate_snapshot_sha256': snapshot_sha,
         'package_sha256': None,
     }
+    if user_final_authority:
+        acceptance = final_acceptance.valid(ep)
+        if not acceptance or not acceptance.get('accepted_visual_assets'):
+            raise SystemExit('direct-user final acceptance invalid or without SHA-bound pixels')
+        payload['direct_user_final_acceptance'] = {
+            'basis': 'SHA_BOUND_DIRECT_USER_FINAL_ASSETS',
+            'approval_sha256': approval_persistence.source_sha(
+                ep, approval_persistence.FINAL_ACCEPTANCE),
+            'known_defect_frames': acceptance['known_defect_frames'],
+            'machine_review_pass': False,
+        }
     if frame_semantic_required(ep):
-        evidence_paths = [
-            ep/'meta/frame-semantic-review.json', ep/'meta/frame-semantic-audit.json',
-            ep/'meta/subtitle-layout-audit.json', ep/'meta/story-gates.json',
-        ]
+        if user_final_authority:
+            # The actual model verdict was not PASS: package the independent
+            # recorded user decision and the original semantic candidate, not
+            # synthetic model Review/PASS files.
+            evidence_paths = [
+                ep/'meta/.frame-semantic-review.candidate.json',
+                ep/'meta/runtime/final-acceptance-events.jsonl',
+                ep/'meta/subtitle-layout-audit.json', ep/'meta/story-gates.json',
+            ]
+        else:
+            evidence_paths = [
+                ep/'meta/frame-semantic-review.json', ep/'meta/frame-semantic-audit.json',
+                ep/'meta/subtitle-layout-audit.json', ep/'meta/story-gates.json',
+            ]
         story_review_export=story_review.materialize_review_export(ep,story_review.load_review(ep))
         if story_review_export is not None and story_review_export.is_file():
             evidence_paths.append(story_review_export)
@@ -216,6 +241,19 @@ def verify_payload(ep: Path, payload: dict) -> list[str]:
     body = payload.get('body') or []
     if isinstance(expected_count, int) and len(body) != expected_count:
         errors.append(f'release-package body count mismatch: expected={expected_count}, package={len(body)}')
+    user_final = payload.get('direct_user_final_acceptance')
+    if isinstance(user_final, dict):
+        observed = verified_review_authority.verify_episode_review_authority(
+            ep, metadata_only=False)
+        current_sha = approval_persistence.source_sha(
+            ep, approval_persistence.FINAL_ACCEPTANCE)
+        if (observed.get('status') != 'USER_ACCEPTED'
+                or user_final.get('basis') != 'SHA_BOUND_DIRECT_USER_FINAL_ASSETS'
+                or user_final.get('machine_review_pass') is not False
+                or str(user_final.get('approval_sha256') or '') != current_sha
+                or sorted(f'{int(value):02d}' for value in user_final.get('known_defect_frames') or [])
+                   != observed.get('known_defect_frames')):
+            errors.append('direct-user final acceptance authority drift or revoked')
     expected_reviews = payload.get('frame_review_db_evidence')
     if isinstance(expected_reviews, dict):
         actual_reviews = frame_review_persistence.evidence_digest(ep)

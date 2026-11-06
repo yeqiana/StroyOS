@@ -90,6 +90,71 @@ def _is_phase5a_test_only(ep: Path) -> bool:
     )
 
 
+def _sha_bound_direct_user_authority(episode: Path, frames: dict) -> dict | None:
+    """Separate final-pixel user authority, never a fabricated model Review PASS.
+
+    The ordinary model review path remains mandatory without an *explicit*
+    final-acceptance record covering every current image and all NEEDS_USER
+    defects. In particular, an older acceptance for two frames cannot silently
+    downgrade new defects elsewhere in the episode.
+    """
+    import final_acceptance
+
+    acceptance = final_acceptance.valid(episode)
+    if not acceptance or not acceptance.get("accepted_visual_assets"):
+        return None
+    if not (final_acceptance.allows(episode, "frame_semantic")
+            and final_acceptance.allows(episode, "production_gate")):
+        return None
+
+    rows = {str(key).zfill(2): row for key, row in frames.items()}
+    defects = {f"{int(item):02d}" for item in acceptance["known_defect_frames"]}
+    assets = acceptance["accepted_visual_assets"]
+    errors: list[str] = []
+    if set(assets) != set(rows):
+        errors.append("direct-user accepted asset set must equal the current full frame set")
+    if not defects <= set(rows):
+        errors.append("direct-user defect acceptance names unknown frames")
+    for key, frame in sorted(rows.items()):
+        if not isinstance(frame, dict):
+            errors.append(f"frame {key}: ledger row missing")
+            continue
+        status = str(frame.get("status") or "").upper()
+        if status not in production_ledger.ACCEPTED_LEDGER_STATES | {"NEEDS_USER"}:
+            errors.append(f"frame {key}: unresolved generation state {status}")
+            continue
+        if status == "NEEDS_USER" and key not in defects:
+            errors.append(f"frame {key}: existing semantic defect is not directly accepted")
+            continue
+        try:
+            asset = final_acceptance.visual_asset_for_frame(episode, key)
+        except (OSError, ValueError, RuntimeError) as exc:
+            errors.append(f"frame {key}: direct-user visual asset invalid: {exc}")
+            continue
+        approved = frame.get("approved_asset")
+        source = (approved if status in production_ledger.ACCEPTED_LEDGER_STATES
+                  and isinstance(approved, dict) and approved.get("path")
+                  else frame.get("current_candidate"))
+        expected = str((source or {}).get("sha256") or "").lower()
+        if not expected or expected != str(asset.get("sha256") or "").lower():
+            errors.append(f"frame {key}: user-accepted pixels differ from current ledger asset")
+            continue
+        if not any(
+            attempt.get("result") == "success"
+            and str((attempt.get("candidate") or {}).get("sha256") or "").lower() == expected
+            for attempt in frame.get("attempts") or [] if isinstance(attempt, dict)
+        ):
+            errors.append(f"frame {key}: no successful generation attempt for accepted pixels")
+    return {
+        "status": "BLOCKED" if errors else "USER_ACCEPTED",
+        "errors": errors,
+        "frames": [] if errors else sorted(rows),
+        "authority": "SHA_BOUND_DIRECT_USER_FINAL_ASSETS",
+        "machine_review_pass": False,
+        "known_defect_frames": sorted(defects),
+    }
+
+
 def verify_episode_review_authority(
     ep: Path, *, metadata_only: bool = False,
 ) -> dict:
@@ -110,6 +175,14 @@ def verify_episode_review_authority(
     frames = ledger.get("frames") if isinstance(ledger, dict) else None
     if not isinstance(frames, dict):
         return {"status": "BLOCKED", "errors": ["production ledger frames missing"], "frames": []}
+
+    # A fully SHA-bound direct-user final decision is its own release authority.
+    # It does not convert missing/failed Model Review receipts to model PASS.
+    # Phase5A TEST_ONLY still requires its exact test Review receipt.
+    if not _is_phase5a_test_only(episode):
+        direct_user = _sha_bound_direct_user_authority(episode, frames)
+        if direct_user is not None:
+            return direct_user
 
     # Reuse the canonical verifier for policy, frame/candidate identity, receipt,
     # and evidence-fingerprint validation. Production episodes require the normal
