@@ -9,6 +9,7 @@ force one oversized Release Critic request. Evidence is reused by caption/publis
 from __future__ import annotations
 
 import argparse
+import subprocess
 import json
 import math
 import time
@@ -17,6 +18,7 @@ from pathlib import Path
 import frame_semantic_review as base
 import incremental_frame_review as inc
 import codex_critic_runner
+import codex_user_runner
 import episode_performance
 import runtime_command
 import runtime_provenance
@@ -224,6 +226,38 @@ Write ONLY JSON to {output_ref}:
 Return one row for every attached frame. summary.passed=false if any supported=false or subtitle_unobstructed=false.
 """
 
+def _recover_jsonl_review(stdout: str, frames: list[str]) -> dict | None:
+    """Recover actual model output only from one complete Codex JSONL turn."""
+    try:
+        events = [json.loads(line) for line in stdout.splitlines()
+                  if line.strip().startswith("{")]
+        if (sum(e.get("type") == "thread.started" for e in events) != 1
+                or sum(e.get("type") == "turn.completed" for e in events) != 1
+                or any(e.get("type") in ("turn.failed", "item.failed") for e in events)):
+            return None
+        messages = [(e.get("item") or {}).get("text") for e in events
+                    if e.get("type") == "item.completed"
+                    and (e.get("item") or {}).get("type") == "agent_message"]
+        if len(messages) != 1 or not isinstance(messages[0], str):
+            return None
+        result = json.loads(messages[0])
+        if not isinstance(result, dict):
+            return None
+        rows = result.get("frames")
+        if (not isinstance(rows, list) or len(rows) != len(frames)
+                or any(not isinstance(row, dict) for row in rows)
+                or sorted(row.get("frame") for row in rows) != sorted(frames)
+                or any(not isinstance(row.get("supported"), bool)
+                       or not isinstance(row.get("subtitle_unobstructed"), bool)
+                       or not isinstance(row.get("notes"), str) for row in rows)
+                or not isinstance((result.get("summary") or {}).get("passed"), bool)
+                or result["summary"]["passed"] !=
+                   all(row["supported"] and row["subtitle_unobstructed"] for row in rows)):
+            return None
+        return result
+    except (ValueError, TypeError, KeyError):
+        return None
+
 def _run_chunk(ep: Path, rows: list[dict], texts: dict[str, str], codex_raw: str | None, timeout: int, index: int, cycle: int = 1) -> dict:
     suffix = f"{index:03d}" if cycle <= 1 else f"r{cycle - 1}-{index:03d}"
     out = ep / "meta" / f".caption-image-audit-candidate-{suffix}.json"
@@ -271,14 +305,19 @@ def _run_chunk(ep: Path, rows: list[dict], texts: dict[str, str], codex_raw: str
         cmd += ["-i", str(row["path"])]
     cmd += ["-"]
     started = time.perf_counter()
-    cp = runtime_command.run_argv(cmd, cwd=ep, stdin_text=_prompt(ep, rows, texts, out, absolute_output=True), timeout=timeout, capture=True)
+    cp = codex_user_runner.run_model_codex(cmd, input=_prompt(ep, rows, texts, out, absolute_output=True), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=ep, timeout=timeout, check=False, task_type="review")
     vision_elapsed = time.perf_counter() - started
     log = ep / "meta" / f"caption-image-audit-v2-{suffix}.jsonl"
     log.write_text(cp.stdout or "", encoding="utf-8", newline="\n")
-    if cp.returncode != 0 or not out.is_file():
+    if cp.returncode != 0:
         raise RuntimeError(f"caption image critic failed rc={cp.returncode}; log={log}")
-    data = json.loads(out.read_text(encoding="utf-8-sig"))
-    out.unlink(missing_ok=True)
+    if out.is_file():
+        data = json.loads(out.read_text(encoding="utf-8-sig"))
+        out.unlink(missing_ok=True)
+    else:
+        data = _recover_jsonl_review(cp.stdout or "", [r["frame"] for r in rows])
+        if data is None:
+            raise RuntimeError(f"no verifiable caption review JSONL; log={log}")
     if not isinstance(data, dict):
         return {}
     data["critic_provenance"] = runtime_provenance.build_vision_critic_provenance(
