@@ -1,4 +1,4 @@
-# 第14集《深渊疗愈所》第一集：图文发布准备（未获发布授权）
+# 第14集《深渊疗愈所》第一集：图文发布状态（2026-11-06）
 
 > 本文仅是发布前草稿，不是正式审核 PASS、发布许可或已完成的图文包。不得据此启动生图、变更用户验收范围或制作视频。
 
@@ -6,27 +6,29 @@
 
 - 48/48 帧已有 current_candidate；真实生图次数：39 帧各 1 次，9 帧各 2 次，无超过 2 次的帧。
 - MySQL Production Ledger：LOCKED 24、WEAK_PASS 2、NEEDS_USER 22。
-- 待用户决定帧：09、13、15、16、21、25、26、27、28、29、30、31、32、34、39、41、42、43、44、45、47、48。
-- 用户既有验收文书只列明已知缺陷帧 09 和 48；不能自动扩展到其他 20 帧。
-- docs/subtitles.yaml 已存在；meta/subtitle-layout-audit.json 尚未生成。
-- meta/release-manifest.json 的 publish_dir、cover_path、contact_sheet_path 尚为空。
-- 当前字幕渲染只接受 approved_asset 或 hash-bound 的 direct-user final asset。22 帧未批准，不能在正式发布目录直接渲染。
+- 用户现已正式接受 22 帧已知缺陷并选择不再返修，48 张底图分别以 SHA-256 绑定用户最终接受记录。机器审核 FAIL 保留。
+- 2026-11-06 新用户授权明确覆盖另外 20 帧；原先仅接受 F09、F48 的验收记录已由正式验收模块更新。
+- docs/subtitles.yaml 已按新发布口语化文案调整；48 张字幕图已全部重烧，meta/subtitle-layout-audit.json 通过。
+- release manifest 已写入封面、48 张字幕图、联系图和发布文案位置；最新候选发布包可构建和验证。
+- 48 张底图已通过 hash-bound direct-user final 验收，现有机器状态不作伪造修改。
 - 2026-11-06 已撤销误触发的 17 帧返修授权；原图、语义失败、技术失败回执保留。后续不得再次调用“待用户决策即自动返修”入口。
 
 ## 候选发布文案（仅草稿）
 
-**标题：** 深渊疗愈所①｜免费的深山疗养院，为什么每个人都穿着寿衣？
+**标题：** 深渊疗愈所①｜山路堵死、导航失灵，后座却说前面还有条路
 
-**简介：** 山路塌方、导航失灵，阿泽和两位同伴误入绝壁深处的纯白疗养院。这里恒温如春、住宿免费，老人们却有着年轻得不正常的皮肤。诡异的冷萃露、左衽白袍、餐具上的九个红点……当林岚的名字出现在祭典纸签上，他们终于意识到：这不是疗养院，而是有人提前安排好的“生命还原”。
+**简介：** 以现有像素与字幕为准，不再声称看清纸签上的姓名、祭典时辰；最新全文见剧集 docs/publish-copy.md。
 
 **话题：** #深渊疗愈所 #悬疑故事 #惊悚故事 #第一人称叙事 #图文故事 #原创故事 #深山怪谈
 
 ## 下一步操作（按依赖顺序）
 
-1. 保留所有语义 FAIL 的独立证据，向用户明确列出新增 20 帧缺陷并获取针对“接受现图不再返修”的直接授权；也可由用户选择逐帧保留为 NEEDS_USER，不可默认通过。
-2. 使用正式 final_acceptance 写入器记录用户真实决策，按候选图 SHA-256 绑定已接受资产；不能人工写假 PASS 或伪造 Review Authority。
-3. 验证 48 帧都满足字幕渲染器的 approved_asset/direct-user-final 前置条件后，再执行 subtitle_layout.py render-all 与 audit。
-4. 在正式门禁允许后生成封面、联系图、发布目录与 release manifest，执行 release_preflight 和 Review Authority 验证；失败即继续阻断，不强行发布。
+2026-11-06 最新阻断：原生 Codex Caption–Image Audit 报 Windows 访问拒绝（os error 5），Runner 以 SYSTEM 身份运行且 Codex 登录状态为 Not logged in。不能冒充 PASS，须在已有登录的交互用户运行环境下恢复审核。Release Critic FAIL 候选明确列出六类内容问题，已修复封面文案、F48 断言与三处小说旁白，待审核通道恢复后正式复核。
+
+1. 用户已授权接受 22 帧现图并完成正式 SHA-256 绑定；不再次要求同一授权。
+2. 在已登录 Codex 的交互 Windows 用户身份下启动审核任务；优先运行 Caption–Image Audit，核实每张图片+字幕的真实视觉证据。
+3. 真实执行 Release Critic，检查封面、前三帧、结尾纸签、简介和全部 Caption–Image Audit 证据；FAIL 时继续只修文案而不生图。
+4. 全部发布证据 PASS 后才正式锁包，重新运行 release preflight 与完整性校验；当前仅候选包，不对外发布。
 5. 最终交付图文，不制作 MP4 或视频。
 
 ## 禁止事项
