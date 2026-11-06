@@ -360,45 +360,6 @@ def mark_review_needs_user(ep: Path, frame_no: int | str, *, reason: str) -> dic
     return {"frame": key, "status": "NEEDS_USER", "from_status": prior_status}
 
 
-def cmd_authorize_user_pending_ordinary_repair(args: argparse.Namespace) -> None:
-    """Use the remaining ordinary repair after an explicitly approved final semantic FAIL."""
-    import json
-    ep = episode_dir(args.episode_dir)
-    path, data = get_ledger(ep)
-    key, frame = frame_obj(data, args.frame)
-    if frame["status"] != "NEEDS_USER":
-        raise SystemExit(f"pending ordinary repair requires NEEDS_USER, got {frame['status']}")
-    if int(frame.get("content_repairs_used") or 0) != 0 or content_repair_limit(data) < 1:
-        raise SystemExit("ordinary content repair unavailable")
-    approval = str(args.approval_text or "").strip()
-    if not approval:
-        raise SystemExit("direct user approval required")
-    evidence_path = ep / "meta/.frame-semantic-review.candidate.json"
-    if not evidence_path.is_file():
-        raise SystemExit("final semantic evidence missing")
-    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
-    failures = [r for r in evidence.get("frames") or []
-                if str(r.get("frame") or "").zfill(2) == key and r.get("decision") == "fail"]
-    if len(failures) != 1:
-        raise SystemExit("final semantic FAIL not uniquely identified")
-    candidate = frame.get("current_candidate") or {}
-    raw = Path(candidate.get("path") or "")
-    actual = raw if raw.is_absolute() else repo_root() / raw
-    if not candidate.get("sha256") or not actual.is_file() or sha256_file(actual) != str(candidate["sha256"]).lower():
-        raise SystemExit("current candidate SHA mismatch")
-    frame["status"] = "REPAIR_AUTHORIZED"
-    frame["repair_authorization"] = {
-        "at": now_iso(), "note": args.reason, "approval_text": approval,
-        "user_approved": True, "delegated_auto_review": False,
-        "approval_basis": "direct_user_final_semantic_ordinary_repair",
-        "final_semantic_issue_codes": failures[0].get("issue_codes") or [],
-        "rejected_candidate_sha256": candidate["sha256"],
-    }
-    data["updated_at"] = now_iso()
-    save_json(path, data)
-    print(f"{key}: REPAIR_AUTHORIZED (unused ordinary repair)")
-
-
 def cmd_authorize_user_continuation_repair(args: argparse.Namespace) -> None:
     """Authorize exactly one additional content candidate after an explicit user continue decision.
 
